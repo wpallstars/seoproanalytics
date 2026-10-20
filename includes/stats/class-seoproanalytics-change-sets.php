@@ -195,26 +195,24 @@ final class SEOProAnalytics_Change_Sets {
                 if ($item['result'] === 'skipped') {
                     continue;
                 }
-                if (!isset($checked[$item['post']])) {
-                    $checked[$item['post']] = true;
-                    $skipped[$item['post']] = !self::page_unchanged($items, $item['post']);
-                }
-                if ($skipped[$item['post']]) {
+                if (!empty($skipped[$item['post']])) {
                     $items[$index]['result'] = 'skipped';
                     $items[$index]['reason'] = __('The page changed after preview or is no longer editable.', 'seoproanalytics');
                     continue;
                 }
-                // Recheck before each write, not only in the displayed preview.
-                if (!current_user_can('edit_post', $item['post']) || self::read_value($item) !== $item['old']) {
-                    $items[$index]['result'] = 'conflict';
-                    $items[$index]['reason'] = __('The page changed after preview or is no longer editable.', 'seoproanalytics');
-                    break;
-                }
+                $first = !isset($checked[$item['post']]);
+                $checked[$item['post']] = true;
                 $items[$index]['result'] = 'writing';
                 if (!self::save($id, $items, 2)) {
                     return self::error(__('The backup could not be updated. The partly applied set can be undone.', 'seoproanalytics'), 500);
                 }
-                $written = self::guarded_write($item, false);
+                $written = self::guarded_write($item, false, $first ? $items : array());
+                if (is_wp_error($written) && $written->get_error_code() === 'seoproanalytics_change_set_stale_page') {
+                    $skipped[$item['post']] = true;
+                    $items[$index]['result'] = 'skipped';
+                    $items[$index]['reason'] = $written->get_error_message();
+                    continue;
+                }
                 $ok = !is_wp_error($written) && self::page_verified($items, $item['post']) && (string) get_permalink($item['post']) === $item['url'];
                 $items[$index]['result'] = $ok ? 'applied' : 'failed';
                 $items[$index]['reason'] = $ok ? '' : __('Read-back differed or the page address moved. The run stopped.', 'seoproanalytics');
@@ -351,9 +349,10 @@ final class SEOProAnalytics_Change_Sets {
      *
      * @param array<string,mixed> $item Field backup.
      * @param bool $undo Whether restoring.
+     * @param array $page_items On a page's first apply write, lock and check every planned field.
      * @return mixed
      */
-    private static function guarded_write(array $item, $undo) {
+    private static function guarded_write(array $item, $undo, array $page_items = array()) {
         global $wpdb;
         // phpcs:disable WordPress.DB.DirectDatabaseQuery -- indexed row locks and an explicit short write transaction, never cached.
         if ($wpdb->query('START TRANSACTION') === false) {
@@ -361,11 +360,18 @@ final class SEOProAnalytics_Change_Sets {
         }
         try {
             $post = $wpdb->get_var($wpdb->prepare("SELECT ID FROM $wpdb->posts WHERE ID = %d FOR UPDATE", $item['post']));
-            if ($item['field'] !== 'title') {
-                $wpdb->get_col($wpdb->prepare("SELECT meta_id FROM $wpdb->postmeta WHERE post_id = %d AND meta_key = %s FOR UPDATE", $item['post'], $item['meta_key']));
-            }
             $locked = $post && $wpdb->last_error === '';
+            foreach ($page_items ?: array($item) as $field) {
+                if ($field['post'] === $item['post'] && $field['field'] !== 'title') {
+                    $wpdb->get_col($wpdb->prepare("SELECT meta_id FROM $wpdb->postmeta WHERE post_id = %d AND meta_key = %s FOR UPDATE", $item['post'], $field['meta_key']));
+                    $locked = $locked && $wpdb->last_error === '';
+                }
+            }
             $current = self::read_value($item);
+            if ($locked && $page_items && !self::page_unchanged($page_items, $item['post'])) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('seoproanalytics_change_set_stale_page', __('The page changed after preview or is no longer editable.', 'seoproanalytics'), array('status' => 409));
+            }
             $object = get_post($item['post']);
             if (!$locked || !$object || !SEOProAnalytics_Changes::is_public($object) || !current_user_can('edit_post', $item['post']) || $current !== ($undo ? $item['new'] : $item['old'])) {
                 $wpdb->query('ROLLBACK');
