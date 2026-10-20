@@ -180,7 +180,9 @@ the change log's shortened values. Apply backs up before writing SEO metadata
 with `update_post_meta()` and titles with `wp_update_post()`, reading back values
 and permalinks. A difference stops the run as partly applied. The usual change
 hooks log each field with `meta.change_set`. A site lock serializes set writers;
-ordinary edits still win on a conflict. Changes are not a cross-plugin transaction.
+short indexed row locks protect individual compare/writes from ordinary edits,
+with fresh post/meta reads. Changes are not a whole-set transaction. Both apply
+and undo stop if save hooks invalidate a verified value or move the page.
 
 Optional `experiment` starts measurement on the applied pages at apply time;
 `meta.change_set` and the set's `experiment_id` link them. Undo restores only

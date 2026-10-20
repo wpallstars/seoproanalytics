@@ -112,6 +112,9 @@ final class SEOProAnalytics_Change_Sets {
 
     /** @param array<string,mixed> $item Field. @return string */
     private static function read_value(array $item) {
+        // An ordinary editor request does not share our advisory lock or caches.
+        wp_cache_delete($item['post'], 'posts');
+        wp_cache_delete($item['post'], 'post_meta');
         return $item['field'] === 'title' ? (string) get_post_field('post_title', $item['post'], 'raw') : (string) get_post_meta($item['post'], $item['meta_key'], true);
     }
 
@@ -211,7 +214,7 @@ final class SEOProAnalytics_Change_Sets {
                 if (!self::save($id, $items, 2)) {
                     return self::error(__('The backup could not be updated. The partly applied set can be undone.', 'seoproanalytics'), 500);
                 }
-                $written = self::write_value($item, false);
+                $written = self::guarded_write($item, false);
                 $ok = !is_wp_error($written) && self::page_verified($items, $item['post']) && (string) get_permalink($item['post']) === $item['url'];
                 $items[$index]['result'] = $ok ? 'applied' : 'failed';
                 $items[$index]['reason'] = $ok ? '' : __('Read-back differed or the page address moved. The run stopped.', 'seoproanalytics');
@@ -310,13 +313,25 @@ final class SEOProAnalytics_Change_Sets {
                         $partial = true;
                         continue;
                     }
-                    $written = self::write_value($item, true);
-                    $ok = !is_wp_error($written) && self::read_value($item) === $item['old'];
+                    $url = (string) get_permalink($item['post']);
+                    $written = self::guarded_write($item, true);
+                    $ok = !is_wp_error($written) && self::read_value($item) === $item['old'] && (string) get_permalink($item['post']) === $url;
                     $items[$index]['result'] = $ok ? 'undone' : 'undo failed';
                     $items[$index]['reason'] = $ok ? '' : __('Restored value differed on read-back.', 'seoproanalytics');
+                    // A title-save hook may have changed a field restored earlier.
+                    foreach ($items as $prior => $restored) {
+                        if ($restored['post'] === $item['post'] && $restored['result'] === 'undone' && self::read_value($restored) !== $restored['old']) {
+                            $items[$prior]['result'] = 'undo failed';
+                            $items[$prior]['reason'] = __('A later save changed this restored value. The run stopped.', 'seoproanalytics');
+                            $ok = false;
+                        }
+                    }
                     $partial = $partial || !$ok;
                     if (!self::save($id, $items, 4)) {
                         return self::error(__('Undo state could not be saved.', 'seoproanalytics'), 500);
+                    }
+                    if (!$ok) {
+                        break;
                     }
                 }
             } finally {
@@ -327,6 +342,45 @@ final class SEOProAnalytics_Change_Sets {
             }
             return self::get($id);
         });
+    }
+
+    /**
+     * Lock the actual WordPress row through compare and mutation. The backup
+     * and write intent are already committed, outside this short transaction.
+     * Normal WordPress hooks still run; no truncated change-log value is read.
+     *
+     * @param array<string,mixed> $item Field backup.
+     * @param bool $undo Whether restoring.
+     * @return mixed
+     */
+    private static function guarded_write(array $item, $undo) {
+        global $wpdb;
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery -- indexed row locks and an explicit short write transaction, never cached.
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return self::error(__('The field could not be locked for writing.', 'seoproanalytics'), 500);
+        }
+        try {
+            $post = $wpdb->get_var($wpdb->prepare("SELECT ID FROM $wpdb->posts WHERE ID = %d FOR UPDATE", $item['post']));
+            if ($item['field'] !== 'title') {
+                $wpdb->get_col($wpdb->prepare("SELECT meta_id FROM $wpdb->postmeta WHERE post_id = %d AND meta_key = %s FOR UPDATE", $item['post'], $item['meta_key']));
+            }
+            if (!$post || $wpdb->last_error !== '' || !current_user_can('edit_post', $item['post']) || self::read_value($item) !== ($undo ? $item['new'] : $item['old'])) {
+                $wpdb->query('ROLLBACK');
+                return self::error(__('This value changed or is no longer editable; it was left untouched.', 'seoproanalytics'), 409);
+            }
+            $written = self::write_value($item, $undo);
+            if ($wpdb->query('COMMIT') === false) {
+                return self::error(__('The field write could not be committed. Inspect the partly applied set.', 'seoproanalytics'), 500);
+            }
+            return $written;
+        } catch (Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            throw $error;
+        } finally {
+            wp_cache_delete($item['post'], 'posts');
+            wp_cache_delete($item['post'], 'post_meta');
+        }
+        // phpcs:enable WordPress.DB.DirectDatabaseQuery
     }
 
     /**

@@ -552,7 +552,12 @@ prunes them, and deleting an experiment never deletes its set. No visitor work.
 Apply persists a backup and write intent before each field write; a read-back
 or address mismatch stops. Undo compares current values with the backed-up new
 ones before restoring. A connection-owned site lock serializes change-set
-writers; ordinary WordPress saves are not locked. Each operation restores the
+writers. Each field compare/write uses a short transaction with an indexed
+WordPress row lock and fresh post/meta reads, so an ordinary save cannot slip
+between that comparison and mutation. Backups and apply write intent are already
+committed before this transaction. This is not a whole-set transaction; hooks
+can change other fields, so apply and undo reverify earlier fields on the page
+and stop on a mismatch. Each operation restores the
 caller's data selection in finally, but edits and backups always use live.
 REST, CLI and abilities share these checks, including can_manage and edit_post.
 See `docs/seo-loop.md` and `docs/seo-loop-recipes.md` for the plan and workflow.
