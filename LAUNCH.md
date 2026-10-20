@@ -13,18 +13,35 @@ Before it went public, the free tree was scanned for secrets
 paths. The REST API example's placeholder `admin:APPLICATION PASSWORD` is
 not a password, if a scan names it.
 
+On since 20 October 2026, when the repository went public:
+
+- Description and topics; no wiki.
+- The branch ruleset **main: required CI checks** on the default branch:
+  Lint (PHP 7.4), Release build, and the Smoke tests on WordPress 6.2 with
+  PHP 7.4 and WordPress latest with PHP 8.3, without "branch must be up to
+  date" (`DEVELOPMENT.md` → At public launch). It also blocks deleting
+  `main` and force pushes; repository admins can bypass it.
+- CodeQL default setup (GitHub Actions, JavaScript and TypeScript; it has
+  no PHP support), secret scanning with push protection, Dependabot alerts
+  and security updates, and private vulnerability reporting
+  (`SECURITY.md`).
+- GitHub-hosted runners only: no `CI_RUNNER` variable (`DEVELOPMENT.md` →
+  Services setup).
+- OpenSSF Scorecard: its workflow runs on pushes to `main` and weekly.
+
 Not yet:
 
-- The repository's settings: description and topics; a branch ruleset on
-  `main` requiring Lint, Release build and both Smoke tests, without
-  "branch must be up to date"; CodeQL default setup (JavaScript and
-  TypeScript, GitHub Actions; it has no PHP support), secret scanning with
-  push protection, Dependabot alerts and security updates, private
-  vulnerability reporting (`SECURITY.md`); SonarCloud
-  (`.github/workflows/sonarcloud.yml` with `SONAR_TOKEN`) and OpenSSF
-  Scorecard; `SYNC_PAT` for Repository metrics. Record each here once on.
+- SonarCloud: import the project as `wpallstars_seoproanalytics` and set
+  `SONAR_TOKEN` (`DEVELOPMENT.md` → Services setup). Until then its job
+  skips.
+- Codacy and CodeFactor (`DEVELOPMENT.md` → Services setup).
+- `SYNC_PAT`: `main` is protected, so Repository metrics cannot commit
+  `docs/metrics/` until the token is set.
+- The Scorecard badge, once its results are published
+  (`scripts/readme-badges.sh --add scorecard`).
 - The first release, through `RELEASING.md`, and the update test from
-  1.19.1 (`scripts/update-test.sh`).
+  1.19.1 (`scripts/update-test.sh`), once the add-on installs: sites that
+  import connections the add-on now owns keep importing only with it.
 - The rest of `DEVELOPMENT.md` → At public launch: fix the reviewers'
   findings by area, then raise the PHPStan level.
 
