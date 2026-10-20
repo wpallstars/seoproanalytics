@@ -636,6 +636,114 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /change-sets:
+    get:
+      operationId: getChangeSets
+      summary: Full backups of reviewed live page changes (view_seoproanalytics).
+      parameters:
+        - name: before
+          in: query
+          description: Read sets older than this id; newest 50 by default.
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Newest sets and the next before cursor, null at the end.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  change_sets:
+                    type: array
+                    items: {$ref: '#/components/schemas/ChangeSet'}
+                  next: {type: [integer, 'null']}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      operationId: applyChangeSet
+      summary: Preview or apply a reviewed plan (manage_options and edit_post per page).
+      description: |
+        Always uses live data. Pages with any stale now value or without edit_post
+        are skipped as a whole. SEO fields require active Rank Math, Yoast SEO or
+        SEOPress. Values are compared in WordPress's stored form for the acting user;
+        template variables remain literal. Backs up full values before writing SEO
+        metadata then post title; stops at the first read-back or permalink difference.
+        dry_run writes nothing. Optional experiment uses the applied pages and apply
+        time; its id is experiment_id, and its meta.change_set links back to the set.
+        Experiment creation errors are returned in experiment_error without losing
+        the applied set or its backups. No automatic retry of page changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan]
+              properties:
+                plan: {$ref: '#/components/schemas/ChangeSetPlan'}
+                dry_run: {type: boolean, default: false}
+                experiment: {type: string, description: Optional experiment name.}
+                days: {type: integer, enum: [7, 14, 28, 56, 84], default: 28}
+                engine: {$ref: '#/components/schemas/SearchEngine'}
+                metric: {type: string, enum: [clicks, impressions, ctr, position, visits, conversions], default: clicks}
+                direction: {type: string, enum: [up, down], default: up}
+                threshold: {type: number, minimum: 0}
+                goal: {type: string}
+                hypothesis: {type: string}
+      responses:
+        '200':
+          description: Preview (dry_run) or saved set, including per-field results.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ChangeSet'
+                  - $ref: '#/components/schemas/ChangeSetPreview'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: Another change set writer holds the site lock.
+        '500':
+          description: Backup or state could not be saved; inspect the partly applied set before retrying.
+
+  /change-sets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    get:
+      operationId: getChangeSet
+      summary: One live change set (view_seoproanalytics).
+      responses:
+        '200':
+          description: Full backup, links and field outcomes.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChangeSet'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /change-sets/{id}/undo:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    post:
+      operationId: undoChangeSet
+      summary: Restore live values still equal to what the set wrote (manage_options and edit_post).
+      description: Later edits and non-editable pages are reported and left untouched. Each restoration is read back and logged with meta.change_set. Sets survive experiment deletion and are kept for good.
+      responses:
+        '200':
+          description: Undone or partly undone set, with conflicts per field.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChangeSet'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: Another change set writer holds the site lock.
+
   /experiments:
     get:
       operationId: getExperiments
@@ -742,6 +850,9 @@ paths:
         decide records the result (keep, revise, undo or inconclusive)
         and keeps the measurement it was made on, so newer data never
         rewrites it; deciding again changes only the result and the note.
+        With restore true, decide undo also restores its linked change set on live
+        data (even with data=demo), refusing an experiment without a set. The
+        response includes restoration with its per-field conflicts and outcomes.
       requestBody:
         required: true
         content:
@@ -757,6 +868,10 @@ paths:
                   type: string
                   enum: [keep, revise, undo, inconclusive]
                   description: For decide.
+                restore:
+                  type: boolean
+                  default: false
+                  description: Only for decide undo on an experiment with meta.change_set. Requires edit_post for each restored page.
                 note:
                   type: string
                   maxLength: 2000
@@ -5071,6 +5186,79 @@ components:
         offset:
           type: integer
 
+    ChangeSetPair:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items: {type: string}
+      description: Current stored value, then proposed value. No truncation or template expansion.
+
+    ChangeSetPlan:
+      type: object
+      required: [name, pages]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 190}
+        pages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [post]
+            description: At least one field pair is required. Unique post ids only, for viewable post types.
+            properties:
+              post: {type: integer, minimum: 1}
+              title: {$ref: '#/components/schemas/ChangeSetPair'}
+              seo_title: {$ref: '#/components/schemas/ChangeSetPair'}
+              seo_description: {$ref: '#/components/schemas/ChangeSetPair'}
+
+    ChangeSetItem:
+      type: object
+      properties:
+        post: {type: integer}
+        field: {type: string, enum: [title, seo_title, seo_description]}
+        meta_key: {type: string, description: Empty for the post title.}
+        old: {type: string}
+        new: {type: string}
+        old_exists: {type: boolean, description: Whether metadata existed before apply.}
+        url: {type: string, description: Permalink before apply.}
+        result: {type: string, enum: [pending, skipped, conflict, writing, applied, failed, undone, undo conflict, undo failed]}
+        reason: {type: string}
+
+    ChangeSetPreview:
+      type: object
+      required: [name, pages]
+      properties:
+        name: {type: string}
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              post: {type: integer}
+              url: {type: string}
+              reason: {type: string, description: Nonempty means skip the entire page.}
+              items:
+                type: array
+                items: {$ref: '#/components/schemas/ChangeSetItem'}
+
+    ChangeSet:
+      type: object
+      required: [id, created, user_id, name, status, experiment_id, items, undone]
+      properties:
+        id: {type: integer}
+        created: {type: integer, description: Apply time (Unix seconds).}
+        user_id: {type: integer}
+        name: {type: string}
+        status: {type: string, enum: [applied, partly applied, undone, partly undone]}
+        experiment_id: {type: integer, description: Zero without an experiment; retained after experiment deletion.}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/ChangeSetItem'}
+        undone: {type: integer, description: Last undo attempt (Unix seconds), zero before undo.}
+        experiment_error: {type: string, description: Apply response only, if experiment creation/linking failed.}
+
     ExperimentInput:
       type: object
       required: [name]
@@ -5305,6 +5493,11 @@ components:
           description: Percent, or places for position.
         change_id:
           type: [integer, 'null']
+        change_set:
+          type: [integer, 'null']
+          description: Linked reviewed change set, from meta.change_set; null for a manual experiment.
+        restoration:
+          $ref: '#/components/schemas/ChangeSet'
         pages:
           type: array
           items: {type: string}

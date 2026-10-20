@@ -542,6 +542,21 @@ and the `seoproanalytics/experiments` ability read them; `POST /experiments`,
 dashboard has them under Search → Experiments, and each row of Changes
 with a page can start one.
 
+Reviewed change sets (schema v34, `SEOProAnalytics_Change_Sets`) keep full backups
+in `change_sets`: `id` primary key; `created`, `user_id`, `name`, `status`
+(1 applied, 2 partly applied, 3 undone, 4 partly undone), `experiment_id` (key),
+`items` (longtext JSON: post, field, meta_key, full old/new, old_exists, url,
+result and reason), `undone`. Reads are bounded primary-key ranges or one id.
+The schema's table list includes them for export and uninstall; no retention
+prunes them, and deleting an experiment never deletes its set. No visitor work.
+Apply persists a backup and write intent before each field write; a read-back
+or address mismatch stops. Undo compares current values with the backed-up new
+ones before restoring. A connection-owned site lock serializes change-set
+writers; ordinary WordPress saves are not locked. Each operation restores the
+caller's data selection in finally, but edits and backups always use live.
+REST, CLI and abilities share these checks, including can_manage and edit_post.
+See `docs/seo-loop.md` and `docs/seo-loop-recipes.md` for the plan and workflow.
+
 The decision queue (schema v9, `SEOProAnalytics_Queue`; design:
 `docs/seo-loop.md` → Decision queue) ranks what Opportunities finds (low
 CTR, missing from the page, striking distance, losing clicks, overlapping

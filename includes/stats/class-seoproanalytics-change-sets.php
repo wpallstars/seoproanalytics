@@ -185,9 +185,20 @@ final class SEOProAnalytics_Change_Sets {
         $tag = self::tagger($id);
         add_filter('seoproanalytics_record_change', $tag);
         $paths = array();
+        $checked = array();
+        $skipped = array();
         try {
             foreach ($items as $index => $item) {
                 if ($item['result'] === 'skipped') {
+                    continue;
+                }
+                if (!isset($checked[$item['post']])) {
+                    $checked[$item['post']] = true;
+                    $skipped[$item['post']] = !self::page_unchanged($items, $item['post']);
+                }
+                if ($skipped[$item['post']]) {
+                    $items[$index]['result'] = 'skipped';
+                    $items[$index]['reason'] = __('The page changed after preview or is no longer editable.', 'seoproanalytics');
                     continue;
                 }
                 // Recheck before each write, not only in the displayed preview.
@@ -201,7 +212,7 @@ final class SEOProAnalytics_Change_Sets {
                     return self::error(__('The backup could not be updated. The partly applied set can be undone.', 'seoproanalytics'), 500);
                 }
                 $written = self::write_value($item, false);
-                $ok = !is_wp_error($written) && self::read_value($item) === $item['new'] && (string) get_permalink($item['post']) === $item['url'];
+                $ok = !is_wp_error($written) && self::page_verified($items, $item['post']) && (string) get_permalink($item['post']) === $item['url'];
                 $items[$index]['result'] = $ok ? 'applied' : 'failed';
                 $items[$index]['reason'] = $ok ? '' : __('Read-back differed or the page address moved. The run stopped.', 'seoproanalytics');
                 if (!self::save($id, $items, 2) || !$ok) {
@@ -231,6 +242,40 @@ final class SEOProAnalytics_Change_Sets {
             }
         }
         return $answer;
+    }
+
+    /**
+     * Recheck every field of a page immediately before its first write.
+     * @param array $items Backups.
+     * @param int $post Post id.
+     * @return bool
+     */
+    private static function page_unchanged(array $items, $post) {
+        $object = get_post($post);
+        if (!$object || !SEOProAnalytics_Changes::is_public($object) || !current_user_can('edit_post', $post)) {
+            return false;
+        }
+        foreach ($items as $item) {
+            if ($item['post'] === $post && (self::read_value($item) !== $item['old'] || (string) get_permalink($post) !== $item['url'])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Catch hooks that rewrite an earlier field when a later one is saved.
+     * @param array $items Backups, including the current write intent.
+     * @param int $post Post id.
+     * @return bool
+     */
+    private static function page_verified(array $items, $post) {
+        foreach ($items as $item) {
+            if ($item['post'] === $post && in_array($item['result'], array('applied', 'writing'), true) && self::read_value($item) !== $item['new']) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

@@ -697,6 +697,7 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
             'direction'   => self::code_name(self::DIRECTIONS, $row['direction'], 'up'),
             'threshold'   => $metric === 'position' ? round((int) $row['threshold'] / 10, 1) : (float) (int) $row['threshold'],
             'change_id'   => (int) $row['change_id'] ? (int) $row['change_id'] : null,
+            'change_set'  => !empty($meta['change_set']) ? (int) $meta['change_set'] : null,
             'pages'       => $pages,
             'goal'        => $goal,
             'status'      => $status,

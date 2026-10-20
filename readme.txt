@@ -42,6 +42,7 @@ Connect Bing Webmaster Tools (Settings → Connections), or Google Search Consol
 * **IndexNow**: tell search engines when pages change (opt-in).
 * **Plan**: prioritised actions with seasonal checks. Done starts an experiment, except Leave.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.
+* **Change sets**: reviewed title/description edits, full backups, optional experiments and conflict-aware undo via CLI, REST and abilities. Live posts only.
 * **Owners**: who is responsible for each page, target, Plan item and experiment.
 * **A/B tests**: test blocks in the block editor, with results and a winner, without cookies.
 * **Search queries panel**: queries a page shows for and does not cover, in the editor.
@@ -115,6 +116,9 @@ Use **Support** on the settings screen, or ask aidevops.
 6. A shared report, read-only without wp-admin, ready to print.
 
 == Changelog ==
+
+= Unreleased =
+* New: reviewed title and SEO description change sets with backups, experiments and safe undo through CLI, REST and abilities.
 
 = 1.19.1 =
 * Fixed: moving from SEO Pro Stats (1.19.0) on an admin page or scheduled job no longer stops with an error on sites with connections.

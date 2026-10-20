@@ -166,6 +166,37 @@ the list and in the export.
 - Demo data: a few experiments on the demo's own changes
   (`SEARCH_CHANGES` and the CTR fix in `CHANGES`), one of each result.
 
+### Reviewed change sets and undo
+
+A reviewed JSON plan can change post titles and the active Rank Math, Yoast SEO
+or SEOPress title/description on up to 50 viewable posts. Each field is `[now,
+new]`, as stored (template variables remain literal). Preview checks every pair
+in WordPress's stored form for the acting user, including title KSES. A mismatch
+or missing `edit_post` permission skips the entire page. Other SEO plugins are
+not writable; post titles still work without one.
+
+`change_sets` (schema v34) keeps full old/new text and metadata existence, never
+the change log's shortened values. Apply backs up before writing SEO metadata
+with `update_post_meta()` and titles with `wp_update_post()`, reading back values
+and permalinks. A difference stops the run as partly applied. The usual change
+hooks log each field with `meta.change_set`. A site lock serializes set writers;
+ordinary edits still win on a conflict. Changes are not a cross-plugin transaction.
+
+Optional `experiment` starts measurement on the applied pages at apply time;
+`meta.change_set` and the set's `experiment_id` link them. Undo restores only
+values still equal to those the set wrote, reporting later edits or permission
+conflicts and verifying restored values. `restore` on an experiment's undo
+decision does both; without a linked set it is refused. Sets survive experiment
+deletion and remain for good. All set reads, apply and undo use live data, even
+while viewing demo reports. Demo is not a sandbox for page edits.
+
+Interfaces: `wp seoproanalytics change-sets list|show|apply|undo` (apply always
+prints preview; `--dry-run`, otherwise confirm or `--yes`), REST `/change-sets`
+and `/change-sets/{id}/undo`, abilities `seoproanalytics/change-sets`,
+`seoproanalytics/change-set-apply`, `seoproanalytics/change-set-undo`. Writes
+require `can_manage()` and per-page `edit_post`, including WP-CLI `--user`.
+Dashboard apply/restore controls are not included.
+
 ## 2. Decision queue
 
 One ranked list of things to do, built from what the reports already

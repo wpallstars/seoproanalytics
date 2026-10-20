@@ -3952,6 +3952,9 @@ final class SEOProAnalytics_CLI { // NOSONAR: WP-CLI discovers the public comman
             return;
         }
         $this->experiment_detail($answer);
+        if (isset($answer['restoration'])) {
+            self::json_line($answer['restoration']);
+        }
         if ($action !== 'show') {
             $state = $answer['result'] !== null ? $answer['status'] . ' (' . $answer['result'] . ')' : $answer['status'];
             /* translators: 1: experiment id, 2: its state */

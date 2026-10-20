@@ -66,7 +66,7 @@ Version: 1.19.1
 - **A plan, not just a report.** Search → Plan ranks the work worth doing from your own data: striking-distance queries, titles searchers skip, pages losing clicks with the likely cause, words a page is missing, pages competing for one search, audit findings, internal links and pages search does not show. Each item says why it is listed and what to do, with the clicks it could bring, weighted by how well the page converts.
 - **Proof of what worked.** Mark a change done and an experiment compares its pages before and after against the pages you did not change, then suggests keep, revise or undo. A/B tests of blocks in the editor compare versions of a page live, without cookies.
 - **Private by design.** No cookies or browser storage for visitors, no stored IP addresses, no visitor identity across days, and no database query on visitors' pages. Outside services are off until you connect them.
-- **Ready for AI agents.** Every report is in the REST API, WP-CLI and WordPress abilities, and the SEO loop export gives an agent one cycle of work: the plan, the experiments due and their results. The plugin proposes and measures; it never changes a page by itself.
+- **Ready for AI agents.** Every report is in the REST API, WP-CLI and WordPress abilities, and the SEO loop export gives an agent one cycle of work: the plan, the experiments due and their results. Reviewed change sets can apply title and description edits and restore them on an undo decision; nothing changes without an explicit request.
 
 ## Getting started
 
@@ -292,6 +292,10 @@ Content, Plan, Targets and Experiments have an **Owner** column and filter: Ever
 #### Experiments
 
 **Experiments**, the last tab, checks whether a change worked. Write down a change and what it should do (more clicks, a better position, more visits from search or conversions) before the result is known: from a row in **Changes** (**Start an experiment** fills in the change and its page) or with a start time and pages. It compares the same number of days before and after the change (7 to 84, whole weeks; the change day left out) for its pages and for the pages that did not change, so a site-wide rise or a season does not count as an effect, and says how far unchanged pages usually move by themselves, whether there was enough data, and what else happened: search engine updates, site-wide changes and other changes to its pages. Once the data reaches the review day it suggests **Keep**, **Revise**, **Undo** or **Inconclusive**; you decide, with a note, and the decision keeps the figures it was made on. Due ones come first. A result is evidence about this site, not proof of cause.
+
+**Reviewed change sets** let an administrator or agent apply post titles and the active Rank Math, Yoast SEO or SEOPress title and description on up to 50 pages. Each field is a JSON pair `[now, new]`; a page with any stale value or without editing permission is skipped. Full old values are kept, every write is read back, and a changed page address stops the run. Optional experiments start at apply time. Undo restores only values still holding what the set wrote, leaving later edits untouched. Template variables remain literal. Sets remain after deleting an experiment.
+
+Use `wp seoproanalytics change-sets apply titles.json --user=admin --dry-run` to preview, then without `--dry-run` to confirm and apply (`--yes` skips confirmation). Add `--experiment="Shorter titles" --metric=ctr` to measure it. `change-sets list`, `show <id>` and `undo <id>` inspect and restore; `experiments decide <id> undo --restore --user=admin` decides and restores a linked set together. REST: `GET/POST /change-sets`, `GET /change-sets/{id}`, `POST /change-sets/{id}/undo`; apply takes `plan`, `dry_run` and experiment options. Abilities: `seoproanalytics/change-sets`, `seoproanalytics/change-set-apply`, `seoproanalytics/change-set-undo`; experiment-record accepts `restore`. Writes require managing experiments and editing each page. These always use **live posts and backups**, even while viewing demo data. No dashboard apply/restore controls yet. Full JSON examples and conflict handling: `docs/seo-loop-recipes.md`.
 
 #### In the post editor
 
@@ -860,6 +864,10 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### Unreleased
+
+- New: reviewed change sets for post and SEO titles/descriptions through WP-CLI, REST and abilities, with full backups, stale-page skips, read-back checks, optional experiments at apply time and conflict-aware undo. Experiment undo decisions can restore a linked set. Schema v34 adds `change_sets`.
 
 ### 1.19.1
 
