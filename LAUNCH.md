@@ -28,20 +28,17 @@ On since 20 October 2026, when the repository went public:
 - GitHub-hosted runners only: no `CI_RUNNER` variable (`DEVELOPMENT.md` →
   Services setup).
 - OpenSSF Scorecard: its workflow runs on pushes to `main` and weekly.
+- SonarCloud: this repository is imported as the project
+  `wpallstars_seoproanalytics`, public like the repository. The SonarCloud
+  workflow analyses pushes to `main` and pull requests with the
+  organization's `SONAR_TOKEN`. It is not a required check, so its failure
+  does not block a merge.
+- `SYNC_PAT`: set, so Repository metrics commits `docs/metrics/` to the
+  protected `main`.
 
 Not yet:
 
-- SonarCloud: the organization's `SONAR_TOKEN` reaches this repository,
-  but the project key `wpallstars_seoproanalytics` is still bound to the
-  earlier repository, so pull request scans fail ("Could not find the
-  pullrequest"). In SonarCloud, give that project a new key first, so its
-  analyses stay private with the earlier repository, then import this
-  repository as `wpallstars_seoproanalytics` (`DEVELOPMENT.md` → Services
-  setup). SonarCloud is not a required check, so its failure does not
-  block a merge.
 - Codacy and CodeFactor (`DEVELOPMENT.md` → Services setup).
-- `SYNC_PAT`: `main` is protected, so Repository metrics cannot commit
-  `docs/metrics/` until the token is set.
 - The Scorecard badge, once its results are published
   (`scripts/readme-badges.sh --add scorecard`).
 - The first release, through `RELEASING.md`, and the update test from
