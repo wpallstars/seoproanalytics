@@ -5,8 +5,8 @@ on a site with SEO Pro Analytics: read one answer, choose work, make the
 change, record it, measure it and decide. Every step uses public routes,
 WP-CLI commands or abilities; nothing here needs access to the database.
 
-The plugin proposes and measures. It never changes a page by itself: the
-agent (or a person) makes the change in WordPress.
+The plugin proposes and measures. It changes pages only on an explicit reviewed
+change-set apply or undo request; other edits are made in WordPress.
 
 ## Crawl reachability and incoming links
 
@@ -46,8 +46,9 @@ affiliate programme's required tracking URL without checking its rules.
   `seoproanalytics/experiment-record`, `seoproanalytics/owners` and
   `seoproanalytics/owners-set`.
 
-Add `data=demo` (`--data=demo`) to any step to try the loop on the demo
-data first; live statistics are never changed by it.
+Add `data=demo` (`--data=demo`) to report and ordinary experiment steps to try
+demo data. Change sets and experiment decisions with `restore` always use live
+data and real posts: demo is not a sandbox for those operations.
 
 ```sh
 SITE="https://example.com/wp-json/seoproanalytics/v1"
@@ -194,6 +195,43 @@ position). The item then shows the experiment's id and result.
 Change one thing per page at a time: pages with an experiment running get
 no new items until it is decided, so its measurement stays clean.
 
+#### Apply a reviewed title/description plan instead
+
+Save this JSON as `titles.json`, replacing the post ids and exact current values:
+
+```json
+{"name":"Shorter guide titles","pages":[{"post":123,"title":["Old guide","New guide"],"seo_description":["Old description","New description"]}]}
+```
+
+```sh
+wp seoproanalytics change-sets apply titles.json --user=admin --dry-run
+wp seoproanalytics change-sets apply titles.json --user=admin --yes --experiment="Shorter titles" --metric=ctr
+wp seoproanalytics change-sets list
+wp seoproanalytics change-sets show 1
+```
+
+Apply always prints the preview, then confirms unless `--yes`. It rechecks the
+site before writing. A page with any stale current value, unsupported SEO field,
+or missing `edit_post` permission is skipped entirely. The active Rank Math,
+Yoast SEO or SEOPress fields are supported; without one, use only post titles.
+Template variables are kept literally. Experiment options: `metric`, `days`,
+`engine`, `direction`, `threshold`, `hypothesis` and `goal` (for conversions).
+
+REST: `POST /change-sets` with `{"plan":{...},"dry_run":true}` to preview;
+remove `dry_run` and optionally add `"experiment":"Shorter titles","metric":"ctr"`
+to apply. `GET /change-sets` lists 50 newest sets (`before` for older ones),
+`GET /change-sets/1` reads one. Abilities: `seoproanalytics/change-sets`
+(`id` or `before`), `seoproanalytics/change-set-apply` (`plan`, `dry_run`,
+`experiment` and experiment options), `seoproanalytics/change-set-undo` (`id`).
+All writes require administrator permission and `edit_post` on each page.
+
+Inspect `status`, per-field `result`/`reason`, and `experiment_error` if present.
+A stopped run is partly applied, not rolled back automatically. Undo with
+`wp seoproanalytics change-sets undo 1 --user=admin` or
+`POST /change-sets/1/undo`; later edits are kept and reported. Inspect the saved
+set before retrying a failed operation. Do not also mark the Plan item done
+with its usual experiment creation: that would create a second experiment.
+
 ### 5. Decide on the review day
 
 An experiment is due when search data covers its review day. Read its
@@ -221,8 +259,21 @@ wp seoproanalytics experiments decide 12 keep --note="CTR +18% against 120 uncha
 With the ability: `seoproanalytics/experiment-record` with `action` `decide`,
 `id`, `result` and `note`.
 
-The decision keeps the measurement it was made on. `undo` means put the
-page back as it was; the plugin does not. A result is evidence about the
+For an experiment created by applying a set, decide and restore in one step:
+
+```sh
+wp seoproanalytics experiments decide 12 undo --restore --user=admin --format=json
+curl -s -u "$AUTH" -X POST "$SITE/experiments/12" \
+  -H "Content-Type: application/json" -d '{"action":"decide","result":"undo","restore":true}'
+```
+
+The `seoproanalytics/experiment-record` ability also accepts `restore: true`.
+Without a linked set, restore is refused. The response's `restoration` gives
+conflicts and outcomes; changed-since values are left, producing partly undone.
+All restoration uses live data, regardless of the selected report data set.
+
+The decision keeps the measurement it was made on. Without `restore`, `undo`
+only records the decision; put the pages back separately. A result is evidence about the
 site, not proof of cause: record null and negative results too, as they
 stop the same change being tried again.
 

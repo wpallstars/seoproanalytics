@@ -858,6 +858,7 @@ final class SEOProAnalytics_API {
      * @param array<string,mixed>   $data   The data argument.
      */
     private static function experiment_routes(array $read, $manage, array $data) {
+        self::change_set_routes($read, $manage);
         $ns = SEOProAnalytics_Collection::REST_NAMESPACE;
         register_rest_route($ns, '/experiments', array(
             $read + array(
@@ -900,6 +901,7 @@ final class SEOProAnalytics_API {
                         'enum'        => array('decide', 'note', 'cancel'),
                         'required'    => true,
                     ),
+                    'restore' => array('type' => 'boolean', 'default' => false),
                     'result' => array(
                         'description' => __('For decide: keep, revise, undo or inconclusive.', 'seoproanalytics'),
                         'type'        => 'string',
@@ -920,6 +922,58 @@ final class SEOProAnalytics_API {
                 'args'                => $data,
             ),
         ));
+    }
+
+    /**
+     * Change sets are live site facts, even while viewing demo reports.
+     * @param array<string,mixed> $read Read route base.
+     * @param callable $manage Write permission.
+     */
+    private static function change_set_routes(array $read, $manage) {
+        $ns = SEOProAnalytics_Collection::REST_NAMESPACE;
+        register_rest_route($ns, '/change-sets', array(
+            $read + array('callback' => array(__CLASS__, 'change_sets'), 'args' => array('before' => array('type' => 'integer', 'minimum' => 0, 'default' => 0))),
+            array(
+                'methods' => WP_REST_Server::CREATABLE,
+                'permission_callback' => $manage,
+                'callback' => array(__CLASS__, 'change_set_apply'),
+                'args' => array(
+                    'plan' => array('type' => 'object', 'required' => true),
+                    'dry_run' => array('type' => 'boolean', 'default' => false),
+                    'experiment' => array('type' => 'string', 'default' => ''),
+                ) + array_diff_key(self::experiment_args(), array('name' => true, 'change' => true, 'start' => true, 'page' => true)),
+            ),
+        ));
+        register_rest_route($ns, '/change-sets/(?P<id>\d+)', $read + array('callback' => array(__CLASS__, 'change_set')));
+        register_rest_route($ns, '/change-sets/(?P<id>\d+)/undo', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => $manage,
+            'callback' => array(__CLASS__, 'change_set_undo'),
+        ));
+    }
+
+    /** @param WP_REST_Request $request Request. @return WP_REST_Response */
+    public static function change_sets($request) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return rest_ensure_response(SEOProAnalytics_Change_Sets::list_sets((int) $request->get_param('before')));
+    }
+
+    /** @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function change_set($request) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return rest_ensure_response(SEOProAnalytics_Change_Sets::get((int) $request->get_param('id')));
+    }
+
+    /** @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function change_set_apply($request) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return rest_ensure_response(SEOProAnalytics_Change_Sets::apply((array) $request->get_param('plan'), $request->get_params()));
+    }
+
+    /** @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function change_set_undo($request) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return rest_ensure_response(SEOProAnalytics_Change_Sets::undo((int) $request->get_param('id')));
     }
 
     /**

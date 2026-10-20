@@ -72,7 +72,8 @@ final class SEOProAnalytics_Schema {
     // v31: previous response time (4 bytes/page); response_ms and bytes range keys for slow candidates.
     // v32: owners (who is responsible for a page, target, Plan item or experiment, SEOProAnalytics_Owners).
     // v33: links.classes and links.unclasses are bigint (35 classes; bits from 2^32).
-    const VERSION = 33;
+    // v34: change_sets (full-value backups of reviewed page changes).
+    const VERSION = 34;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -156,7 +157,7 @@ final class SEOProAnalytics_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners', 'change_sets');
     }
 
     /**
@@ -658,6 +659,20 @@ final class SEOProAnalytics_Schema {
   KEY status_review (status,review),
   KEY path_id (path_id),
   KEY start (start)
+) $charset;",
+
+            // Full old/new values, never the change log's shortened text.
+            'change_sets' => "CREATE TABLE {$t['change_sets']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  created int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  name varchar(190) NOT NULL DEFAULT '',
+  status tinyint unsigned NOT NULL DEFAULT 2,
+  experiment_id int unsigned NOT NULL DEFAULT 0,
+  items longtext NOT NULL,
+  undone int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY experiment_id (experiment_id)
 ) $charset;",
 
             // Decision queue items someone acted on (SEOProAnalytics_Queue);

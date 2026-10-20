@@ -281,6 +281,7 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
             'goal'       => $goal,
             'hypothesis' => self::long_text(isset($input['hypothesis']) ? $input['hypothesis'] : ''),
             'note'       => self::long_text(isset($input['note']) ? $input['note'] : ''),
+            'change_set' => isset($input['change_set']) ? absint($input['change_set']) : 0,
         ));
     }
 
@@ -327,6 +328,14 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
      * @return array<string,mixed>|WP_Error The experiment.
      */
     public static function update($id, array $input) {
+        if (!empty($input['restore']) && SEOProAnalytics_Schema::set() !== 'live') {
+            $before = SEOProAnalytics_Schema::use_set('live');
+            try {
+                return self::update($id, $input);
+            } finally {
+                SEOProAnalytics_Schema::use_set($before);
+            }
+        }
         global $wpdb;
         $row = self::row((int) $id);
         if (!$row) {
@@ -334,6 +343,9 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
         }
         $action = isset($input['action']) ? (string) $input['action'] : 'note';
         $meta   = self::meta($row);
+        if (!empty($input['restore']) && ($action !== 'decide' || ($input['result'] ?? '') !== 'undo' || empty($meta['change_set']))) {
+            return self::error('seoproanalytics_experiment_restore', __('Restore needs an undo decision on an experiment with a change set.', 'seoproanalytics'));
+        }
         if (isset($input['note']) && (string) $input['note'] !== '') {
             $meta['note'] = self::long_text($input['note']);
         }
@@ -346,6 +358,13 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
             }
             if ((int) $row['status'] === 3) {
                 return self::error('seoproanalytics_experiment_cancelled', __('This experiment was cancelled.', 'seoproanalytics'), 409);
+            }
+            if (!empty($input['restore'])) {
+                require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+                $restored = SEOProAnalytics_Change_Sets::undo((int) $meta['change_set']);
+                if (is_wp_error($restored)) {
+                    return $restored;
+                }
             }
             if ((int) $row['status'] !== 2) {
                 $meta['measured'] = self::measure($row);
@@ -360,8 +379,15 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
         }
         $set['meta'] = self::json($meta);
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
-        $wpdb->update(SEOProAnalytics_Schema::table('experiments'), $set, array('id' => (int) $id));
-        return self::get((int) $id);
+        $saved = $wpdb->update(SEOProAnalytics_Schema::table('experiments'), $set, array('id' => (int) $id));
+        if ($saved === false) {
+            return self::error('seoproanalytics_experiment_failed', __('The experiment decision could not be saved.', 'seoproanalytics'), 500);
+        }
+        $answer = self::get((int) $id);
+        if (isset($restored) && !is_wp_error($answer)) {
+            $answer['restoration'] = $restored;
+        }
+        return $answer;
     }
 
     /**
@@ -671,6 +697,7 @@ final class SEOProAnalytics_Experiments { // NOSONAR: one experiment model for R
             'direction'   => self::code_name(self::DIRECTIONS, $row['direction'], 'up'),
             'threshold'   => $metric === 'position' ? round((int) $row['threshold'] / 10, 1) : (float) (int) $row['threshold'],
             'change_id'   => (int) $row['change_id'] ? (int) $row['change_id'] : null,
+            'change_set'  => !empty($meta['change_set']) ? (int) $meta['change_set'] : null,
             'pages'       => $pages,
             'goal'        => $goal,
             'status'      => $status,
