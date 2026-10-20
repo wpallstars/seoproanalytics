@@ -364,12 +364,16 @@ final class SEOProAnalytics_Change_Sets {
             if ($item['field'] !== 'title') {
                 $wpdb->get_col($wpdb->prepare("SELECT meta_id FROM $wpdb->postmeta WHERE post_id = %d AND meta_key = %s FOR UPDATE", $item['post'], $item['meta_key']));
             }
-            if (!$post || $wpdb->last_error !== '' || !current_user_can('edit_post', $item['post']) || self::read_value($item) !== ($undo ? $item['new'] : $item['old'])) {
+            $locked = $post && $wpdb->last_error === '';
+            $current = self::read_value($item);
+            $object = get_post($item['post']);
+            if (!$locked || !$object || !SEOProAnalytics_Changes::is_public($object) || !current_user_can('edit_post', $item['post']) || $current !== ($undo ? $item['new'] : $item['old'])) {
                 $wpdb->query('ROLLBACK');
                 return self::error(__('This value changed or is no longer editable; it was left untouched.', 'seoproanalytics'), 409);
             }
             $written = self::write_value($item, $undo);
             if ($wpdb->query('COMMIT') === false) {
+                $wpdb->query('ROLLBACK');
                 return self::error(__('The field write could not be committed. Inspect the partly applied set.', 'seoproanalytics'), 500);
             }
             return $written;
