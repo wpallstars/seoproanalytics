@@ -892,7 +892,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: The experiment was cancelled.
+          description: The experiment was cancelled, or (with restore) another change set writer holds the site lock.
           content:
             application/json:
               schema:

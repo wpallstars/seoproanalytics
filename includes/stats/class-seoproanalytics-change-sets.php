@@ -300,12 +300,19 @@ final class SEOProAnalytics_Change_Sets {
             add_filter('seoproanalytics_record_change', $tag);
             try {
                 foreach ($items as $index => $item) {
-                    if (in_array($item['result'], array('pending', 'skipped', 'conflict', 'undone'), true)) {
+                    if (in_array($item['result'], array('pending', 'skipped', 'undone'), true)) {
                         continue;
                     }
                     $post = get_post($item['post']);
                     $allowed = $post && SEOProAnalytics_Changes::is_public($post) && current_user_can('edit_post', $item['post']);
-                    if (!$allowed || self::read_value($item) !== $item['new']) {
+                    $current = $allowed ? self::read_value($item) : null;
+                    if ($allowed && $current === $item['old'] && $current !== $item['new']) {
+                        // Already at the backup value, including an apply write that never landed.
+                        $items[$index]['result'] = 'undone';
+                        $items[$index]['reason'] = '';
+                        continue;
+                    }
+                    if (!$allowed || $current !== $item['new']) {
                         $items[$index]['result'] = 'undo conflict';
                         $items[$index]['reason'] = __('Changed since apply, missing, or not editable; left untouched.', 'seoproanalytics');
                         $partial = true;
