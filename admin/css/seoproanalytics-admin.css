@@ -1,0 +1,714 @@
+/**
+ * SEO Pro Analytics admin screen.
+ *
+ * Scoped to .seoproan-wrap. Uses core admin tokens so the screen follows the
+ * active admin colour scheme; core buttons, notices and plugin cards keep
+ * their native styles. Logical properties keep RTL working without a
+ * separate stylesheet. The colour tokens, header, tab bar and main area
+ * are in seoproanalytics-header.css, which loads first.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-e4502af0f07e8a92. Copies, even of part, keep these lines.
+ */
+
+.seoproan-wrap *,
+.seoproan-wrap *::before,
+.seoproan-wrap *::after {
+	box-sizing: border-box;
+}
+
+/* Search results ----------------------------------------------------- */
+
+.seoproan-wrap .seoproan-search__group {
+	margin: 24px 0 8px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.seoproan-wrap .seoproan-search__group:first-of-type {
+	margin-block-start: 8px;
+}
+
+/* Sections ----------------------------------------------------------- */
+
+.seoproan-section {
+	max-width: 860px;
+}
+
+.seoproan-section__intro {
+	margin-block-end: 16px;
+}
+
+.seoproan-wrap .seoproan-section__title {
+	margin: 0 0 4px;
+	font-size: 18px;
+	font-weight: 600;
+}
+
+.seoproan-section__desc,
+.seoproan-section__hint {
+	margin: 0;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-section__hint {
+	margin-block-start: 4px;
+	font-size: 12px;
+}
+
+/* Cards -------------------------------------------------------------- */
+
+.seoproan-card {
+	background: var(--seoproan-surface);
+	border: 1px solid var(--seoproan-border);
+	border-radius: var(--seoproan-radius);
+	box-shadow: var(--seoproan-shadow);
+}
+
+.seoproan-cards {
+	display: grid;
+	gap: 12px;
+}
+
+/* A settings tab with nothing in it yet. */
+.seoproan-empty {
+	padding: 16px 20px;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-empty p {
+	margin: 0;
+}
+
+/* Setting cards ------------------------------------------------------ */
+
+/* Clip the header hover and panel backgrounds to the rounded corners. */
+.seoproan-setting {
+	position: relative;
+	overflow: hidden;
+}
+
+/* "On" stripe drawn above the header/panel backgrounds so hover never hides it. */
+.seoproan-setting::before {
+	content: "";
+	position: absolute;
+	z-index: 1;
+	inset-block: 0;
+	inset-inline-start: 0;
+	width: 3px;
+	background: var(--seoproan-accent);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+
+.seoproan-setting.is-on::before {
+	opacity: 1;
+}
+
+.seoproan-setting__header {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: 16px;
+	padding: 16px 20px;
+}
+
+.seoproan-setting.has-panel .seoproan-setting__header {
+	cursor: pointer;
+}
+
+.seoproan-setting.has-panel .seoproan-setting__header:hover {
+	background: #fcfcfc;
+}
+
+.seoproan-setting__text {
+	min-width: 0;
+}
+
+/* Status sits beside the title so showing/hiding it never reflows the description. */
+.seoproan-setting__title-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	min-height: 20px;
+}
+
+.seoproan-setting__title {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.seoproan-setting__desc {
+	margin: 2px 0 0;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-replaces {
+	margin: 4px 0 0;
+	font-size: 12px;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-replaces__active {
+	color: #996800;
+}
+
+.seoproan-wrap .seoproan-setting__expand {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 8px;
+	color: var(--seoproan-accent);
+	text-decoration: none;
+	border-radius: 4px;
+}
+
+.seoproan-wrap .seoproan-setting__expand:hover {
+	background: var(--seoproan-subtle);
+}
+
+.seoproan-wrap .seoproan-setting__expand:focus-visible {
+	outline: none;
+	box-shadow: var(--seoproan-focus);
+}
+
+.seoproan-setting__expand .dashicons {
+	transition: transform 0.15s ease;
+}
+
+.seoproan-setting__expand[aria-expanded="true"] .dashicons {
+	transform: rotate(180deg);
+}
+
+.seoproan-setting__panel {
+	padding: 4px 20px 8px;
+	border-block-start: 1px solid var(--seoproan-border);
+	background: #fcfcfc;
+}
+
+.seoproan-setting__panel[hidden] {
+	display: none;
+}
+
+/* Status a feature prints above its options (seoproanalytics_setting_panel). */
+.seoproan-panel-note {
+	padding: 12px 0;
+	border-block-end: 1px solid #f0f0f1;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-panel-note p {
+	margin: 0 0 6px;
+}
+
+.seoproan-panel-note p:last-child {
+	margin-block-end: 0;
+}
+
+.seoproan-panel-note--warning {
+	color: #1d2327;
+}
+
+.seoproan-panel-note--warning p::before {
+	content: "\f534";
+	margin-inline-end: 6px;
+	font: 16px/1 dashicons, sans-serif;
+	vertical-align: -3px;
+	color: #dba617;
+}
+
+.seoproan-media__preview {
+	flex: none;
+	width: 64px;
+	height: 64px;
+	object-fit: contain;
+	background: repeating-conic-gradient(#f0f0f1 0% 25%, #fff 0% 50%) 0 0 / 16px 16px;
+	border: 1px solid var(--seoproan-border);
+	border-radius: 4px;
+}
+
+.seoproan-code {
+	max-width: 100%;
+	margin: 6px 0 0;
+	padding: 10px 12px;
+	overflow-x: auto;
+	font-size: 12px;
+	line-height: 1.5;
+	color: #1d2327;
+	background: #f6f7f7;
+	border: 1px solid var(--seoproan-border);
+	border-radius: 4px;
+	white-space: pre;
+}
+
+/* Fields ------------------------------------------------------------- */
+
+.seoproan-field {
+	display: grid;
+	grid-template-columns: 200px 1fr;
+	gap: 8px 24px;
+	padding: 16px 0;
+}
+
+.seoproan-field + .seoproan-field {
+	border-block-start: 1px solid #f0f0f1;
+}
+
+.seoproan-field__label {
+	padding-block-start: 6px;
+	font-weight: 600;
+}
+
+.seoproan-field__control .description {
+	margin-block-start: 6px;
+}
+
+.seoproan-field__unit {
+	color: var(--seoproan-muted);
+}
+
+.seoproan-field__control textarea.large-text {
+	max-width: 480px;
+}
+
+/* Child settings with 'group' => 'troubleshooting', last in the panel. */
+.seoproan-field + .seoproan-troubleshooting {
+	border-block-start: 1px solid #f0f0f1;
+}
+
+.seoproan-troubleshooting__summary {
+	padding: 14px 0;
+	font-weight: 600;
+	color: var(--seoproan-text);
+	cursor: pointer;
+}
+
+.seoproan-troubleshooting__summary:hover {
+	color: var(--seoproan-accent);
+}
+
+.seoproan-troubleshooting__summary:focus-visible {
+	outline: none;
+	border-radius: 2px;
+	box-shadow: var(--seoproan-focus);
+}
+
+.seoproan-troubleshooting__intro {
+	margin: 0;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-media {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	align-items: center;
+}
+
+.seoproan-media__preview[hidden],
+.seoproan-media__remove[hidden] {
+	display: none;
+}
+
+.seoproan-checkboxes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 20px;
+	margin: 0;
+	padding: 6px 0 0;
+	border: 0;
+}
+
+.seoproan-checkbox {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* Long lists, such as every active plugin: columns that scroll. */
+.seoproan-checkboxes.is-long {
+	display: block;
+	max-height: 320px;
+	overflow-y: auto;
+	columns: 16em auto;
+	column-gap: 20px;
+	padding: 6px 8px;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+.seoproan-checkboxes.is-long .seoproan-checkbox {
+	display: flex;
+	align-items: flex-start;
+	margin-block-end: 6px;
+	break-inside: avoid;
+}
+
+.seoproan-checkboxes.is-long .seoproan-checkbox input {
+	margin-block-start: 2px;
+}
+
+.seoproan-checkboxes__all {
+	display: block;
+	margin-block-end: 4px;
+}
+
+.seoproan-tokens {
+	display: block;
+	margin-block-start: 6px;
+}
+
+.seoproan-wrap .seoproan-token {
+	margin: 2px 4px 2px 0;
+	padding: 0;
+	cursor: pointer;
+	background: none;
+	border: 0;
+}
+
+.seoproan-token code {
+	display: inline-block;
+	padding: 1px 6px;
+	font-size: 12px;
+	background: var(--seoproan-subtle);
+	border: 1px solid var(--seoproan-border);
+	border-radius: 4px;
+}
+
+.seoproan-token:hover code,
+.seoproan-token:focus-visible code {
+	color: var(--seoproan-accent);
+	border-color: var(--seoproan-accent);
+}
+
+.seoproan-token:focus {
+	outline: none;
+}
+
+/* Switch ------------------------------------------------------------- */
+
+.seoproan-switch {
+	position: relative;
+	display: inline-block;
+	flex: none;
+	width: 36px;
+	height: 20px;
+	vertical-align: middle;
+}
+
+.seoproan-wrap .seoproan-switch__input {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	cursor: pointer;
+	opacity: 0;
+}
+
+.seoproan-switch__track {
+	position: absolute;
+	inset: 0;
+	background: #fff;
+	border: 1px solid #1e1e1e;
+	border-radius: 999px;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.seoproan-switch__track::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 3px;
+	inset-inline-start: 3px;
+	width: 12px;
+	height: 12px;
+	background: #1e1e1e;
+	border-radius: 50%;
+	transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.seoproan-switch__input:checked + .seoproan-switch__track {
+	background: var(--seoproan-accent);
+	border-color: var(--seoproan-accent);
+}
+
+.seoproan-switch__input:checked + .seoproan-switch__track::after {
+	background: #fff;
+	transform: translateX(16px);
+}
+
+[dir="rtl"] .seoproan-switch__input:checked + .seoproan-switch__track::after {
+	transform: translateX(-16px);
+}
+
+.seoproan-switch__input:focus-visible + .seoproan-switch__track {
+	box-shadow: var(--seoproan-focus);
+}
+
+.seoproan-switch__input:disabled + .seoproan-switch__track {
+	opacity: 0.5;
+}
+
+/* Save status -------------------------------------------------------- */
+
+.seoproan-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 20px;
+	font-size: 12px;
+	color: var(--seoproan-muted);
+	white-space: nowrap;
+}
+
+.seoproan-field__control .seoproan-status {
+	margin-inline-start: 8px;
+}
+
+.seoproan-status.is-saving::before {
+	content: "";
+	width: 12px;
+	height: 12px;
+	border: 2px solid var(--seoproan-border);
+	border-block-start-color: var(--seoproan-accent);
+	border-radius: 50%;
+	animation: seoproan-spin 0.8s linear infinite;
+}
+
+.seoproan-status.is-saved {
+	color: var(--seoproan-success);
+}
+
+.seoproan-status.is-saved::before {
+	content: "\f147";
+	font: normal 18px/1 dashicons, sans-serif;
+}
+
+.seoproan-status.is-error {
+	color: var(--seoproan-error);
+	white-space: normal;
+}
+
+@keyframes seoproan-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* Network screen and locked settings (multisite) --------------------- */
+
+/* Under a card's description on the network screen: Apply to every site
+   and the sites that differ (SEOProAnalytics_Network_Manager). */
+.seoproan-network {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	padding: 12px 20px;
+	background: var(--seoproan-subtle);
+	border-block-start: 1px solid var(--seoproan-border);
+}
+
+.seoproan-network__apply {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+}
+
+.seoproan-wrap .seoproan-network__apply input {
+	margin: 0;
+}
+
+.seoproan-network__sites {
+	display: grid;
+	flex: 1 1 100%;
+	gap: 8px;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-wrap .seoproan-network__sites p {
+	margin: 0;
+}
+
+/* A card the network sets for every site, on a site's screen. */
+.seoproan-locked-note {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: var(--seoproan-muted);
+}
+
+.seoproan-locked-note .dashicons,
+.seoproan-checkbox.is-locked .dashicons {
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+	vertical-align: -3px;
+}
+
+/* WordPress shows disabled checkboxes at 0.7 opacity (forms.css), which
+   would draw the switch's native box and tick over its track. */
+.seoproan-wrap .seoproan-switch__input:disabled {
+	cursor: not-allowed;
+	opacity: 0;
+}
+
+/* The options of a locked card: a disabled fieldset, drawn as none. */
+.seoproan-setting__fields {
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+/* A choice that is always chosen (a multi field's locked values). */
+.seoproan-checkbox.is-locked {
+	color: var(--seoproan-muted);
+}
+
+.seoproan-locked-help {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: var(--seoproan-muted);
+}
+
+/* Read Me ------------------------------------------------------------ */
+
+.seoproan-readme {
+	max-width: 820px;
+	padding: 24px 32px;
+	font-size: 14px;
+	line-height: 1.65;
+}
+
+.seoproan-readme-image {
+	margin: 0 0 16px;
+}
+
+.seoproan-readme-image img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border-radius: var(--seoproan-radius);
+}
+
+/* The banner at the top of README.md fills the top of the card. */
+.seoproan-readme > .seoproan-readme-image:first-child {
+	margin: -24px -32px 24px;
+}
+
+.seoproan-readme > .seoproan-readme-image:first-child img {
+	width: 100%;
+	border-radius: calc(var(--seoproan-radius) - 1px) calc(var(--seoproan-radius) - 1px) 0 0;
+}
+
+.seoproan-wrap .seoproan-readme h2 {
+	margin: 0 0 8px;
+	font-size: 22px;
+}
+
+.seoproan-wrap .seoproan-readme h3 {
+	margin: 24px 0 8px;
+	padding-block-start: 16px;
+	font-size: 16px;
+	border-block-start: 1px solid #f0f0f1;
+}
+
+.seoproan-wrap .seoproan-readme h4 {
+	margin: 16px 0 6px;
+	font-size: 14px;
+}
+
+.seoproan-readme ul,
+.seoproan-readme ol {
+	margin: 8px 0 12px;
+	padding-inline-start: 22px;
+}
+
+.seoproan-readme ul {
+	list-style: disc;
+}
+
+.seoproan-readme ol {
+	list-style: decimal;
+}
+
+.seoproan-readme-table {
+	margin: 8px 0 16px;
+	overflow-x: auto;
+}
+
+.seoproan-readme table {
+	border-collapse: collapse;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.seoproan-readme th,
+.seoproan-readme td {
+	padding: 6px 10px;
+	text-align: start;
+	vertical-align: top;
+	border: 1px solid rgb(127 127 127 / 25%);
+}
+
+.seoproan-readme th {
+	background: rgb(127 127 127 / 8%);
+}
+
+.seoproan-readme-code {
+	margin: 8px 0 16px;
+	padding: 12px 16px;
+	overflow-x: auto;
+	font-size: 13px;
+	line-height: 1.5;
+	background: rgb(127 127 127 / 8%);
+	border: 1px solid rgb(127 127 127 / 25%);
+	border-radius: var(--seoproan-radius);
+}
+
+.seoproan-readme-code code {
+	margin: 0;
+	padding: 0;
+	font-size: inherit;
+	background: none;
+}
+
+/* Responsive --------------------------------------------------------- */
+
+@media screen and (width <= 782px) {
+	.seoproan-setting__header {
+		grid-template-columns: auto 1fr;
+	}
+
+	.seoproan-setting__expand {
+		grid-column: 2;
+		justify-self: start;
+	}
+
+	/* minmax(0, 1fr): a 1fr column grows to its widest field instead. */
+	.seoproan-field {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	/* Core's .regular-text is 25em, with 16px text on small screens: wider
+	   than the card on a phone. */
+	.seoproan-field__control .regular-text {
+		width: 100%;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* Accessibility override: stop motion even in more specific core or feature rules. */
+	.seoproan-wrap *,
+	.seoproan-wrap *::before,
+	.seoproan-wrap *::after {
+		transition: none !important;
+		animation: none !important;
+	}
+}

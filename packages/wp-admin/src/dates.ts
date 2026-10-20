@@ -1,0 +1,98 @@
+/**
+ * Point labels in the site's time zone. The API's times carry the site's
+ * offset (2026-09-16T00:00:00+01:00), so the wall-clock parts are read
+ * straight from the text and formatted as UTC: the browser's own time
+ * zone never shifts them.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+import { __, sprintf } from '@wordpress/i18n';
+import type { Grain } from '@seoproanalytics/core';
+import { locale } from './boot';
+
+function wallClock(iso: string): Date {
+	const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso);
+	if (!m) {
+		return new Date(Number.NaN);
+	}
+	return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 0), Number(m[5] ?? 0)));
+}
+
+const formats = new Map<string, Intl.DateTimeFormat>();
+
+function df(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+	const key = JSON.stringify(options);
+	let format = formats.get(key);
+	if (!format) {
+		format = new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' });
+		formats.set(key, format);
+	}
+	return format;
+}
+
+/** Short axis label: 16 Sep, 14:00, Sep 2026. */
+export function axisLabel(iso: string, grain: Grain): string {
+	const d = wallClock(iso);
+	if (grain === 'hour') {
+		return df({ hour: 'numeric', minute: '2-digit' }).format(d);
+	}
+	if (grain === 'month') {
+		return df({ month: 'short', year: 'numeric' }).format(d);
+	}
+	return df({ day: 'numeric', month: 'short' }).format(d);
+}
+
+/** Fuller label for tooltips and tables: Tue 16 Sep 2026; a week, Week from Tue 16 Sep 2026. */
+export function longLabel(iso: string, grain: Grain): string {
+	const d = wallClock(iso);
+	if (grain === 'week') {
+		/* translators: %s: the first day of a week, e.g. "Tue 16 Sep 2026". */
+		return sprintf(__('Week from %s', 'seoproanalytics'), longLabel(iso, 'day'));
+	}
+	if (grain === 'hour') {
+		return df({ weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(d);
+	}
+	if (grain === 'month') {
+		return df({ month: 'long', year: 'numeric' }).format(d);
+	}
+	return df({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+}
+
+/** A moment, in the site's time zone: Tue 16 Sep 2026, 14:05. */
+export function momentLabel(iso: string): string {
+	return df({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(wallClock(iso));
+}
+
+/** A moment's time of day, in the site's time zone: 14:05. */
+export function timeLabel(iso: string): string {
+	return df({ hour: 'numeric', minute: '2-digit' }).format(wallClock(iso));
+}
+
+/** A range's days, for "compared with …": 1 Sep – 30 Sep 2026, or one day. */
+export function rangeText(fromIso: string, toIso: string): string {
+	const from = wallClock(fromIso);
+	// `to` is exclusive: show the last day included.
+	const to = new Date(wallClock(toIso).getTime() - 1);
+	if (from.toISOString().slice(0, 10) === to.toISOString().slice(0, 10)) {
+		return df({ day: 'numeric', month: 'short', year: 'numeric' }).format(to);
+	}
+	const sameYear = from.getUTCFullYear() === to.getUTCFullYear();
+	const start = df(sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }).format(from);
+	const end = df({ day: 'numeric', month: 'short', year: 'numeric' }).format(to);
+	return start === end ? end : `${start} – ${end}`;
+}
+
+/**
+ * Days for the comparison menu (YYYY-MM-DD, `to` the day after the last):
+ * one day with its weekday (Sun 4 Oct 2026), so weekdays can be checked,
+ * else as rangeText().
+ */
+export function daysText(from: string, to: string): string {
+	const last = new Date(wallClock(to).getTime() - 1);
+	if (from === last.toISOString().slice(0, 10)) {
+		return df({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(last);
+	}
+	return rangeText(from, to);
+}

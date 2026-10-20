@@ -1,0 +1,853 @@
+/**
+ * Search, from an engine's imported days (Google Search Console, or Bing
+ * Webmaster Tools once it has data), in three tabs; the engine switch
+ * sits beside them and stays across the tabs. With two engines it also
+ * offers Combined (engine all) on Rankings, Opportunities and Content:
+ * every engine added up; the other reports read Google then.
+ *
+ * Rankings: clicks, impressions, CTR and average position as tiles that
+ * pick the chart's metric, with the changes on the timeline under it;
+ * then the top search queries, pages, countries, devices and search
+ * appearances (Google only), and the chart's days (weeks or months) as a
+ * table, newest first. Choose a page to see its queries, or a query to see its pages;
+ * Bing's are by week. Search days are final only (some days old), so the
+ * period stops at the newest one.
+ *
+ * Opportunities (./Opportunities): where search effort pays; Audit
+ * (./Audit): what WordPress says about each page (title, description,
+ * headings, length, images, noindex, canonical), pages that matter most
+ * first; Content (./Content): each page's search clicks with its visits
+ * from search and their conversions. Choosing a row opens it in Rankings.
+ * Backlinks (./Backlinks): pages of other sites linking to the site's,
+ * found by checking the pages that sent visits.
+ * Targets (./Targets): the searches the site chose and the page meant for
+ * each. Plan (./Plan): one ranked list of what to do next, made from
+ * Opportunities and Targets. Experiments (./Experiments): changes measured against
+ * unchanged pages.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+import { useCallback, useEffect, useId, useState, type KeyboardEvent } from 'react';
+import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
+import { __, sprintf } from '@wordpress/i18n';
+import {
+	apiArgs,
+	formatMetric,
+	SEARCH_ANY_KINDS,
+	SEARCH_KINDS,
+	SEARCH_METRICS,
+	SEARCH_REPORTS,
+	SHARE_SEARCH_REPORTS,
+	COMBINED_REPORTS,
+	searchSorts,
+	tableSort,
+	type Marker,
+	type SearchAnswer,
+	type SearchDaySort,
+	type SearchEngine,
+	type SearchEngineChoice,
+	type SearchKind,
+	type SearchMetricKey,
+	type SearchReport,
+	type SearchRow,
+	type ViewState,
+} from '@seoproanalytics/core';
+import { errorMessage, scopeKey, useMarkers, useSearch, useSearchHistory, type ChartHistory } from './api';
+import { locale } from './boot';
+import { usePrintAll } from './printAll';
+import { longLabel } from './dates';
+import { appearanceLabel } from './labels';
+import type { ViewProps } from './App';
+import { PeriodLine } from './Overview';
+import { changesByPoint } from './changelog';
+import { Change } from './components/Change';
+import { ChangeDots } from './components/ChangeDots';
+import { EditLink } from './components/EditLink';
+import { useChangesModal, type MarkerPick } from './components/ChangesModal';
+import { MainChart } from './components/MainChart';
+import { Vitals } from './Vitals';
+import { SortHeader, type TableSortProps } from './components/SortHeader';
+import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
+import { TableScroll } from './components/TableScroll';
+import { ResearchMenu } from './components/ResearchMenu';
+import { AddTarget } from './components/AddTarget';
+import { Opportunities } from './Opportunities';
+import { Audit } from './Audit';
+import { Backlinks } from './Backlinks';
+import { Content } from './Content';
+import { Experiments } from './Experiments';
+import { Plan } from './Plan';
+import { Targets } from './Targets';
+
+/** No changes (one list, so the chart is not redrawn for a new empty one). */
+const NO_MARKERS: Marker[] = [];
+
+const METRIC_ORDER: SearchMetricKey[] = ['clicks', 'impressions', 'ctr', 'position'];
+
+function metricName(metric: SearchMetricKey): string {
+	const names: Record<SearchMetricKey, string> = {
+		clicks: __('Clicks', 'seoproanalytics'),
+		impressions: __('Impressions', 'seoproanalytics'),
+		ctr: __('CTR', 'seoproanalytics'),
+		position: __('Average position', 'seoproanalytics'),
+	};
+	return names[metric];
+}
+
+/** The text for the engine picked: every engine added up, Bing, or Google. */
+export function byEngine(engine: SearchEngineChoice, all: string, bing: string, google: string): string {
+	if (engine === 'all') {
+		return all;
+	}
+	return engine === 'bing' ? bing : google;
+}
+
+/** The days pager's buttons: Older and Newer by day (in the order shown), Previous and Next when sorted by a figure. */
+function pagerLabels(byDay: boolean, ascending: boolean): { back: string; forward: string } {
+	if (!byDay) {
+		return { back: __('Previous', 'seoproanalytics'), forward: __('Next', 'seoproanalytics') };
+	}
+	return ascending ? { back: __('Older', 'seoproanalytics'), forward: __('Newer', 'seoproanalytics') } : { back: __('Newer', 'seoproanalytics'), forward: __('Older', 'seoproanalytics') };
+}
+
+/** Report tabs: the arrow keys step one tab. */
+const ARROW_STEPS: Partial<Record<string, number>> = { ArrowRight: 1, ArrowLeft: -1 };
+
+function metricFoot(metric: SearchMetricKey, engine: SearchEngineChoice): string {
+	const feet: Record<SearchMetricKey, string> = {
+		clicks: byEngine(engine, __('Visits from search engines', 'seoproanalytics'), __('Visits from Bing', 'seoproanalytics'), __('Visits from Google Search', 'seoproanalytics')),
+		impressions: __('Shown in results pages visited', 'seoproanalytics'),
+		ctr: __('Clicks per impression', 'seoproanalytics'),
+		position: __('Lower is better', 'seoproanalytics'),
+	};
+	return feet[metric];
+}
+
+function kindName(kind: SearchKind): string {
+	const names: Record<SearchKind, string> = {
+		queries: __('Queries', 'seoproanalytics'),
+		pages: __('Pages', 'seoproanalytics'),
+		countries: __('Countries', 'seoproanalytics'),
+		devices: __('Devices', 'seoproanalytics'),
+		appearance: __('Appearance', 'seoproanalytics'),
+		days: __('Days', 'seoproanalytics'),
+	};
+	return names[kind];
+}
+
+/** Rows a page of the tables shows. */
+const PER_PAGE = 50;
+
+/** A days row's first column: Day, Week or Month, as the chart's grain. */
+function daysHeading(grain: SearchAnswer['grain'] | undefined): string {
+	if (grain === 'week') {
+		return __('Week', 'seoproanalytics');
+	}
+	return grain === 'month' ? __('Month', 'seoproanalytics') : __('Day', 'seoproanalytics');
+}
+
+/** A table's first column heading. */
+function kindHeading(kind: SearchKind, grain: SearchAnswer['grain'] | undefined): string {
+	const headings: Record<SearchKind, string> = {
+		queries: __('Query', 'seoproanalytics'),
+		pages: __('Page', 'seoproanalytics'),
+		countries: __('Country', 'seoproanalytics'),
+		devices: __('Device', 'seoproanalytics'),
+		appearance: __('Search appearance', 'seoproanalytics'),
+		days: daysHeading(grain),
+	};
+	return headings[kind];
+}
+
+/** A metric's value; position "–" without impressions. */
+function value(metric: SearchMetricKey, row: { impressions: number } & Record<SearchMetricKey, number>): string {
+	if (metric === 'position' && !row.impressions) {
+		return '–';
+	}
+	return formatMetric(row[metric], SEARCH_METRICS[metric].format, locale);
+}
+
+/** The title: the site, a page, a query, or both, on an engine. */
+function title(page: string, query: string, engine: SearchEngineChoice): string {
+	const name = byEngine(engine, __('All search engines', 'seoproanalytics'), __('Bing Search', 'seoproanalytics'), __('Google Search', 'seoproanalytics'));
+	if (page && query) {
+		/* translators: 1: a search engine, e.g. "Google Search", 2: a search query, 3: a page path. */
+		return sprintf(__('%1$s: “%2$s” showing %3$s', 'seoproanalytics'), name, query, page);
+	}
+	if (page) {
+		/* translators: 1: a search engine, e.g. "Google Search", 2: a page path. */
+		return sprintf(__('%1$s: %2$s', 'seoproanalytics'), name, page);
+	}
+	if (query) {
+		/* translators: 1: a search engine, e.g. "Google Search", 2: a search query. */
+		return sprintf(__('%1$s: “%2$s”', 'seoproanalytics'), name, query);
+	}
+	return name;
+}
+
+/** An × in a text box: empties it and applies at once. */
+function ClearButton({ label, onClear }: Readonly<{ label: string; onClear: () => void }>) {
+	return (
+		<button type="button" className="seoproan-clearable__clear" aria-label={label} title={label} onClick={onClear}>
+			<span className="dashicons dashicons-no-alt" aria-hidden="true" />
+		</button>
+	);
+}
+
+/** Search: Rankings (what happened), Opportunities (where effort pays) and Content (what search visits do), as `report` in the address. */
+export function Search(props: Readonly<ViewProps & { shared?: boolean }>) {
+	const { state, update, shared = false } = props;
+	// A shared report: its section is one engine, without the owner's Plan and Experiments.
+	const reports: readonly SearchReport[] = shared ? SHARE_SEARCH_REPORTS : SEARCH_REPORTS;
+	const report: SearchReport = reports.includes(state.report ?? 'rankings') ? (state.report ?? 'rankings') : 'rankings';
+	const engine: SearchEngineChoice = state.engine ?? 'google';
+	const id = useId();
+	// The engines with data, as the last answer listed them (every report's answer does).
+	const [engines, setEngines] = useState<SearchEngine[]>(['google']);
+	// Whether Combined adds anything up (two or more engines with data), as Rankings, Opportunities or Content last said.
+	const [combinable, setCombinable] = useState(false);
+	const onEngines = useCallback((list: SearchEngine[], combined?: boolean) => {
+		setEngines((was) => (was.join() === list.join() ? was : list));
+		if (combined !== undefined) {
+			setCombinable(combined);
+		}
+	}, []);
+	// Google is the default, so it is left out of the address; only Google has countries, devices and search appearances.
+	const chooseEngine = (next: SearchEngineChoice) =>
+		update({ engine: next === 'google' ? undefined : next, tab: next !== 'google' && state.tab !== 'queries' && state.tab !== 'pages' ? undefined : state.tab });
+	const names: Record<SearchReport, string> = {
+		rankings: __('Rankings', 'seoproanalytics'),
+		opportunities: __('Opportunities', 'seoproanalytics'),
+		audit: __('Audit', 'seoproanalytics'),
+		content: __('Content', 'seoproanalytics'),
+		backlinks: __('Backlinks', 'seoproanalytics'),
+		targets: __('Targets', 'seoproanalytics'),
+		plan: __('Plan', 'seoproanalytics'),
+		experiments: __('Experiments', 'seoproanalytics'),
+	};
+	// Rankings is the default, so it is left out of the address; a table's order goes with its report, the goal with Content, Plan's state and goal with Plan, a change with Experiments.
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, order: undefined, goal: undefined, status: undefined, targets: undefined, backlinks: undefined, finding: undefined, change: undefined });
+
+	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+		const by = ARROW_STEPS[event.key];
+		if (by === undefined) {
+			return;
+		}
+		const next = reports.indexOf(report) + by;
+		event.preventDefault();
+		const target = reports[(next + reports.length) % reports.length] ?? 'rankings';
+		show(target);
+		document.getElementById(`${id}-${target}`)?.focus();
+	};
+
+	// A row of Opportunities or Content opens in Rankings: a page shows its queries; a query alone, its pages.
+	const open = (pick: SearchPick) =>
+		update({
+			report: undefined,
+			sort: undefined,
+			order: undefined,
+			goal: undefined,
+			status: undefined,
+			targets: undefined,
+			backlinks: undefined,
+			finding: undefined,
+			page: pick.page || undefined,
+			query: pick.query || undefined,
+			tab: pick.query && !pick.page ? 'pages' : undefined,
+		});
+
+	const reportProps = { ...props, onEngines };
+
+	return (
+		<>
+			<div className="seoproan-search-nav">
+			<div className="seoproan-tabs" role="tablist" aria-label={__('Search', 'seoproanalytics')}>
+				{reports.map((t) => (
+					<button
+						key={t}
+						type="button"
+						role="tab"
+						id={`${id}-${t}`}
+						aria-selected={report === t}
+						aria-controls={`${id}-panel`}
+						tabIndex={report === t ? 0 : -1}
+						className={`seoproan-tab${report === t ? ' is-active' : ''}`}
+						onClick={() => show(t)}
+						onKeyDown={onKey}
+					>
+						{names[t]}
+					</button>
+				))}
+			</div>
+			{!shared && (
+				<EngineSwitch
+					engines={engines}
+					engine={engine}
+					choose={chooseEngine}
+					combined={(COMBINED_REPORTS as readonly SearchReport[]).includes(report)}
+					combinable={combinable}
+				/>
+			)}
+			</div>
+			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="seoproan-subpanel">
+				{report === 'rankings' && <Rankings {...reportProps} />}
+				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
+				{report === 'audit' && <Audit {...reportProps} open={open} />}
+				{report === 'content' && <Content {...reportProps} open={open} />}
+				{!shared && report === 'backlinks' && <Backlinks {...reportProps} open={open} />}
+				{!shared && report === 'targets' && <Targets {...reportProps} open={open} />}
+				{!shared && report === 'plan' && <Plan {...reportProps} open={open} />}
+				{!shared && report === 'experiments' && <Experiments {...reportProps} />}
+			</div>
+		</>
+	);
+}
+
+function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
+	const engine: SearchEngineChoice = state.engine ?? 'google';
+	const kind: SearchKind = state.tab ?? 'queries';
+	const metric: SearchMetricKey = state.chart ?? 'clicks';
+	const page = state.page ?? '';
+	const query = state.query ?? '';
+	// The boxes are drafts until Apply; they follow the address (back button, links).
+	const [typedPage, setTypedPage] = useState(page);
+	const [typedQuery, setTypedQuery] = useState(query);
+	useEffect(() => setTypedPage(page), [page]);
+	useEffect(() => setTypedQuery(query), [query]);
+	// A chosen figure column stays across tabs; the default column differs (days: by day), so its reversal does not.
+	const setKind = (tab: SearchKind) => update(state.sort && state.sort !== 'day' ? { tab } : { tab, sort: undefined, order: undefined });
+	const id = useId();
+	// Countries, devices and search appearances exist for the whole site only, and from Google only (not Bing, so not Combined).
+	const kinds: SearchKind[] = page || query || engine !== 'google' ? [...SEARCH_ANY_KINDS] : [...SEARCH_KINDS];
+	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
+	// The table's order: impressions, most first (days: newest first) unless a header was chosen.
+	const by = tableSort(searchSorts(shown), state.sort, state.order);
+	const onSort = (sort: SearchDaySort, order: TableSortProps<SearchDaySort>['order']) => update({ sort, order });
+	// Days page through the chart's points; back to the first page when the period, filters, engine, page, query or order change.
+	const scope = scopeKey(apiArgs(state), engine, page, query, shown, by);
+	const [at, setAt] = useState({ scope, offset: 0 });
+	const offset = shown === 'days' && at.scope === scope ? at.offset : 0;
+	const setOffset = (next: number) => setAt({ scope, offset: next });
+	const search = useSearch(state, shown, page, query, PER_PAGE, offset, by);
+	const markers = useMarkers(state, page);
+	const changes = useChangesModal(update, page);
+	const history = useSearchHistory(state, page, query);
+	const answer = search.data;
+	useReportEngines(answer, onEngines);
+	// The engine answered for: Combined with fewer than two engines with data answers as the one with data.
+	const answered: SearchEngineChoice = answer?.engine ?? engine;
+	const printAll = usePrintAll();
+	const rows = answer?.kind === shown ? answer.rows : [];
+	const totals = answer?.totals;
+	const change = answer?.compare?.change;
+	const then = answer?.compare?.totals;
+	const pageInfo = answer?.page === page ? answer.page_info : null;
+
+	// A page chosen shows its queries; a query chosen, its pages.
+	const choose = (next: { page?: string; query?: string }) => {
+		const patch: Partial<ViewState> = {};
+		if (next.page !== undefined) {
+			patch.page = next.page;
+			if (next.page && next.query === undefined) {
+				patch.tab = 'queries';
+			}
+		}
+		if (next.query !== undefined) {
+			patch.query = next.query;
+			if (next.query && next.page === undefined) {
+				patch.tab = 'pages';
+			}
+		}
+		update(patch);
+	};
+
+	const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+		const by = ARROW_STEPS[event.key];
+		if (by === undefined) {
+			return;
+		}
+		const next = kinds.indexOf(shown) + by;
+		event.preventDefault();
+		const target = kinds[(next + kinds.length) % kinds.length] ?? 'queries';
+		setKind(target);
+		document.getElementById(`${id}-${target}`)?.focus();
+	};
+
+	return (
+		<>
+			{search.isError && (
+				<Notice status="error" isDismissible={false}>
+					{errorMessage(search.error, __('The search data could not be loaded. Reload the page to try again.', 'seoproanalytics'))}
+				</Notice>
+			)}
+			{answer && <Setup answer={answer} />}
+			{answer && answer.ignored.length > 0 && (
+				<Notice status="warning" isDismissible={false} className="seoproan-notice">
+					{__('Search data has no visits, so only page filters apply here; the other filters are left out.', 'seoproanalytics')}
+				</Notice>
+			)}
+
+			<Card className="seoproan-summary">
+				<div className="seoproan-search__head">
+					<div>
+						<h2 className="seoproan-app-card__title">{title(page, query, answered)}</h2>
+						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
+						{answer?.through && (
+							<p className="seoproan-meta">
+								{sprintf(
+									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
+									__('%1$s, final days through %2$s', 'seoproanalytics'),
+									sourceName(answered, answer.engines),
+									longLabel(answer.through, 'day')
+								)}
+								{answer.grain === 'week' && ` · ${__('by week', 'seoproanalytics')}`}
+							</p>
+						)}
+						{pageInfo && (pageInfo.url || pageInfo.edit_url) && (
+							<p className="seoproan-meta">
+								{pageInfo.url && (
+									<a href={pageInfo.url} target="_blank" rel="noopener noreferrer">
+										<span className="dashicons dashicons-external" aria-hidden="true" /> {__('View page', 'seoproanalytics')}
+									</a>
+								)}
+								{pageInfo.edit_url && (
+									<>
+										{' '}
+										·{' '}
+										<EditLink href={pageInfo.edit_url} path={page} />
+									</>
+								)}
+							</p>
+						)}
+					</div>
+					<form
+						className="seoproan-properties__event seoproan-search__boxes"
+						onSubmit={(e) => {
+							e.preventDefault();
+							choose({ page: typedPage.trim(), query: typedQuery.trim() });
+						}}
+					>
+						<div className="seoproan-clearable">
+							<TextControl
+								__nextHasNoMarginBottom
+								label={__('Page', 'seoproanalytics')}
+								value={typedPage}
+								autoComplete="off"
+								placeholder={__('Any page; * for any text', 'seoproanalytics')}
+								onChange={setTypedPage}
+							/>
+							{typedPage && (
+								<ClearButton
+									label={__('Clear the page', 'seoproanalytics')}
+									onClear={() => {
+										setTypedPage('');
+										choose({ page: '' });
+									}}
+								/>
+							)}
+						</div>
+						<div className="seoproan-clearable">
+							<TextControl
+								__nextHasNoMarginBottom
+								label={__('Query', 'seoproanalytics')}
+								value={typedQuery}
+								autoComplete="off"
+								placeholder={__('Any query; * for any text', 'seoproanalytics')}
+								onChange={setTypedQuery}
+							/>
+							{typedQuery && (
+								<ClearButton
+									label={__('Clear the query', 'seoproanalytics')}
+									onClear={() => {
+										setTypedQuery('');
+										choose({ query: '' });
+									}}
+								/>
+							)}
+						</div>
+						<Button variant="secondary" type="submit">
+							{__('Apply', 'seoproanalytics')}
+						</Button>
+						{(page || query) && (
+							<Button variant="link" onClick={() => choose({ page: '', query: '' })}>
+								{__('Whole site', 'seoproanalytics')}
+							</Button>
+						)}
+					</form>
+				</div>
+
+				<div className="seoproan-tiles" role="group" aria-label={__('Chart', 'seoproanalytics')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
+					{METRIC_ORDER.map((key) => (
+						<button
+							key={key}
+							type="button"
+							className={`seoproan-tile${metric === key ? ' is-selected' : ''}`}
+							aria-pressed={metric === key}
+							onClick={() => update({ chart: key })}
+						>
+							<span className="seoproan-tile__label">{metricName(key)}</span>
+							<span className="seoproan-tile__value">{totals ? value(key, totals) : '–'}</span>
+							<span className="seoproan-tile__foot">
+								<span className="seoproan-muted">{metricFoot(key, answered)}</span>
+								{change && (
+									<Change
+										change={change[key]}
+										places={key === 'position'}
+										better={SEARCH_METRICS[key].better}
+										previous={then ? value(key, then) : undefined}
+									/>
+								)}
+							</span>
+						</button>
+					))}
+				</div>
+				<RankingsChart
+					answer={answer}
+					metric={metric}
+					fetching={search.isFetching}
+					failed={search.isError}
+					markers={markers.data?.markers ?? NO_MARKERS}
+					onMarker={changes.onMarker}
+					history={history}
+				/>
+			</Card>
+			{changes.modal}
+			<Vitals chartOnly />
+
+			{printAll ? (
+				<PrintedSearches state={state} kinds={kinds} page={page} query={query} choose={choose} />
+			) : (
+				<Card className="seoproan-app-card is-wide seoproan-app-section" size="small">
+					<CardHeader className="seoproan-app-card__header">
+						<h2 className="seoproan-app-card__title" id={id}>
+							{__('Top searches', 'seoproanalytics')}
+						</h2>
+						<div className="seoproan-tabs" role="tablist" aria-labelledby={id}>
+							{kinds.map((k) => (
+								<button
+									key={k}
+									type="button"
+									role="tab"
+									id={`${id}-${k}`}
+									aria-selected={shown === k}
+									aria-controls={`${id}-panel`}
+									tabIndex={shown === k ? 0 : -1}
+									className={`seoproan-tab${shown === k ? ' is-active' : ''}`}
+									onClick={() => setKind(k)}
+									onKeyDown={onTabKey}
+								>
+									{kindName(k)}
+								</button>
+							))}
+						</div>
+					</CardHeader>
+					<CardBody className="seoproan-app-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
+						<SearchTable
+							answer={answer}
+							kind={shown}
+							failed={search.isError}
+							fetching={search.isFetching}
+							page={page}
+							query={query}
+							choose={choose}
+							markers={markers.data?.markers ?? NO_MARKERS}
+							onMarker={changes.onMarker}
+							sort={by.sort}
+							order={by.order}
+							onSort={onSort}
+						/>
+						{answer && rows.length > 0 && <SearchNote engine={answered} kind={shown} />}
+						{answer?.kind === 'days' && answer.points.length > PER_PAGE && (
+							<nav className="seoproan-changes__pager" aria-label={sprintf(/* translators: %s: a table, e.g. "Days". */ __('Pages of %s', 'seoproanalytics'), kindName('days'))}>
+								<span className="seoproan-muted">
+									{sprintf(
+										/* translators: 1: first row shown, 2: last row shown, 3: number of rows. */
+										__('%1$s–%2$s of %3$s', 'seoproanalytics'),
+										formatMetric(offset + 1, 'number', locale),
+										formatMetric(Math.min(offset + PER_PAGE, answer.points.length), 'number', locale),
+										formatMetric(answer.points.length, 'number', locale)
+									)}
+								</span>
+								{/* Newer and Older while the rows go by day; Previous and Next when sorted by a figure. */}
+								<Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PER_PAGE))}>
+									{pagerLabels(by.sort === 'day', by.order === 'asc').back}
+								</Button>
+								<Button variant="secondary" disabled={!answer.more} onClick={() => setOffset(offset + PER_PAGE)}>
+									{pagerLabels(by.sort === 'day', by.order === 'asc').forward}
+								</Button>
+							</nav>
+						)}
+					</CardBody>
+				</Card>
+			)}
+		</>
+	);
+}
+
+/** Rankings' chart of the metric picked, with the changes on its timeline; a placeholder while it loads. */
+function RankingsChart({ answer, metric, fetching, failed, markers, onMarker, history }: Readonly<{ answer: SearchAnswer | undefined; metric: SearchMetricKey; fetching: boolean; failed: boolean; markers: Marker[]; onMarker: (pick: MarkerPick) => void; history: ChartHistory }>) {
+	// No search data yet: no chart of zeros.
+	if (answer && !answer.through) {
+		return null;
+	}
+	return (
+		<div className={`seoproan-summary__chart${fetching && answer ? ' is-refreshing' : ''}`}>
+			{answer && answer.points.length > 0 ? (
+				<MainChart
+					series={answer}
+					metric={metric}
+					label={metricName(metric)}
+					format={SEARCH_METRICS[metric].format}
+					rank={SEARCH_METRICS[metric].rank}
+					per={SEARCH_METRICS[metric].per}
+					better={SEARCH_METRICS[metric].better}
+					markers={markers}
+					onMarker={onMarker}
+					history={history}
+				/>
+			) : (
+				<div className={`seoproan-chart-placeholder${answer || failed ? '' : ' seoproan-skeleton seoproan-skeleton--chart'}`} aria-busy={!answer && !failed} />
+			)}
+		</div>
+	);
+}
+
+/** Paper: every kind of the top searches, each under its name. */
+function PrintedSearches({ state, kinds, page, query, choose }: Readonly<{ state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }>) {
+	return (
+		<Card className="seoproan-app-card is-wide seoproan-app-section is-print-all" size="small">
+			<CardHeader className="seoproan-app-card__header">
+				<h2 className="seoproan-app-card__title">{__('Top searches', 'seoproanalytics')}</h2>
+			</CardHeader>
+			<CardBody className="seoproan-app-card__body">
+				{kinds.map((kind) => (
+					<PrintedKind key={kind} state={state} kind={kind} page={page} query={query} choose={choose} />
+				))}
+				<SearchNote engine={state.engine ?? 'google'} />
+			</CardBody>
+		</Card>
+	);
+}
+
+function PrintedKind({ state, kind, page, query, choose }: Readonly<{ state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }>) {
+	// Paper has no pages: every day (week or month) of the period, in the screen's order where the kind has its column.
+	const by = tableSort(searchSorts(kind), state.sort, state.order);
+	const search = useSearch(state, kind, page, query, kind === 'days' ? 1000 : PER_PAGE, 0, by);
+	return (
+		<section className="seoproan-print-tab">
+			<h3 className="seoproan-print-tab__title">{kindName(kind)}</h3>
+			<SearchTable answer={search.data} kind={kind} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} sort={by.sort} order={by.order} />
+			{kind === 'appearance' && <SearchNote engine={state.engine ?? 'google'} kind={kind} />}
+		</section>
+	);
+}
+
+/** Why the rows add up to less than the totals, by engine. */
+function SearchNote({ engine, kind }: Readonly<{ engine: SearchEngineChoice; kind?: SearchKind }>) {
+	if (kind === 'days') {
+		return <p className="seoproan-note">{__('Each row is a point of the chart; together they make the period’s totals.', 'seoproanalytics')}</p>;
+	}
+	if (kind === 'appearance') {
+		return <p className="seoproan-note">{__('One search can show several appearances, so these figures do not add up to the site’s totals. Search appearances are counted by page.', 'seoproanalytics')}</p>;
+	}
+	if (engine === 'all') {
+		return (
+			<p className="seoproan-note">
+				{__(
+					'Combined adds up every search engine with data: a query or page shown on more than one is one row. The period ends at the earliest of their newest days, in whole weeks when one gives pages and queries by week. Each engine counts its own days (Google in Pacific time, Bing in UTC), and each leaves out some rows, so they add up to less than the totals. Position is the average place shown, weighted by impressions.',
+					'seoproanalytics'
+				)}
+			</p>
+		);
+	}
+	return (
+		<p className="seoproan-note">
+			{engine === 'bing'
+				? __(
+						'Bing gives its top pages and queries by week, so a period’s rows cover the weeks that end in it, and they add up to less than the totals. Position is the average place shown, weighted by impressions; a day’s position is its week’s.',
+						'seoproanalytics'
+					)
+				: __(
+						'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
+						'seoproanalytics'
+					)}
+		</p>
+	);
+}
+
+interface SearchTableProps {
+	answer: SearchAnswer | undefined;
+	kind: SearchKind;
+	failed: boolean;
+	fetching: boolean;
+	page: string;
+	query: string;
+	choose: RowProps['choose'];
+	/** Changes in the range: days rows show theirs, as the chart's markers, before Clicks. */
+	markers?: Marker[];
+	onMarker?: (pick: MarkerPick) => void;
+	/** The rows' order (the kind's default when left out); headers sort only with onSort. */
+	sort?: SearchDaySort;
+	order?: TableSortProps<SearchDaySort>['order'];
+	onSort?: TableSortProps<SearchDaySort>['onSort'];
+}
+
+/**
+ * Each days row's changes, by its first day: the chart's points with
+ * changes (a rollout begun before the period on its first point).
+ */
+function changesByDay(answer: SearchAnswer | undefined, markers: Marker[] | undefined): Map<string, Marker[]> | null {
+	if (!answer || answer.kind !== 'days' || !markers) {
+		return null;
+	}
+	const out = new Map<string, Marker[]>();
+	for (const [index, list] of changesByPoint(answer, markers)) {
+		const day = (answer.points[index]?.t ?? '').slice(0, 10);
+		if (day) {
+			out.set(day, list);
+		}
+	}
+	return out;
+}
+
+/** One kind of top searches: loading, empty, or its table. */
+function SearchTable({ answer, kind, failed, fetching, page, query, choose, markers, onMarker, sort, order, onSort }: Readonly<SearchTableProps>) {
+	const rows = answer?.kind === kind ? answer.rows : [];
+	// The order the answer says it has (the asked one while it loads).
+	const by = tableSort(searchSorts(kind), answer?.kind === kind ? answer.sort : sort, answer?.kind === kind ? answer.order : order);
+	const top = Math.max(...rows.map((r) => r.clicks), 1);
+	const byDay = kind === 'days' ? changesByDay(answer, markers) : null;
+	return (
+		<>
+			{!answer && !failed && <div className="seoproan-skeleton seoproan-skeleton--table" aria-busy="true" />}
+			{answer?.kind === kind && !rows.length && (
+				<div className="seoproan-app-empty">
+					<p>{answer.through ? __('No searches of this kind in this period.', 'seoproanalytics') : __('No search data yet.', 'seoproanalytics')}</p>
+				</div>
+			)}
+			{rows.length > 0 && (
+				<TableScroll label={kindName(kind)}>
+					<table className={`widefat striped seoproan-table${fetching ? ' is-refreshing' : ''}`}>
+						<thead>
+							<tr>
+								{kind === 'days' ? (
+									<SortHeader column="day" label={kindHeading(kind, answer?.grain)} sort={by.sort} order={by.order} onSort={onSort} className="" />
+								) : (
+									<th scope="col">{kindHeading(kind, answer?.grain)}</th>
+								)}
+								{byDay && (
+									<th scope="col" className="seoproan-table__changes">
+										{__('Changes', 'seoproanalytics')}
+									</th>
+								)}
+								{METRIC_ORDER.map((key) => (
+									<SortHeader key={key} column={key} label={key === 'position' ? __('Position', 'seoproanalytics') : metricName(key)} sort={by.sort} order={by.order} onSort={onSort} />
+								))}
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((row) => (
+								<Row
+									key={row.id}
+									row={row}
+									kind={kind}
+									grain={answer?.grain ?? 'day'}
+									top={top}
+									page={page}
+									query={query}
+									choose={choose}
+									changes={byDay ? byDay.get(row.from ?? row.value) ?? NO_MARKERS : undefined}
+									onMarker={onMarker}
+								/>
+							))}
+						</tbody>
+					</table>
+				</TableScroll>
+			)}
+		</>
+	);
+}
+
+interface RowProps {
+	row: SearchRow;
+	kind: SearchKind;
+	/** The chart's grain, for days rows. */
+	grain: SearchAnswer['grain'];
+	top: number;
+	page: string;
+	query: string;
+	choose: (next: { page?: string; query?: string }) => void;
+	/** A days row's changes (its column shows when set). */
+	changes?: Marker[];
+	onMarker?: (pick: MarkerPick) => void;
+}
+
+function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: Readonly<RowProps>) {
+	const before = row.compare;
+	const when = kind === 'days' ? longLabel(row.from ?? row.value, grain) : '';
+	let label = row.label;
+	if (kind === 'appearance') {
+		label = appearanceLabel(row.value);
+	} else if (kind === 'days') {
+		label = when;
+	}
+	let name = <span>{label}</span>;
+	if (kind === 'queries') {
+		name = (
+			<Button variant="link" aria-pressed={query === row.value} onClick={() => choose({ query: query === row.value ? '' : row.value })}>
+				{row.value}
+			</Button>
+		);
+	} else if (kind === 'pages') {
+		const path = row.path ?? row.value;
+		name = (
+			<>
+				<Button variant="link" aria-pressed={page === path} onClick={() => choose({ page: page === path ? '' : path })}>
+					{path}
+				</Button>
+				{row.url && (
+					<span className="seoproan-meta">
+						<a
+							href={row.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-label={sprintf(/* translators: %s: page path. */ __('View %s (opens in a new tab)', 'seoproanalytics'), path)}
+						>
+							<span className="dashicons dashicons-external" aria-hidden="true" /> {__('View page', 'seoproanalytics')}
+						</a>
+						{row.edit_url && (
+							<>
+								{' '}
+								·{' '}
+								<EditLink href={row.edit_url} path={path} />
+							</>
+						)}
+					</span>
+				)}
+			</>
+		);
+	}
+	return (
+		<tr className={(kind === 'pages' && page === (row.path ?? row.value)) || (kind === 'queries' && query === row.value) ? 'is-selected' : ''}>
+			<td className={`seoproan-table__bar-cell${kind === 'days' ? ' seoproan-nowrap' : ''}`}>
+				<span className="seoproan-table__bar" style={{ width: `${(row.clicks / top) * 100}%` }} aria-hidden="true" />
+				{name}
+				{kind === 'queries' && <ResearchMenu query={row.value} />}
+				{kind === 'queries' && <AddTarget query={row.value} page={page} />}
+			</td>
+			{changes && (
+				<td className="seoproan-table__changes">
+					<ChangeDots markers={changes} from={row.from ?? row.value} to={row.to ?? row.from ?? row.value} when={when} onPick={onMarker} />
+				</td>
+			)}
+			{METRIC_ORDER.map((key) => (
+				<td key={key} className="num">
+					{value(key, row)}
+					{before && <Change change={before.change[key]} places={key === 'position'} better={SEARCH_METRICS[key].better} previous={value(key, before)} />}
+				</td>
+			))}
+		</tr>
+	);
+}

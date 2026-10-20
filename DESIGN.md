@@ -1,0 +1,548 @@
+---
+version: alpha
+name: seoproanalytics
+description: seoproanalytics interface design system
+# Backlink exports: Settings → Import has a native file input, primary submit,
+# accessible status and progress. Search → Backlinks has a WordPress SelectControl
+# for How found; scores and export freshness stay labelled by provider.
+# IndexNow reuses the Connections card: status, queued count, public key link
+# and plain error text with role=alert. Submission receipts stay in each
+# Changes row's existing metadata line, with HTTP code and no indexing claim.
+# Site crawl trends reuse the decorative Sparkline in a native details/table:
+# one line per status class and finding, with dated first/latest counts as text.
+# Settings → Data lists estimated crawl rows and data/index space in native
+# headings and lists, beside a Crawl import history months field.
+# Site crawl compares As served and Stored in WordPress now in adjacent native
+# table cells; empty and unobserved/unkept text are labelled distinctly.
+# Event goals and funnel steps offer an optional property key/value fieldset,
+# using WordPress TextControl and a datalist of observed keys. Conditioned rows
+# show their pair and explain why visit-filter shortcuts are unavailable.
+# Shared reports use the existing ShareLink notice for owner-recovered links,
+# a secondary Copy link row action, and WordPress CheckboxControl for password
+# email opt-in with the link-plus-password risk explained. Legacy/unreadable
+# links and opted-in passwords without stored copies have plain recovery notes.
+# Email schedules use an Email this report fieldset in the same editor, with
+# WordPress recipient/message textareas, interval select and site-local hour.
+# The default dated intro is a placeholder, not saved custom text. Tests use
+# the saved report, with a save-first explanation and an inline result notice.
+# List rows reuse the existing badge and muted status lines for frequency,
+# last accepted period/time or a safe error. No new colour or layout tokens.
+colors:
+  # Canonical palette (required: primary; recommended MD3 baseline families: secondary, tertiary, error, surface, background, outline)
+  # WordPress admin colours (packages/wp-admin/src/common.css); primary follows the admin colour scheme.
+  primary: "#2271b1"
+  secondary: "#50575e"
+  tertiary: "#007017"
+  neutral: "#f6f7f7"
+  background: "#f0f0f1"
+  surface: "#ffffff"
+  on-surface: "#1d2327"
+  error: "#b32d2e"
+  outline: "#dcdcde"
+  # Change log groups: chart markers and the Changes section (--seoproan-mark-*).
+  mark-content: "#3858e9"
+  mark-seo: "#8a3fd1"
+  mark-product: "#008a20"
+  mark-site: "#996800"
+  mark-search: "#c9356e"
+  mark-note: "#1d2327"
+typography:
+  # Recommended levels: headline-display, headline-lg, headline-md, body-lg, body-md, body-sm, label-lg, label-md, label-sm
+  headline-display:
+    fontFamily: "{family}"
+    fontSize: "{size}"
+    fontWeight: 700
+    lineHeight: 1.1
+    letterSpacing: -0.02em
+  headline-lg:
+    fontFamily: "{family}"
+    fontSize: 32px
+    fontWeight: 600
+    lineHeight: 1.2
+  body-md:
+    fontFamily: "{family}"
+    fontSize: 16px
+    fontWeight: 400
+    lineHeight: 1.5
+  label-md:
+    fontFamily: "{family}"
+    fontSize: 14px
+    fontWeight: 500
+    lineHeight: 1.4
+rounded:
+  none: 0
+  sm: 4px
+  md: 8px
+  lg: 16px
+  xl: 24px
+  full: 9999px
+spacing:
+  unit: 8px
+  xs: 4px
+  sm: 8px
+  md: 16px
+  lg: 32px
+  xl: 64px
+  gutter: 24px
+  margin: 32px
+components:
+  button-primary:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.surface}"
+    typography: "{typography.label-md}"
+    rounded: "{rounded.md}"
+    padding: 12px
+  button-primary-hover:
+    backgroundColor: "{colors.secondary}"
+  button-secondary:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    typography: "{typography.label-md}"
+    rounded: "{rounded.md}"
+    padding: 12px
+  input-default:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.on-surface}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.sm}"
+    padding: 12px
+  card:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.on-surface}"
+    rounded: "{rounded.lg}"
+    padding: 24px
+---
+
+<!--
+DESIGN.md — AI-readable design system document
+Format: google-labs-code/design.md alpha (aidevops tracks upstream through commit 18508f2)
+Spec: https://github.com/google-labs-code/design.md/blob/main/docs/spec.md
+Validate: npx @google/design.md lint DESIGN.md
+Windows package scripts: use the dot-free `designmd` bin alias
+Tailwind export: use `json-tailwind` for Tailwind v3 JSON or `css-tailwind` for Tailwind v4 CSS
+Top-level YAML extension keys are allowed; typos of known schema keys warn.
+Component scalar values may be strings, token references, numbers, or booleans.
+Template source: aidevops `templates/DESIGN.md.template`
+
+Sections 1-8 are the normative spec order.
+Sections 9-10 are aidevops-specific extensions (unknown sections are preserved per spec).
+-->
+
+# Design System: seoproanalytics
+
+## 1. Overview
+
+<!-- Also known as "Brand & Style" or "Visual Theme". -->
+<!-- Holistic description of the product's look and feel. Define brand personality, target audience, -->
+<!-- and the emotional response the UI should evoke. This is foundational context for high-level -->
+<!-- stylistic decisions when a specific rule or token isn't explicitly defined. -->
+
+**Mood**: {playful | professional | editorial | luxurious | technical | …}
+**Density**: {spacious | balanced | dense}
+**Atmosphere**: {one sentence capturing the feel}
+
+**Key Characteristics:**
+
+- {characteristic with concrete reference}
+- {characteristic with concrete reference}
+
+## 2. Colors
+
+<!-- Define the color palettes. The `primary` palette is required; MD3 baseline families include -->
+<!-- `secondary`, `tertiary`, `error`, `surface`, `background`, and `outline`. Prose may use descriptive color names (e.g. "Boston Clay") -->
+<!-- that correspond to token names (e.g. `tertiary`). Tokens are normative; prose provides context. -->
+
+The palette is WordPress's own admin greys with one accent, the admin colour scheme's (`--wp-admin-theme-color`), so the screens look like part of wp-admin. Variables live in `packages/wp-admin/src/common.css` (`--seoproan-*`).
+
+Shared reports use the same section components in a standalone shell
+(`packages/wp-admin/src/share.css`), without the theme or wp-admin menu.
+Header: site logo and title linked home; footer: optional agency logo,
+byline, link and plugin credit. Branding media is local, raster only.
+The shell follows light/dark/system independently of site theme palettes,
+with an explicit toggle. Text and chart accents must meet 4.5:1 against
+the active surface; otherwise use the shell's readable fallback. Components
+read mode variables, not fixed mode colours. Controls wrap at 390 px and
+tables scroll inside cards; print hides interactive controls while keeping
+the report, locked-filter description and branding. Paper is always light,
+charts fit the page width and the period's changes print as a dated list.
+Printed maps use the light empty-country base (`--seoproan-map-empty: #dcdcde`)
+for empty countries, shading and the legend, even when the screen is dark.
+A click on a report button leaves no focus ring; the keyboard still shows one.
+
+The share editor is a modal form: fieldsets with legends separated by a
+1px border, `gap` spacing on WordPress's 4px scale, short fields two to a
+row, and every disabled control with a line saying why. The private link
+shows in a success notice with a full-width read-only address, Copy and
+Open (new window).
+
+- **Primary (`#2271b1`)**: the admin colour scheme's accent (`--seoproan-accent`); the chart's line, selected tiles and tabs, links. The hex is the default scheme's. Every scheme keeps its hue, at a brightness that reads at 4.5:1: in light mode its luminance is lowered to at most 0.15 (`color(from accent xyz-d65 …)`, x, y and z scaled together, so hue and saturation stay), which reads at 4.6:1 or more on `#f0f0f0` and behind white labels. Modern and Ectoplasm are under the cap and unchanged; Sunrise `#ad631e` becomes `#a05b1b`, Default `#007cba` `#0072ac`. On the plugin's screens the capped colour replaces `--wp-admin-theme-color` and its darker tones (0.12, 0.096) inside `body`, so WordPress's buttons, fields and components take it too; classic schemes' link hover and focus (`#0096dd`, 3.3:1) become `#005e8e`. Menu items' focus ring reads WordPress's design token `--wpds-color-stroke-focus`, fixed at `#3858e9` in every scheme; on the plugin's screens it takes the capped colour in light mode and the light accent in dark mode. The Dashboard widget and editor panel cap `--seoproan-accent` the same way. Older browsers keep the scheme's colour.
+- **Secondary (`#50575e`)**: muted text, axis labels, captions (`--seoproan-muted`).
+- **Tertiary (`#007017`)**: a change for the better (`--seoproan-good`).
+- **Neutral (`#f6f7f7`)**: row and button hover (`--seoproan-hover`).
+- **Background (`#f0f0f1`)**: the wp-admin canvas.
+- **Surface (`#ffffff`)**: cards and panels.
+- **On-surface (`#1d2327`)**: text (`--seoproan-text`); also the chart tooltips' background.
+- **Error (`#b32d2e`)**: a change for the worse, destructive actions (`--seoproan-bad`).
+- **Outline (`#dcdcde`)**: borders and dividers (`--seoproan-border`).
+
+### Colour mode
+
+The Statistics and Settings screens have a per-person colour mode: **Light** (default, WordPress's own colours), **Dark** or **System** (follows `prefers-color-scheme` live). An icon button right of **Buy me a coffee** (sun, moon, or a half-filled circle for System) opens a three-item `menuitemradio` menu with a tick on the chosen mode; arrows, Home, End and Escape work, and the change is announced. The choice is user meta (`seoproanalytics_admin_theme`), like the admin colour scheme. A `<head>` script sets `seoproan-theme-{mode}` and, when dark, `seoproan-dark` on `<html>` before first paint; every dark rule waits for `html.seoproan-dark` (`admin/css/seoproanalytics-theme.css`), so Light is WordPress's own, apart from the scheme colour's brightness (Primary, above). Only the plugin's screens load it.
+
+The shared `wpallstars_admin_theme` preference takes priority over `seoproanalytics_admin_theme` (both are saved), and the `wpallstars-admin-theme` document event keeps this button and SEO Pro Stack's admin bar toggle in sync without another save or announcement.
+
+Settings and network settings use the starter's shared theme class and stylesheet. Statistics adds `admin/css/seoproanalytics-dashboard-theme.css` for its app tokens, charts, React fields, dialogs and popovers; these remain plugin-owned and load only on Statistics. Read-only statistics viewers retain a nonce-protected personal mode control without settings access. Network settings use the same header, tabs and cards, with Apply to every site and the sites whose values differ; applied cards on each site display their lock and network explanation.
+
+SEO Pro Stack owns dark mode on the core Dashboard; the Statistics widget uses the dark text, muted, change and accent colours below under either `html.sps-dark` or `html.seoproan-dark`, while its light colours stay unchanged.
+
+Dark palette (WordPress admin greys, `--seoproan-ui-*`, defined once):
+
+- **Canvas (`#101517`)**: the page behind cards; also field backgrounds and inset panels.
+- **Surface (`#1d2327`)**: cards, header, tab bar, dialogs, popovers.
+- **Raised (`#2c3338`)**: hover, tooltips, notices; also dividers.
+- **Border (`#3c434a`)**; field borders `#8c8f94` (3:1 on surface).
+- **Text (`#f0f0f1`)**, muted `#c3c4c7`, subtle `#a7aaad`.
+- **Accent**: follows the person's admin colour scheme (Profile → Admin Color Scheme). The logo keeps the scheme's colour as a fill; primary buttons and switches too, darkened to at most OKLCH lightness 0.53 (`--seoproan-ui-primary`, also `--wp-components-color-accent`) so their light labels read at 4.5:1 on lighter fills such as Sunrise's; accent text, links, tabs and the chart line keep its hue at a lighter tone, `oklch(from accent max(l, 0.75) min(c, 0.15) h)`, which reads at 5.4:1 or more on every dark surface for every core scheme (older browsers: `color-mix(accent 55%, #fff)`, then `#72aee6`). The tokens sit on `body`, where WordPress sets the scheme's `--wp-admin-theme-color`.
+- **Good `#68de7c`**, **bad `#ff8085`**, warning `#f0c33c`; markers lighten to content `#7b90ff`, SEO `#b48ef0`, products `#4ab866`, site `#dba617`, search engines `#f086ae`, notes `#dcdcde`. Shared reports in dark use the same marker and tooltip colours.
+
+The plugin's tokens (`--seoproan-*`) and WordPress components' theme variables (`--wp-components-color-*`) take these values; classic wp-admin elements on those screens (fields, buttons, notices, tables) get them through low-specificity `:where()` rules, so WordPress's focus styles and any class rule still win. WordPress's own hover and focus colours assume a light page (links `#135e96`/`#043959`, `select:hover` `#1e1e1e`, notice text `#1e1e1e` and notice links in darker scheme tones, component buttons in the scheme's fill, destructive `#710d0d`, ExternalLink a darker scheme colour), so the dark styles set every state: links and selects go to the text colour, plain buttons to the light accent, destructive ones to the light red, pressed ones keep surface-coloured labels, and ExternalLink reads `--wpds-color-foreground-interactive-brand`. Check contrast at rest, on hover and on focus. Charts read the tokens and redraw on the `seoproan-themechange` event. Colours ease for 0.2 s between modes, never on load, and not with reduced motion.
+
+### Loading
+
+Placeholders (`.seoproan-skeleton`) are mixes of `currentColor` (9% base, 18% sweep; grey alpha without `color-mix()`), so they read on any surface in either mode. A loading table (`--table`) is one block masked into a header line and rows of a label and a right-hand figure; the main chart (`--chart`) masks faint grid lines and a soft area at the chart's 260 px height, so nothing moves when data arrives. One slow sweep crosses each; with reduced motion they are still.
+
+### Header
+
+Core owns the header and public tab styles (`scripts/core-public-classes.txt`). Statistics calls `SEOProAnalytics_Admin_Page::sections_nav()` inside its own `.seoproan-app-nav` layout, with the controls portal beside it. The app reads each helper link's hash to mark the current section and preserve period, comparison and filters; it does not copy the helper's markup or restyle core navigation classes. Its full-width content padding belongs to `.seoproan-app-main`, not an override of the core settings panel's width. React cards, sections, empty states and badges use `.seoproan-app-*` names, including their elements; settings tabs keep the public core components unchanged.
+
+The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Analytics** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoproanalytics-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.seoproan-nav`, in the same stylesheet). On the statistics screen the bar's right holds the Live/Demo switch, the period and comparison, then Share (on every tab, for administrators; with demo data it shows but cannot be pressed, so screenshots show every control); on a phone they go on a row under the tabs. Settings tabs in one group switch at once, without a page load. The live count (visitors in the last 30 minutes, a green pulsing dot when there are any) belongs to the Overview only: it ends the period row at the top of the summary card, wrapping under the period on a phone, so the tab bar keeps its room for the tabs and controls. Shared reports show it there too unless hidden or filters are locked; printed reports never do.
+
+### Markers
+
+Overview offers **Typical period** for whole-day periods up to 28 days. The comparison keeps its grey dashed line, with a 12%-opacity comparison-colour band behind it spanning the four earlier periods' lowest to highest values. The tooltip and screen-reader table give those bounds as well as the average. Other sections do not offer Typical period; when it arrives from shared view state or a link they show no comparison. No new palette token or setting is needed.
+
+Count charts use fractional axis increments while typical comparison periods are present, so sparse averages such as 0.25 remain readable. Without typical periods, count axes keep whole-number increments.
+
+Charts of a rank (Search → Rankings → Average position) run their axis upside down: first place at the top, fitted to the positions shown rather than from zero, shaded down to the worst position shown, so a better rank reads as the line going up. A day without impressions (position 0) is a gap, not a jump to the top.
+
+Every main chart (Overview, Search → Rankings, Page experience) has a **Trend** switch at its top right, muted 12 px labels in the tab style: Off, Short and Long (each button's name and tooltip say "Short: 1-week average against 13-week average"). Each draws two moving averages: Short a week against a quarter (13 weeks), Long a month (4 weeks) against a year (52 weeks). The long-term line is the text colour (`--seoproan-text`), solid, 2 px. The short-term line, 2 px over it, is green (`--seoproan-good`) where it is better than the long-term line and red (`--seoproan-bad`) where it is worse, split exactly where the two cross; better follows the metric (higher for counts, CTR and duration; lower for average position, which its inverted axis shows as higher, bounce rate and Core Web Vitals). Where there is no long-term average yet, the short-term line is the text colour at 45% opacity, so it is not read as the long-term line. A window needs two points or more at the chart's grain: on weeks the short-term line is 4 weeks, months offer Long only (13 against 52 weeks), hours have no switch. The choice is one for every chart, kept in the browser. Tooltip rows (swatch in the colour at that point) and the screen-reader table give both averages as whole numbers, or to one decimal place for CTR, average position and views per visit. Each point averages the window that ends on it, read from the days before the period too, so the lines start at the first point; rates are weighted by their count (bounce rate by visits, CTR and position by impressions), and an unfinished point is left out. Before a full window of data exists there is no average, and a muted note on the left of the switch names the average that has not enough history yet. Paper hides the switch but keeps the lines.
+
+Each group of the change log has a colour (`--seoproan-mark-{group}`), used for the dots of the chart's markers lane and of the Changes section's rows. A marker is a ring in its first group's colour holding up to three group dots (one dot sits in its middle) and, when it holds more than one change, their count; the colour is never the only sign, as each marker's name and tooltip list its changes. Markers never overlap: ones closer than 18 px, or whose pills would touch (as on a phone), merge into one. Choosing a marker opens its changes in a modal (the Changes table, times only when they share one day), closed with Close or Escape, with **Open in Changes** for the same days and page. A table whose rows are the chart's points (Search → Rankings → Days) shows each row's changes as the same marker in a Changes column before its figures, one per row and never merged, opening the same modal.
+
+- **Content (`#3858e9`)**: posts and pages published, moved, retitled or edited.
+- **SEO (`#8a3fd1`)**: SEO titles, descriptions, robots, canonicals.
+- **Products (`#008a20`)**: prices, sales, stock, coupons.
+- **Site (`#996800`)**: plugins, themes, WordPress, settings.
+- **Search engines (`#c9356e`)**: search engine updates. A rollout also draws a 3 px bar in the group's colour under the markers, from its start to its end (or now), at 55% opacity so overlapping rollouts stay visible; it is decorative, as the marker's label gives the duration.
+- **Notes (`#1d2327`)**: notes added by people and agents.
+
+### World map
+
+The Overview's Map card sits beside Locations: countries in the border grey (`--seoproan-map-empty`; the raised grey `#2c3338` in dark, nearer the surface, so the accent ramp has more room), those with visits a mix from that grey to the accent, stronger for more visits (square-root scale from 30% accent, so one visit still stands apart from none, light or dark), with a 1-to-most legend in the same ramp. Hovering a country shows its name, visits and share in the chart tooltip; choosing one filters by it, as the Locations rows do, and the filtered country gets a dark outline. The map is for sight only; the Locations list carries the same figures for screen readers and keyboards. Overview cards run two to a row on wide screens, one on narrow.
+
+### Tiles and tables
+
+Tiles that pick the chart's metric are buttons (accent underline when chosen); tiles that only report totals, as in Search → Content, look the same but do not react to hover. A table that can be sorted shows its sortable headers as plain-text buttons, the active one in the accent colour with an arrow and `aria-sort`: ↓ highest (or newest) at the top, ↑ lowest (or oldest). A header's first click sorts its natural way: most first, newest first for days, lowest first for position (a lower position is better); clicking the sorted header again reverses it, and the button's tooltip says what the next click does. Search tables open sorted by impressions, most first (Rankings' Days by day, newest first); the choice is kept in the address. On paper the headers are plain text, with the arrow on the sorted column. Other headers are plain text. A change against the comparison sits under its number, green when it is good news for that metric, red when bad.
+
+A row's action buttons (Search → Plan) stand in one column (`.seoproan-plan__buttons`) in a cell as narrow as its widest label, so every button in the column has that width, label centred, whichever buttons a row has.
+
+### Info & ideas
+
+Each section of the statistics screen, and each Search tab, ends with an **Info & ideas** card (`packages/wp-admin/src/components/InfoPanel.tsx`): a 24 px gap above it, the usual card header, then **What does the data say?** (one or two sentences on how to read the section's figures and what a rise or fall points to) and **How can you improve?** (three short actions, naming the screen's own controls where they help), side by side above 782 px and stacked below. Its small headings are muted uppercase 12 px. Text is plain advice in the user guide's words, never figures. It is for the site's owner, so shared and printed reports leave it out.
+
+### Query coverage
+
+Query rows carry a small **Research…** WordPress dropdown beside their existing action, grouped by engine. Its toggle is a link-style button in the accent colour at 12 px on the query's baseline (`.seoproan-research`); the ellipsis says it opens a menu. A space, not a margin, separates it from the query, so when it wraps it starts its line flush. Anchors open in a new tab with no referrer; unsupported operators are labelled and disabled. Keyboard navigation follows the core dropdown's arrow, Enter and Escape behavior. Target research uses text labels (not colour alone), individual measurement dates, core form controls and the existing horizontally scrollable table at narrow widths. Sorting and KGR-band filtering apply to all targets before pagination.
+
+After Research…, query rows in Rankings, Striking distance and Overlapping pages carry **Add as target** for administrators, in the same 12 px link style and spacing (`AddTarget`, `.seoproan-target-add`); it reads Adding… while it saves and shows any error as muted text with `role="alert"`. A search that is a target already shows a small **Target** badge instead (`.seoproan-target-mark`, the app's `.seoproan-app-badge`), with the page meant for it in its title. Shared reports show neither. Search → Targets with no targets yet lists where targets come from (SEO plugin, search reports, keyword research) as a short bulleted list in the empty state, each with a link-style button to its form; Suggest from SEO plugin is a panel like Import targets, with a WordPress list-table check box per new keyword (all ticked at first), its pages as links with Edit, a state badge in words, and one primary Import button that names the count.
+
+Where a query's words are on its page reads as a short label in 12 px semibold (`CoverageBadges`, `.seoproan-coverage`): In the title, In a heading or In the text in the text colour, Partly or Not on the page in the error colour, then for Partly the words missing in muted text, and Question as a 2 px-rounded tag in the accent on its soft background. The words always say it, so colour is never the only sign. The same labels serve Opportunities → Missing from the page and the editor's Search queries panel, which follows the block editor's sidebar: plain headings per part (Focus keywords, Not covered by the page's words, Questions people search), each query in bold with its labels and figures under it, up to eight per part with "and N more".
+
+## 3. Typography
+
+<!-- Define typography levels. Most design systems have 9-15 levels. Common categories: -->
+<!-- headline, display, body, label, caption. Each may have small/medium/large variants. -->
+
+The typography strategy uses **{font-family-primary}** for {body/headlines/both} and **{font-family-secondary}** for {purpose}.
+
+- **Headlines**: Set in {family weight} to establish {tone}.
+- **Body**: {family} at {size} ensures {quality — e.g. contemporary professionalism, long-form readability}.
+- **Labels**: {family} for {technical data / UI elements}. {key treatment — e.g. uppercase with generous letter spacing}.
+
+### Hierarchy
+
+| Role | Token | Font | Size | Weight | Line Height | Letter Spacing | Notes |
+|------|-------|------|------|--------|-------------|----------------|-------|
+| Display | `headline-display` | | | 700 | 1.1 | -0.02em | |
+| Heading 1 | `headline-lg` | | 32px | 600 | 1.2 | | |
+| Heading 2 | `headline-md` | | 24px | 500 | 1.3 | | |
+| Body Large | `body-lg` | | 18px | 400 | 1.6 | | |
+| Body | `body-md` | | 16px | 400 | 1.5 | | |
+| Body Small | `body-sm` | | 14px | 400 | 1.5 | | |
+| Label | `label-md` | | 14px | 500 | 1.4 | | |
+| Label Small | `label-sm` | | 12px | 600 | 1.33 | 0.05em | Caps |
+
+## 4. Layout
+
+<!-- Also known as "Layout & Spacing". -->
+<!-- Describe the layout and spacing strategy. Grid-based, margin-based, or dynamic. -->
+
+The layout follows a **{Fluid Grid | Fixed-Max-Width Grid | Asymmetric | Liquid Glass}** model with a **{value}px** spacing scale ({mention half-step if used, e.g. "with a 4px half-step for micro-adjustments"}).
+
+### Spacing Scale
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `xs` | 4px | Micro-adjustments |
+| `sm` | 8px | Tight spacing |
+| `md` | 16px | Default gap |
+| `lg` | 32px | Section spacing |
+| `xl` | 64px | Major divisions |
+| `gutter` | 24px | Column gutters |
+| `margin` | 32px | Page margins |
+
+### Grid & Container
+
+- **Max content width**: {value}
+- **Columns**: {value}
+- **Gutter**: `{spacing.gutter}`
+- **Container padding**: `{spacing.margin}`
+
+### Whitespace Philosophy
+
+{describe the spacing approach — e.g. "Components are grouped using containment principles, where related items are housed in cards with generous internal padding (24px) to emphasize the soft, approachable nature of the brand."}
+
+## 5. Elevation & Depth
+
+<!-- How visual hierarchy is conveyed. If elevation is used, define styling (spread, blur, color). -->
+<!-- For flat designs, explain alternative methods (borders, color contrast, tonal layers). -->
+
+Depth is achieved through **{shadows | tonal layers | borders | flat contrast}**.
+
+| Level | Treatment | Use |
+|-------|-----------|-----|
+| Flat (0) | No elevation | Default surfaces |
+| Raised (1) | `{shadow value}` | Cards, dropdowns |
+| Elevated (2) | `{shadow value}` | Modals, popovers |
+| Overlay (3) | `{shadow value}` | Tooltips, notifications |
+
+## 6. Shapes
+
+<!-- Describe how visual elements are shaped. Corner radius strategy. -->
+
+The shape language is defined by **{Architectural Sharpness | Soft Modernism | Pill Interaction | …}**. {describe corner-radius approach}.
+
+### Rounded Scale
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `none` | 0 | Sharp corners, data tables |
+| `sm` | 4px | Inputs, badges, tags |
+| `md` | 8px | Buttons, cards |
+| `lg` | 16px | Panels, modals, dialogs |
+| `xl` | 24px | Heroes, feature cards |
+| `full` | 9999px | Pills, avatars, circular buttons |
+
+## 7. Components
+
+### Emails
+
+Emails use presentation tables, inline styles and a fluid width capped at 600px.
+The canvas is `#f0f0f1`, the surface white, text `#1d2327`, muted text `#50575e`
+and dividers `#dcdcde`. Padding is 24px with 12–16px spacing within blocks.
+Shared-report branding supplies the accent border, site title and optional local
+site/agency logos, agency name, website, byline and credit. An empty title uses
+the site name and a zero logo uses the site's custom logo. The email stays light
+regardless of dashboard mode and remains useful with images disabled. Buttons
+keep dark text on white with an accent outline so arbitrary brand accents cannot
+make their labels unreadable. Metric direction is written as up/down/flat, not
+conveyed by color alone. Data tables have column headings; layout tables are
+presentational. Every block also appears in the plain-text alternative.
+Never include tracking pixels, third-party images, remote fonts, scripts, or
+link tracking. The test message labels its figures as sample data.
+
+<!-- Style guidance for component atoms. Use YAML `components:` in front matter for token references. -->
+<!-- Prose below documents interactive states, behaviour, and anti-patterns for each component. -->
+
+### Cross-cutting component rules
+
+<!-- Broad rules apply across many elements. Keep these durable and reusable. -->
+
+- Branding/theming: {how brand tokens, theme modes, and platform variants stay consistent}
+- Accessibility: {keyboard, screen-reader, contrast, text scaling, and reduced-motion conventions}
+- Sizing/spacing: {padding, density, alignment, hierarchy, and touch-target rules}
+- Navigation/orientation: {consistent placement, direction, breadcrumbs, tabs, or flow rules}
+- Interaction feedback: {hover, focus, active, loading, success, error, and disabled conventions}
+
+### Tracker test inspector
+
+Only explicit test mode creates this front-end UI: a fixed bottom-end badge,
+16px from the edges, with a hit count and “Stats test mode: nothing is recorded”.
+Native details/summary provides keyboard disclosure; a scrollable text-only
+list shows the last 30 hits without interpreting their content as markup.
+Use the theme's palette 9/3 or system Canvas/CanvasText, a currentColor border,
+12px padding and viewport-bounded width/height, so light/dark themes and small
+screens remain readable. Inspector interactions are excluded from autocapture.
+
+### Buttons
+
+#### Primary (`{components.button-primary}`)
+
+- States: Default → Hover (`{components.button-primary-hover}`) → Active → Focus → Disabled
+- Focus ring: {description}
+- Disabled: {description}
+
+#### Secondary (`{components.button-secondary}`)
+
+- {specs beyond tokens}
+
+#### Ghost / Outline
+
+- Background: transparent
+- Border: {value}
+- Hover: {description}
+
+### Inputs
+
+**Text Input** (`{components.input-default}`)
+
+- Focus: {description}
+- Error: {description — reference `{colors.error}`}
+- Disabled: {description}
+
+### Links
+
+- Default: {colour + decoration}
+- Hover: {colour + decoration}
+- Visited: {colour + decoration}
+
+### Cards & Containers
+
+**Card** (`{components.card}`)
+
+- Shadow: {reference §5}
+- Content spacing: {value}
+
+### Navigation
+
+{nav style description — fixed/sticky, transparent/opaque, backdrop-filter usage if glass style}
+
+### Canonical examples
+
+#### Page experience: field evidence and optional lab tests
+
+Reference: `packages/wp-admin/src/Vitals.tsx`. Search → Audit uses a
+WordPress Card and a scrollable table, with page row headers, clicks and
+visits beside dated field samples. Poor Core Web Vitals are named in text,
+not conveyed by colour alone. No-data and stale samples are explicit.
+Overview and Rankings use a collapsed origin-metrics card and the existing
+accessible MainChart; metric and form-factor controls never imply that
+overlapping 28-day field windows are daily measurements. Lighthouse is an
+administrator-only action on a page row, disabled while a request runs,
+with its lab opportunities and failures labelled separately. These cards
+are omitted from shared report shells.
+
+<!-- Specific examples apply to a component type or use case. Reference approved implementations instead of pasting transcripts. -->
+
+#### {Element type}: {variant or use case}
+
+Reference: `{path/to/refined/component-or-page}`
+
+Use when:
+
+- {conditions}
+
+Follow:
+
+- {specific standards from the reference}
+
+Allowed variations:
+
+- {theme, brand, density, platform, or content variations}
+
+Avoid:
+
+- {known anti-patterns}
+
+Responsive/accessibility notes:
+
+- {mobile, touch, keyboard, contrast, text scaling, reduced motion}
+
+## 8. Do's and Don'ts
+
+<!-- Practical guidelines and common pitfalls. These act as guardrails when creating designs. -->
+
+**Do:**
+
+- Use `{colors.primary}` only for the single most important action per screen
+- Maintain WCAG AA contrast ratios (4.5:1 for normal text, 3:1 for large text)
+- Keep broad rules reusable and component examples specific to referenced implementations
+- {project-specific guideline}
+
+**Don't:**
+
+- Mix sharp (`{rounded.none}`) and rounded (`{rounded.lg}`) corners in the same view
+- Use more than two font weights on a single screen
+- Paste session transcripts or one-off implementation history into design standards
+- {project-specific anti-pattern}
+
+---
+
+<!-- Sections 9-10 below are aidevops-specific extensions. The Google Labs DESIGN.md spec preserves -->
+<!-- unknown sections per its "Consumer Behavior for Unknown Content" rule. -->
+
+## 9. Responsive Behaviour
+
+<!-- aidevops extension: breakpoints, touch targets, collapsing strategy. -->
+<!-- Preserved per spec's unknown-section rule. -->
+
+### Breakpoints
+
+| Name | Width | Key Changes |
+|------|-------|-------------|
+| Mobile | < 640px | Single column, stacked |
+| Tablet | 640px–1023px | 2 columns |
+| Desktop | 1024px–1439px | Full layout |
+| Wide | ≥ 1440px | Max-width contained |
+
+### Touch Targets
+
+- Minimum: 44x44px (iOS) / 48x48dp (Android)
+
+### Mobile Rules
+
+- {mobile-specific behaviour}
+
+### Canonical Example Variants
+
+- For each canonical example that changes by viewport, note the expected mobile, tablet, desktop, and wide behaviours.
+
+## 10. Agent Prompt Guide
+
+<!-- aidevops extension: quick reference and ready-to-use prompts for coding agents. -->
+<!-- Preserved per spec's unknown-section rule. -->
+
+### Quick Token Reference
+
+Primary tokens a coding agent reaches for most often:
+
+| Use | Token | Value |
+|-----|-------|-------|
+| Page background | `{colors.background}` | `#{hex}` |
+| Card/panel background | `{colors.surface}` | `#{hex}` |
+| Main text | `{colors.primary}` | `#{hex}` |
+| Muted text | `{colors.secondary}` | `#{hex}` |
+| CTAs, highlights | `{colors.tertiary}` | `#{hex}` |
+| Default body | `{typography.body-md}` | — |
+| Primary action | `{components.button-primary}` | — |
+
+### Ready-to-Use Prompts
+
+- "Build a hero section": {specific instructions referencing tokens above}
+- "Build a feature grid": {specific instructions — e.g. "3 cards using `{components.card}`, `{typography.headline-md}` for titles, `{spacing.lg}` between cards"}
+- "Build a pricing table": {specific instructions}
+
+<!--
+Generated by AI DevOps (https://aidevops.sh)
+DESIGN.md spec: https://github.com/google-labs-code/design.md
+-->

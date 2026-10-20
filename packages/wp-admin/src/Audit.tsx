@@ -1,0 +1,454 @@
+/**
+ * Search → Audit: what WordPress says about each published page (its
+ * title, description, headings, length, images, noindex and canonical
+ * address, from the post and the SEO plugin's fields), with the pages
+ * that have a finding listed by their search impressions, so the pages
+ * that matter most come first. Facts are read when a post is saved and
+ * in daily batches; each finding also goes to Plan, weighed by search
+ * and conversions. Google's URL Inspection adds four findings (blocked
+ * by robots.txt, crawled but not indexed, Google picked another canonical,
+ * rich result errors). Below it, internal links (./Links), read from the
+ * same text, and indexation (./Indexation): pages search has not shown,
+ * with Search Console's sitemaps.
+ *
+ * Choosing a page opens it in Rankings.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+import { useState } from 'react';
+import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
+import { __, _n, sprintf } from '@wordpress/i18n';
+import {
+	apiArgs,
+	AUDIT_FINDINGS,
+	formatDecimal,
+	formatNumber,
+	formatPercent,
+	SEARCH_SORTS,
+	tableSort,
+	type AuditAnswer,
+	type AuditFinding,
+	type AuditRow,
+	type CrawlIssue,
+	singleEngine,
+	type SearchEngine,
+	type SearchSort,
+} from '@seoproanalytics/core';
+import { errorMessage, scopeKey, useAudit } from './api';
+import { locale } from './boot';
+import { CrawlIssues } from './CrawlIssues';
+import { Indexation } from './Indexation';
+import { Inspections } from './Inspections';
+import { Links } from './Links';
+import { SiteCrawl } from './SiteCrawl';
+import { Vitals } from './Vitals';
+import { longLabel } from './dates';
+import { PeriodLine } from './Overview';
+import { PageCell } from './Opportunities';
+import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
+import { SortHeader, type TableSortProps } from './components/SortHeader';
+import { TableScroll } from './components/TableScroll';
+
+const PER_PAGE = 25;
+
+const number = (value: number) => formatNumber(value, locale, false);
+const percent = (value: number) => formatPercent(value, locale);
+const place = (value: number | null) => (value === null ? '–' : formatDecimal(value, locale));
+
+/** A finding's name, short enough for a list. */
+export function findingName(finding: AuditFinding | 'page_experience' | 'clicked_broken'): string {
+	const names: Record<AuditFinding | 'page_experience' | 'clicked_broken', string> = {
+		noindex: __('Not indexed', 'seoproanalytics'),
+		canonical: __('Canonical is another page', 'seoproanalytics'),
+		crawl_error: __('Crawl error', 'seoproanalytics'),
+		served_noindex: __('Served with noindex', 'seoproanalytics'),
+		served_canonical: __('Served with another canonical', 'seoproanalytics'),
+		served_title: __('Served title differs', 'seoproanalytics'),
+		served_description: __('Served description differs or is missing', 'seoproanalytics'),
+		unreachable: __('Not reached by the crawl', 'seoproanalytics'),
+		deep: __('Four or more clicks deep', 'seoproanalytics'),
+		slow: __('Slow as the crawler measured', 'seoproanalytics'),
+		broken_links: __('Broken links', 'seoproanalytics'),
+		redirect_links: __('Links through redirects', 'seoproanalytics'),
+		clicked_broken: __('Clicked link fails or redirects', 'seoproanalytics'),
+		robots_blocked: __('Blocked by robots.txt', 'seoproanalytics'),
+		not_indexed: __('Crawled, not indexed', 'seoproanalytics'),
+		google_canonical: __('Google picked another canonical', 'seoproanalytics'),
+		bing_crawl: __('Bing crawl error', 'seoproanalytics'),
+		thin: __('Thin content', 'seoproanalytics'),
+		title_missing: __('No title', 'seoproanalytics'),
+		title_duplicate: __('Same title as other pages', 'seoproanalytics'),
+		title_long: __('Title too long', 'seoproanalytics'),
+		description_missing: __('No description', 'seoproanalytics'),
+		description_duplicate: __('Same description as other pages', 'seoproanalytics'),
+		description_long: __('Description too long', 'seoproanalytics'),
+		h1_none: __('No H1', 'seoproanalytics'),
+		h1_several: __('Several H1s', 'seoproanalytics'),
+		rich_errors: __('Rich result errors', 'seoproanalytics'),
+		images_alt: __('Images without alt text', 'seoproanalytics'),
+		page_experience: __('Poor Core Web Vitals', 'seoproanalytics'),
+	};
+	return names[finding];
+}
+
+/** A Bing crawl issue's name, short enough for a list. */
+export function crawlIssueName(issue: CrawlIssue): string {
+	const names: Record<CrawlIssue, string> = {
+		redirect_301: __('Permanent redirect (301)', 'seoproanalytics'),
+		redirect_302: __('Temporary redirect (302)', 'seoproanalytics'),
+		client_error: __('Client error (4xx)', 'seoproanalytics'),
+		server_error: __('Server error (5xx)', 'seoproanalytics'),
+		robots_blocked: __('Blocked by robots.txt', 'seoproanalytics'),
+		malware: __('Malware', 'seoproanalytics'),
+		important_blocked: __('Important page blocked', 'seoproanalytics'),
+		dns: __('DNS failure', 'seoproanalytics'),
+		timeout: __('Connection timeout', 'seoproanalytics'),
+	};
+	return names[issue];
+}
+
+/** Bing's crawl issues of an address with the HTTP status it got. */
+export function crawlIssueText(http: number, issues: CrawlIssue[]): string {
+	const names = issues.map(crawlIssueName).join(', ');
+	/* translators: 1: HTTP status code, 2: Bing's crawl issues. */
+	return http > 0 ? sprintf(__('Bing: HTTP %1$s, %2$s', 'seoproanalytics'), String(http), names) : sprintf(/* translators: %s: Bing's crawl issues. */ __('Bing: %s', 'seoproanalytics'), names);
+}
+
+/** An HTTP status the imported crawl got, in a few words. */
+export function crawlStatusText(status: number): string {
+	/* translators: %s: HTTP status code. */
+	return status > 0 ? sprintf(__('Crawl: HTTP %s', 'seoproanalytics'), String(status)) : __('Crawl: no answer', 'seoproanalytics');
+}
+
+/** Which findings stop a page showing in search, rather than weaken it. */
+const SERIOUS: ReadonlySet<AuditFinding> = new Set<AuditFinding>(['noindex', 'canonical', 'crawl_error', 'served_noindex', 'served_canonical', 'robots_blocked', 'not_indexed', 'google_canonical']);
+
+/** The fact behind a finding on a page, in a few words. */
+function findingDetail(finding: AuditFinding, row: AuditRow): string {
+	const f = row.facts;
+	const g = row.google;
+	const c = row.crawl;
+	switch (finding) {
+		case 'unreachable':
+			return __('A complete crawl did not reach this published, indexable page', 'seoproanalytics');
+		case 'deep':
+			return c?.depth !== null && c?.depth !== undefined ? sprintf(/* translators: %s: crawl depth. */ __('Crawl depth: %s', 'seoproanalytics'), number(c.depth)) : '';
+		case 'crawl_error':
+			return c ? crawlStatusText(c.status ?? 0) : '';
+		case 'served_noindex':
+		case 'served_canonical':
+			return __('WordPress does not set it: a plugin, the theme, a cache or the host adds it', 'seoproanalytics');
+		case 'served_title':
+		case 'served_description':
+			return __('Compare served and stored text in Site crawl', 'seoproanalytics');
+		case 'broken_links':
+			/* translators: %s: number of links. */
+			return c ? sprintf(_n('%s link fails', '%s links fail', c.broken, 'seoproanalytics'), number(c.broken)) : '';
+		case 'redirect_links':
+			/* translators: %s: number of links. */
+			return c ? sprintf(_n('%s internal link redirects', '%s internal links redirect', c.redirects, 'seoproanalytics'), number(c.redirects)) : '';
+		case 'robots_blocked':
+		case 'not_indexed':
+			return g?.coverage ? sprintf(/* translators: %s: Google's reason, in its words. */ __('Google: %s', 'seoproanalytics'), g.coverage) : '';
+		case 'google_canonical':
+			return g?.google_canonical ?? '';
+		case 'bing_crawl':
+			return row.bing ? crawlIssueText(row.bing.http, row.bing.issues) : '';
+		case 'rich_errors':
+			return (g?.rich ?? [])
+				.filter((t) => t.errors > 0)
+				.map((t) => `${t.type}: ${t.issues.filter((i) => i.severity === 'error').map((i) => i.message).join('; ')}`)
+				.join(' · ');
+		case 'thin':
+			/* translators: %s: number of words. */
+			return sprintf(_n('%s word, no clicks', '%s words, no clicks', f.words, 'seoproanalytics'), number(f.words));
+		case 'title_long':
+			/* translators: %s: number of characters. */
+			return sprintf(_n('%s character', '%s characters', f.title_length, 'seoproanalytics'), number(f.title_length));
+		case 'description_long':
+			/* translators: %s: number of characters. */
+			return sprintf(_n('%s character', '%s characters', f.description_length, 'seoproanalytics'), number(f.description_length));
+		case 'h1_none':
+			return c?.h1 !== null && c?.h1 !== undefined ? __('As served', 'seoproanalytics') : '';
+		case 'h1_several':
+			/* translators: %s: number of H1 headings. */
+			return c?.h1 !== null && c?.h1 !== undefined
+				? sprintf(/* translators: %s: number of H1 headings. */ __('%s as served', 'seoproanalytics'), number(c.h1))
+				: sprintf(__('%s in the text', 'seoproanalytics'), number(f.h1));
+		case 'images_alt':
+			/* translators: 1: images without alt text, 2: images. */
+			return sprintf(__('%1$s of %2$s', 'seoproanalytics'), number(f.images_no_alt), number(f.images));
+		case 'title_duplicate':
+			return row.same_title.join(', ');
+		case 'description_duplicate':
+			return row.same_description.join(', ');
+		default:
+			return '';
+	}
+}
+
+/** The SEO plugin the facts were read from. */
+function pluginName(plugin: string): string {
+	const names: Record<string, string> = {
+		'rank-math': 'Rank Math',
+		yoast: 'Yoast SEO',
+		seopress: 'SEOPress',
+		aioseo: 'All in One SEO',
+		demo: __('the demo data', 'seoproanalytics'),
+	};
+	return names[plugin] ?? '';
+}
+
+type AuditProps = SearchReportProps & {
+	open: (pick: SearchPick) => void;
+};
+
+export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) {
+	const finding: AuditFinding | '' = state.finding ?? '';
+	const engine: SearchEngine = singleEngine(state.engine);
+	// Most impressions first unless a header was chosen.
+	const by = tableSort(SEARCH_SORTS, state.sort, state.order);
+	// Back to the first rows when the period, filters, engine, finding or order change.
+	const scope = scopeKey(apiArgs({ ...state, compare: 'none' }), engine, finding, by);
+	const [at, setAt] = useState({ scope, offset: 0 });
+	const offset = at.scope === scope ? at.offset : 0;
+	const setOffset = (next: number) => setAt({ scope, offset: next });
+	const query = useAudit(state, finding, PER_PAGE, offset, by);
+	const answer = query.data;
+	useReportEngines(answer, onEngines);
+	const rows = answer?.rows ?? [];
+
+	return (
+		<>
+			{query.isError && (
+				<Notice status="error" isDismissible={false} className="seoproan-notice">
+					{errorMessage(query.error, __('The audit could not be loaded. Reload the page to try again.', 'seoproanalytics'))}
+				</Notice>
+			)}
+			{answer && <SearchSetup answer={answer} />}
+			{answer && answer.ignored.length > 0 && (
+				<Notice status="warning" isDismissible={false} className="seoproan-notice">
+					{__('Search data has no visits, so only page filters apply here; the other filters are left out.', 'seoproanalytics')}
+				</Notice>
+			)}
+
+			<Card className="seoproan-app-card is-wide seoproan-app-section" size="small">
+				<CardHeader className="seoproan-app-card__header">
+					<div>
+						<h2 className="seoproan-app-card__title">{__('Content audit', 'seoproanalytics')}</h2>
+						{answer?.through && answer.days > 0 && <PeriodLine range={answer.range} />}
+						{answer?.through && (
+							<p className="seoproan-meta">
+								{sprintf(
+									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
+									__('Search figures from %1$s, final days through %2$s', 'seoproanalytics'),
+									sourceName(engine),
+									longLabel(answer.through, 'day')
+								)}
+							</p>
+						)}
+					</div>
+					{answer && (
+						<div className="seoproan-changes__filters seoproan-plan__filters">
+							<SelectControl
+								__nextHasNoMarginBottom
+								label={__('Show', 'seoproanalytics')}
+								value={finding}
+								options={[
+									{ value: '', label: `${__('Every finding', 'seoproanalytics')} (${number(answer.pages)})` },
+									...AUDIT_FINDINGS.map((f) => ({ value: f, label: `${findingName(f)} (${number(answer.counts[f] ?? 0)})` })),
+								]}
+								onChange={(next: string) => update({ finding: next ? (next as AuditFinding) : undefined })}
+							/>
+						</div>
+					)}
+				</CardHeader>
+				<CardBody className="seoproan-app-card__body">
+					{!answer && !query.isError && <div className="seoproan-skeleton seoproan-skeleton--table" aria-busy="true" />}
+					{answer && answer.checked.pages > 0 && (
+						<p className="seoproan-note seoproan-opportunities__intro">
+							{__(
+								'What WordPress says about each published page: its title and description (from the SEO plugin, else the post), headings, length, images, and whether it asks not to be indexed or names another page as canonical. Pages with most search impressions come first, so the fixes that matter most are at the top (a column’s header sorts by it instead); each finding is also in Plan, weighed by search and conversions.',
+								'seoproanalytics'
+							)}
+						</p>
+					)}
+					{answer && !rows.length && (
+						<div className="seoproan-app-empty">
+							<p>{emptyMessage(answer.checked.pages > 0, finding !== '')}</p>
+						</div>
+					)}
+					{rows.length > 0 && answer && (
+						<AuditTable rows={rows} {...tableSort(SEARCH_SORTS, answer.sort, answer.order)} onSort={(sort, order) => update({ sort, order })} open={open} refreshing={query.isFetching} />
+					)}
+					{answer && answer.checked.pages > 0 && <Notes answer={answer} />}
+					{answer && answer.total > PER_PAGE && (
+						<nav className="seoproan-changes__pager" aria-label={__('Pages of the audit', 'seoproanalytics')}>
+							<span className="seoproan-muted">
+								{sprintf(
+									/* translators: 1: first row shown, 2: last row shown, 3: number of rows. */
+									__('%1$s–%2$s of %3$s', 'seoproanalytics'),
+									number(offset + 1),
+									number(Math.min(offset + PER_PAGE, answer.total)),
+									number(answer.total)
+								)}
+							</span>
+							<Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PER_PAGE))}>
+								{__('Previous', 'seoproanalytics')}
+							</Button>
+							<Button variant="secondary" disabled={!answer.more} onClick={() => setOffset(offset + PER_PAGE)}>
+								{__('Next', 'seoproanalytics')}
+							</Button>
+						</nav>
+					)}
+				</CardBody>
+			</Card>
+
+			<Links state={state} update={update} open={open} onEngines={onEngines} />
+			<Vitals />
+
+			<Indexation state={state} update={update} open={open} onEngines={onEngines} />
+
+			{engine === 'google' && <Inspections state={state} update={update} open={open} onEngines={onEngines} />}
+
+			<SiteCrawl state={state} />
+
+			{engine === 'bing' && <CrawlIssues />}
+		</>
+	);
+}
+
+/** The empty list's message: nothing read yet, nothing with the finding chosen, or nothing found. */
+function emptyMessage(read: boolean, filtered: boolean): string {
+	if (!read) {
+		return __('No page has been read yet. Pages are read when they are saved, and in a daily batch.', 'seoproanalytics');
+	}
+	return filtered ? __('No page has this finding.', 'seoproanalytics') : __('No page read has a finding.', 'seoproanalytics');
+}
+
+/** Notes under the list: what was read and when, and the rules. */
+function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
+	const r = answer.rules;
+	const plugin = pluginName(answer.plugin);
+	const notes: string[] = [
+		answer.checked.oldest && answer.checked.newest
+			? sprintf(
+					/* translators: 1: number of pages, 2: a day, 3: a day. */
+					_n('%1$s page read, from %2$s to %3$s.', '%1$s pages read, from %2$s to %3$s.', answer.checked.pages, 'seoproanalytics'),
+					number(answer.checked.pages),
+					longLabel(answer.checked.oldest.slice(0, 10), 'day'),
+					longLabel(answer.checked.newest.slice(0, 10), 'day')
+				)
+			: sprintf(
+					/* translators: %s: number of pages. */
+					_n('%s page read.', '%s pages read.', answer.checked.pages, 'seoproanalytics'),
+					number(answer.checked.pages)
+				),
+		plugin
+			? sprintf(/* translators: %s: an SEO plugin's name, e.g. "Yoast SEO". */ __('Titles, descriptions, noindex and canonical addresses are read from %s.', 'seoproanalytics'), plugin)
+			: __('No SEO plugin was found, so titles and descriptions are the post’s own title and excerpt.', 'seoproanalytics'),
+		sprintf(
+			/* translators: 1: number of pages, 2: number of days. */
+			__('A page is read again when it is saved; others in a daily batch of %1$s, each at least every %2$s days.', 'seoproanalytics'),
+			number(r.batch),
+			number(r.stale_days)
+		),
+		sprintf(
+			/* translators: 1: most characters of a title, 2: most characters of a description, 3: fewest words, 4: impressions. */
+			__('Titles over %1$s characters and descriptions over %2$s are long. Thin content is under %3$s words with %4$s or more impressions and no clicks. Not indexed and canonical are listed only for pages that still show in search.', 'seoproanalytics'),
+			number(r.title_max),
+			number(r.description_max),
+			number(r.thin_words),
+			number(r.thin_impressions)
+		),
+		__(
+			'Blocked by robots.txt, crawled but not indexed, Google picked another canonical and rich result errors come from Google’s URL Inspection of the page (the version in Google’s index), while Search Console is connected; see Indexation below for the daily inspections.',
+			'seoproanalytics'
+		),
+		__(
+			'Crawl error, served with noindex or another canonical, broken links and links through redirects come from a crawl of the site imported in Settings → Import (what visitors and search engines were served, after the theme, plugins, caching and the host); they are listed whatever the page’s impressions. See Site crawl below.',
+			'seoproanalytics'
+		),
+	];
+	if (answer.cut) {
+		notes.push(
+			sprintf(
+				/* translators: %s: number of days. */
+				_n('Search figures from the newest %s day of the period.', 'Search figures from the newest %s days of the period.', answer.days, 'seoproanalytics'),
+				number(answer.days)
+			)
+		);
+	}
+	return (
+		<div className="seoproan-note">
+			{notes.map((note) => (
+				<p key={note}>{note}</p>
+			))}
+		</div>
+	);
+}
+
+interface AuditTableProps extends TableSortProps<SearchSort> {
+	rows: AuditRow[];
+	open: AuditProps['open'];
+	refreshing: boolean;
+}
+
+function AuditTable({ rows, open, refreshing, sort, order, onSort }: Readonly<AuditTableProps>) {
+	const header = (column: SearchSort, label: string) => <SortHeader column={column} label={label} sort={sort} order={order} onSort={onSort} />;
+	return (
+		<TableScroll label={__('Content audit', 'seoproanalytics')}>
+			<table className={`widefat striped seoproan-table seoproan-decay seoproan-audit${refreshing ? ' is-refreshing' : ''}`}>
+				<thead>
+					<tr>
+						<th scope="col">{__('Page', 'seoproanalytics')}</th>
+						<th scope="col" className="seoproan-audit__findings">
+							{__('Findings', 'seoproanalytics')}
+						</th>
+						{header('impressions', __('Impressions', 'seoproanalytics'))}
+						{header('clicks', __('Clicks', 'seoproanalytics'))}
+						{header('ctr', __('CTR', 'seoproanalytics'))}
+						{header('position', __('Position', 'seoproanalytics'))}
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((row) => (
+						<tr key={row.path_id}>
+							<td>
+								<PageCell
+									row={row}
+									query=""
+									open={open}
+									extra={sprintf(
+										/* translators: %s: number of words. */
+										_n('%s word', '%s words', row.facts.words, 'seoproanalytics'),
+										number(row.facts.words)
+									)}
+								/>
+							</td>
+							<td>
+								<ul className="seoproan-decay__list">
+									{row.findings.map((f) => {
+										const detail = findingDetail(f, row);
+										return (
+											<li key={f}>
+												<strong className={`seoproan-cause${SERIOUS.has(f) ? ' is-gone' : ''}`}>{findingName(f)}</strong>
+												{detail && <span className="seoproan-meta">{detail}</span>}
+											</li>
+										);
+									})}
+								</ul>
+							</td>
+							<td className="num">{number(row.impressions)}</td>
+							<td className="num">{number(row.clicks)}</td>
+							<td className="num">{row.impressions ? percent(row.ctr) : '–'}</td>
+							<td className="num">{row.impressions ? place(row.position) : '–'}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</TableScroll>
+	);
+}

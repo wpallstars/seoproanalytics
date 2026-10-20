@@ -1,0 +1,37 @@
+# Repository facts for the README badges: lines of code, languages and
+# dependencies in docs/metrics/ (kept out of the release zips by /docs in
+# .distignore). Runs after pushes to main and weekly, skips when the metrics
+# are under a day old, and commits any change to main with [skip ci].
+#
+# The work is the aidevops reusable workflow (https://aidevops.sh). The
+# workflow and the helper scripts it checks out are pinned to the same
+# aidevops commit; update both together (Dependabot leaves this one alone,
+# see .github/dependabot.yml).
+name: Repository metrics
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/metrics/**"
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metrics:
+    uses: marcusquinn/aidevops/.github/workflows/loc-badge-reusable.yml@821b82a18712bb74b72ec9b55d9ae0a98adb46e9 # v3.39.1
+    permissions:
+      contents: write
+    with:
+      aidevops_ref: 821b82a18712bb74b72ec9b55d9ae0a98adb46e9 # v3.39.1, the same commit as uses:
+      # Everything in docs/metrics/, nothing in .github/ (a core folder that
+      # scripts/sync-core.sh copies to every plugin).
+      legacy_badge_dir: docs/metrics/badges
+      # GitHub-hosted unless CI_RUNNER names a self-hosted label (ci.yml).
+      runner: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    secrets:
+      SYNC_PAT: ${{ secrets.SYNC_PAT }}

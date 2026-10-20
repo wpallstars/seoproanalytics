@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SEO Pro Analytics banner (WordPress.org banners and the Read Me tab).
+  Source: .wordpress-org/banner.svg. Edit that, then run scripts/build-banner.sh.
+  Branding follows wpallstars.com: navy, red and cream, Zilla Slab italic
+  headings, the wpallstars plugin stack in red only with SEO Pro Analytics' rising bars (the menu icon's) on top, the logo's arc of five stars and its red double stripes (here with cream between).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1544" height="500" viewBox="0 0 1544 500">
+  <title>WPALLSTARS SEO Pro Analytics: Actionable analytics</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#000c1f"/>
+      <stop offset="0.55" stop-color="#001537"/>
+      <stop offset="1" stop-color="#0d264d"/>
+    </linearGradient>
+    <radialGradient id="glow-blue" cx="1214" cy="270" r="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#bb0000" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#bb0000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-red" cx="200" cy="580" r="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#bb0000" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#bb0000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-gold" cx="1214" cy="76" r="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffc94d" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffc94d" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="dots-fade" cx="1214" cy="260" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="14" cy="14" r="1.5" fill="#ffffea" fill-opacity="0.12"/>
+    </pattern>
+    <mask id="dots-mask">
+      <rect width="1544" height="500" fill="url(#dots-fade)"/>
+    </mask>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe08a"/>
+      <stop offset="1" stop-color="#f5a524"/>
+    </linearGradient>
+    <linearGradient id="gold-text" x1="96" y1="280" x2="700" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd970"/>
+      <stop offset="1" stop-color="#f5a524"/>
+    </linearGradient>
+    <linearGradient id="gold-text-details" x1="96" y1="224" x2="700" y2="284" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd970"/>
+      <stop offset="1" stop-color="#f5a524"/>
+    </linearGradient>
+    <linearGradient id="top-red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#bb0000"/>
+    </linearGradient>
+    <linearGradient id="top-cream" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a8a"/>
+      <stop offset="1" stop-color="#e03131"/>
+    </linearGradient>
+    <linearGradient id="top-blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c81e1e"/>
+      <stop offset="1" stop-color="#7a0000"/>
+    </linearGradient>
+    <!-- A five-pointed star, radius 1, centred on 0,0 -->
+    <polygon id="star" points="0,-1 0.2245,-0.309 0.9511,-0.309 0.3633,0.118 0.5878,0.809 0,0.382 -0.5878,0.809 -0.3633,0.118 -0.9511,-0.309 -0.2245,-0.309"/>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1544" height="500" fill="url(#bg)"/>
+  <rect width="1544" height="500" fill="url(#glow-red)"/>
+  <rect width="1544" height="500" fill="url(#glow-blue)"/>
+  <rect width="1544" height="500" fill="url(#dots)" mask="url(#dots-mask)"/>
+
+  <!-- wpallstars.com's red double lines, with a cream line between them. -->
+  <g>
+    <rect y="0" width="1544" height="6" fill="#bb0000"/>
+    <rect y="6" width="1544" height="5" fill="#ffffea"/>
+    <rect y="11" width="1544" height="6" fill="#bb0000"/>
+    <rect y="483" width="1544" height="6" fill="#bb0000"/>
+    <rect y="489" width="1544" height="5" fill="#ffffea"/>
+    <rect y="494" width="1544" height="6" fill="#bb0000"/>
+  </g>
+
+  <!-- The picture: scaled down a little so it keeps clear of the stripes -->
+  <g transform="translate(1214 248) scale(0.86) translate(-1214 -248)">
+  <!-- The stack: red, cream and blue layers, each with a top face and two sides -->
+  <g stroke-linejoin="round">
+    <g transform="translate(0 350)">
+      <polygon points="1064,0 1214,87 1214,117 1064,30" fill="#5c0000"/>
+      <polygon points="1214,87 1364,0 1364,30 1214,117" fill="#420000"/>
+      <polygon points="1214,-87 1364,0 1214,87 1064,0" fill="url(#top-blue)"/>
+      <polygon points="1214,-61 1319,0 1214,61 1109,0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
+    </g>
+    <g transform="translate(0 294)">
+      <polygon points="1064,0 1214,87 1214,117 1064,30" fill="#c22424"/>
+      <polygon points="1214,87 1364,0 1364,30 1214,117" fill="#9e1414"/>
+      <polygon points="1214,-87 1364,0 1214,87 1064,0" fill="url(#top-cream)"/>
+      <polygon points="1214,-61 1319,0 1214,61 1109,0" fill="none" stroke="#001537" stroke-opacity="0.18" stroke-width="2"/>
+    </g>
+    <g transform="translate(0 238)">
+      <polygon points="1064,0 1214,87 1214,117 1064,30" fill="#940000"/>
+      <polygon points="1214,87 1364,0 1364,30 1214,117" fill="#700000"/>
+      <polygon points="1214,-87 1364,0 1214,87 1064,0" fill="url(#top-red)"/>
+      <!-- SEO Pro Analytics' own mark in place of the starter's plug: the menu
+           icon's rising bars, standing on the top face in a row from left to
+           right, cream then cream then gold (like the star above). Each bar's
+           footprint is 60 x 34.8 (a fifth of the face); shadows fall back
+           and right on the face. -->
+      <g fill="#5c0000" fill-opacity="0.5">
+        <polygon points="1103,-2 1133,-19.4 1163,-2 1133,15.4"/>
+        <polygon points="1193,-2 1223,-19.4 1253,-2 1223,15.4"/>
+        <polygon points="1283,-2 1313,-19.4 1343,-2 1313,15.4"/>
+      </g>
+      <g stroke="#ffffea" stroke-opacity="0.35" stroke-width="1" stroke-linejoin="round">
+        <polygon points="1094,0 1124,17.4 1124,-14.6 1094,-32" fill="#ece0c2"/>
+        <polygon points="1124,17.4 1154,0 1154,-32 1124,-14.6" fill="#c9b68c"/>
+        <polygon points="1094,-32 1124,-49.4 1154,-32 1124,-14.6" fill="#ffffea"/>
+        <polygon points="1184,0 1214,17.4 1214,-40.6 1184,-58" fill="#ece0c2"/>
+        <polygon points="1214,17.4 1244,0 1244,-58 1214,-40.6" fill="#c9b68c"/>
+        <polygon points="1184,-58 1214,-75.4 1244,-58 1214,-40.6" fill="#ffffea"/>
+        <polygon points="1274,0 1304,17.4 1304,-66.6 1274,-84" fill="#f5b53a"/>
+        <polygon points="1304,17.4 1334,0 1334,-84 1304,-66.6" fill="#c97f0e"/>
+        <polygon points="1274,-84 1304,-101.4 1334,-84 1304,-66.6" fill="url(#gold)"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- The logo's arc of five stars: gold in the middle, floating above the stack -->
+  <circle cx="1214" cy="76" r="120" fill="url(#glow-gold)"/>
+  <g stroke-linejoin="round">
+    <g fill="#bb0000" stroke="#ffffea" stroke-width="5">
+      <use xlink:href="#star" transform="translate(1043 150) scale(17)" stroke-width="0.3"/>
+      <use xlink:href="#star" transform="translate(1110 100) scale(26)" stroke-width="0.2"/>
+      <use xlink:href="#star" transform="translate(1318 100) scale(26)" stroke-width="0.2"/>
+      <use xlink:href="#star" transform="translate(1385 150) scale(17)" stroke-width="0.3"/>
+    </g>
+    <use xlink:href="#star" transform="translate(1214 78) scale(54)" fill="url(#gold)" stroke="#ffffea" stroke-width="0.11"/>
+  </g>
+  </g>
+
+  <!-- Words, twice: the same four lines in two places (STANDARDS.md →
+       Structure, listing images). scripts/build-banner.sh keeps one group
+       per output; change the words in both.
+       words: centred top to bottom, for the README and the Read Me tab.
+       words-details: all above y 340, for View details (Plugins and
+       Updates screens) and WordPress.org, where WordPress writes the
+       plugin name in a dark box over the lower left, y 348 to 448 here. -->
+  <g id="words" font-family="Zilla Slab" text-rendering="geometricPrecision">
+    <text x="98" y="128" font-size="27" font-weight="600" letter-spacing="5" fill="#ff999b">WPALLSTARS</text>
+    <text x="92" y="240" font-size="104" font-weight="700" font-style="italic" letter-spacing="-1" fill="#ffffea">SEO Pro Analytics</text>
+    <text x="96" y="326" font-size="72" font-weight="700" font-style="italic" fill="url(#gold-text)">Actionable analytics</text>
+    <text x="98" y="396" font-size="33" font-weight="500" fill="#c2cad6">Connect your content to the data that shows you how to grow.</text>
+  </g>
+  <g id="words-details" display="none" font-family="Zilla Slab" text-rendering="geometricPrecision">
+    <text x="98" y="86" font-size="27" font-weight="600" letter-spacing="5" fill="#ff999b">WPALLSTARS</text>
+    <text x="92" y="190" font-size="104" font-weight="700" font-style="italic" letter-spacing="-1" fill="#ffffea">SEO Pro Analytics</text>
+    <text x="96" y="270" font-size="72" font-weight="700" font-style="italic" fill="url(#gold-text-details)">Actionable analytics</text>
+    <text x="98" y="324" font-size="33" font-weight="500" fill="#c2cad6">Connect your content to the data that shows you how to grow.</text>
+  </g>
+</svg>

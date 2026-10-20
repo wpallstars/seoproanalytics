@@ -1,0 +1,383 @@
+<?php
+/**
+ * SEO Pro Analytics Read Me tab.
+ *
+ * Renders README.md with a small, escaping Markdown subset
+ * (headings with GitHub-style IDs, paragraphs and list items that wrap over
+ * several lines, lists, tables, fenced code blocks, bold, italic, inline
+ * code, http(s) links, links to headings and images from the plugin's
+ * folder). HTML comments, the GitHub badges block and github-only blocks are
+ * left out.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-e4502af0f07e8a92. Copies, even of part, keep these lines.
+ *
+ * @package SEOProAnalytics
+ * @since 0.2.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class SEOProAnalytics_Readme_Manager {
+
+    /**
+     * Render the tab.
+     */
+    public static function display_tab_content() {
+        $readme = seoproanalytics_get_readme_content();
+        ?>
+        <article class="seoproan-card seoproan-readme">
+            <?php echo self::parse_markdown($readme['content']); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped text. ?>
+        </article>
+        <?php
+    }
+
+    /**
+     * Convert Markdown to HTML. Input is escaped first; only the generated
+     * tags and validated http(s) links are emitted.
+     *
+     * @param string $markdown Markdown.
+     * @return string HTML.
+     */
+    public static function parse_markdown($markdown) {
+        $markdown = str_replace('{SEOPROANALYTICS_VERSION}', SEOPROANALYTICS_VERSION, $markdown);
+        $markdown = str_replace(array("\r\n", "\r"), "\n", $markdown);
+        // GitHub-only parts: the badges block (remote images), github-only
+        // blocks (such as screenshots, which do not ship) and HTML comments.
+        $markdown = (string) preg_replace('/^<!-- (aidevops:badges|github-only):start -->$.*?^<!-- \1:end -->$/ms', '', $markdown);
+        $markdown = (string) preg_replace('/^[ \t]*<!--(?:(?!-->).)*-->[ \t]*$/ms', '', $markdown);
+
+        // The open list ('ul' or 'ol'), table ('head' after the header row,
+        // then 'body') and the heading IDs used so far.
+        $state = array('list' => '', 'table' => '', 'ids' => array());
+        $html  = '';
+        // The open fenced code block: its fence, the fence's indent and its lines.
+        $code = null;
+        foreach (self::join_wrapped_lines($markdown) as $line) {
+            $trim = trim($line);
+            if (null === $code && '' !== self::fence_opens($trim)) {
+                $html .= self::close_blocks($state);
+                $code  = array('fence' => self::fence_opens($trim), 'indent' => strlen($line) - strlen(ltrim($line)), 'lines' => array());
+                continue;
+            }
+            if (null === $code) {
+                $html .= self::block($trim, $state);
+            } elseif (self::fence_closes($trim, $code['fence'])) {
+                $html .= self::code_block($code['lines']);
+                $code  = null;
+            } else {
+                // Keep the code's own indent, less the fence's.
+                $code['lines'][] = (string) preg_replace('/^ {0,' . $code['indent'] . '}/', '', $line);
+            }
+        }
+        if (null !== $code) {
+            $html .= self::code_block($code['lines']);
+        }
+
+        return $html . self::close_blocks($state);
+    }
+
+    /**
+     * Lines of Markdown, with each line that only continues a paragraph or
+     * list item (Markdown wrapped at a fixed width) joined to the line it
+     * continues, as GitHub shows them. Lines in fenced code blocks stay as
+     * they are.
+     *
+     * @param string $markdown Markdown with "\n" line ends.
+     * @return string[] Lines.
+     */
+    private static function join_wrapped_lines($markdown) {
+        $lines = array();
+        $fence = ''; // The open code block's fence.
+        $open  = false; // Whether the last line is a paragraph or list item.
+        foreach (explode("\n", $markdown) as $line) {
+            $kind = self::line_kind(trim($line));
+            if ('' !== $fence || 'fence' === $kind) {
+                if ('' === $fence) {
+                    $fence = self::fence_opens(trim($line));
+                } elseif (self::fence_closes(trim($line), $fence)) {
+                    $fence = '';
+                }
+                $lines[] = $line;
+                $open    = false;
+                continue;
+            }
+            if ($open && 'text' === $kind) {
+                $lines[count($lines) - 1] .= ' ' . trim($line);
+                continue;
+            }
+            $lines[] = $line;
+            $open    = in_array($kind, array('text', 'item'), true);
+        }
+
+        return $lines;
+    }
+
+    /**
+     * What a line is, for joining wrapped lines: 'blank', 'fence', 'item'
+     * (a list item), 'block' (a heading, table line or image, which never
+     * continues a paragraph) or 'text'.
+     *
+     * @param string $trim Line without surrounding whitespace.
+     * @return string
+     */
+    private static function line_kind($trim) {
+        if ('' === $trim) {
+            return 'blank';
+        }
+        if ('' !== self::fence_opens($trim)) {
+            return 'fence';
+        }
+        if (preg_match('/^(?:[-*]|\d+\.)\s/', $trim)) {
+            return 'item';
+        }
+        if (self::is_table_line($trim) || preg_match('/^(?:#{1,6}(?:\s.*)?|!\[[^\]]*\]\([^)\s]+\))$/', $trim)) {
+            return 'block';
+        }
+        return 'text';
+    }
+
+    /**
+     * The fence a line opens a fenced code block with: three or more ` or
+     * ~, then perhaps a language. '' when it opens none.
+     *
+     * @param string $trim Line without surrounding whitespace.
+     * @return string The fence, such as ``` or ~~~~.
+     */
+    private static function fence_opens($trim) {
+        return preg_match('/^(`{3,}(?!.*`)|~{3,})/', $trim, $m) ? $m[1] : '';
+    }
+
+    /**
+     * Whether a line closes the code block a fence opened: the same
+     * character, at least as many times, and nothing else.
+     *
+     * @param string $trim  Line without surrounding whitespace.
+     * @param string $fence The opening fence.
+     * @return bool
+     */
+    private static function fence_closes($trim, $fence) {
+        return 1 === preg_match('/^' . preg_quote($fence[0], '/') . '{' . strlen($fence) . ',}$/', $trim);
+    }
+
+    /**
+     * A fenced code block, escaped.
+     *
+     * @param string[] $lines Its lines.
+     * @return string HTML.
+     */
+    private static function code_block(array $lines) {
+        return '<pre class="seoproan-readme-code"><code>' . esc_html(rtrim(implode("\n", $lines), "\n")) . '</code></pre>';
+    }
+
+    /**
+     * HTML for one trimmed line.
+     *
+     * @param string $trim  Line without surrounding whitespace.
+     * @param array  $state Open list and table, heading IDs (updated).
+     * @return string HTML.
+     */
+    private static function block($trim, array &$state) {
+        if ('' === $trim || '#' === $trim) {
+            return self::close_blocks($state);
+        }
+        if (self::is_table_line($trim)) {
+            return self::table_row($trim, $state);
+        }
+        // A "- " or "* " item, or a "1. " item ($m[1] empty).
+        if (preg_match('/^(?:([-*])|\d+\.)\s+(.+)$/', $trim, $m)) {
+            return self::list_item('' === $m[1] ? 'ol' : 'ul', $m[2], $state);
+        }
+        return self::close_blocks($state) . self::single_block($trim, $state['ids']);
+    }
+
+    /**
+     * HTML for a line that stands alone: an image, a heading or a paragraph.
+     *
+     * @param string $trim Line without surrounding whitespace.
+     * @param array  $ids  Heading IDs used so far (updated).
+     * @return string HTML.
+     */
+    private static function single_block($trim, array &$ids) {
+        // An image on a line of its own, from the plugin's own folder.
+        if (preg_match('/^!\[([^\]]*)\]\(([^)\s]+)\)$/', $trim, $m)) {
+            return self::image($m[2], $m[1]);
+        }
+        if (preg_match('/^(#{1,4})\s+(.+)$/', $trim, $m)) {
+            $level = min(4, strlen($m[1]) + 1); // h1 is reserved for the page title.
+            return sprintf('<h%1$d id="%2$s">%3$s</h%1$d>', $level, esc_attr(self::anchor($m[2], $ids)), self::inline($m[2]));
+        }
+        return '<p>' . self::inline($trim) . '</p>';
+    }
+
+    /**
+     * Close the open list or table.
+     *
+     * @param array $state Open list and table (updated).
+     * @return string HTML.
+     */
+    private static function close_blocks(array &$state) {
+        $html = '';
+        if ($state['list']) {
+            $html         .= '</' . $state['list'] . '>';
+            $state['list'] = '';
+        }
+        if ($state['table']) {
+            $html          .= ('head' === $state['table'] ? '</thead>' : '</tbody>') . '</table></div>';
+            $state['table'] = '';
+        }
+        return $html;
+    }
+
+    /**
+     * Whether a line is a table line: it starts and ends with |.
+     *
+     * @param string $trim Line without surrounding whitespace.
+     * @return bool
+     */
+    private static function is_table_line($trim) {
+        return strlen($trim) > 1 && '|' === $trim[0] && '|' === substr($trim, -1);
+    }
+
+    /**
+     * A table line: a header row, a |---| separator, then body rows.
+     *
+     * @param string $trim  Line starting and ending with |.
+     * @param array  $state Open list and table (updated).
+     * @return string HTML.
+     */
+    private static function table_row($trim, array &$state) {
+        if ('head' === $state['table'] && preg_match('/^\|[\s:|-]+\|$/', $trim)) {
+            $state['table'] = 'body';
+            return '</thead><tbody>';
+        }
+        $html = '';
+        if (!$state['table']) {
+            $html           = self::close_blocks($state) . '<div class="seoproan-readme-table"><table><thead>';
+            $state['table'] = 'head';
+        }
+        $tag   = 'head' === $state['table'] ? 'th' : 'td';
+        $html .= '<tr>';
+        foreach (explode('|', substr($trim, 1, -1)) as $cell) {
+            $html .= '<' . $tag . '>' . self::inline(trim($cell)) . '</' . $tag . '>';
+        }
+        return $html . '</tr>';
+    }
+
+    /**
+     * A list item, opening its list (and closing another) when needed.
+     *
+     * @param string $type  'ul' or 'ol'.
+     * @param string $text  Item Markdown.
+     * @param array  $state Open list and table (updated).
+     * @return string HTML.
+     */
+    private static function list_item($type, $text, array &$state) {
+        $html = '';
+        if ($state['list'] !== $type) {
+            $html          = self::close_blocks($state) . '<' . $type . '>';
+            $state['list'] = $type;
+        }
+        return $html . '<li>' . self::inline($text) . '</li>';
+    }
+
+    /**
+     * Heading ID as GitHub makes it, so README links such as
+     * `[Credits](#credits)` work in the tab too. Repeats get -1, -2...
+     *
+     * @param string $text Heading Markdown.
+     * @param array  $ids  IDs used so far (updated).
+     * @return string ID.
+     */
+    private static function anchor($text, array &$ids) {
+        // preg_replace() gives null on a failed match (invalid UTF-8): the
+        // text as it was, or no ID, so the heading becomes "section".
+        $text = preg_replace('/\[([^\]]+)\]\([^)]*\)/', '$1', $text) ?? $text;
+        $text = str_replace(array('`', '*'), '', $text);
+        $id   = function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+        $id   = (string) preg_replace('/[^\p{L}\p{N}\s_-]/u', '', $id);
+        $id   = (string) preg_replace('/\s/u', '-', trim($id));
+        $base = '' === $id ? 'section' : $id;
+        $id   = $base;
+        $n    = 0;
+        while (isset($ids[$id])) {
+            $id = $base . '-' . (++$n);
+        }
+        $ids[$id] = true;
+
+        return $id;
+    }
+
+    /**
+     * An image from the plugin's folder, such as the banner at the top of
+     * README.md. Only relative paths to image files that exist are shown, so
+     * the tab never loads anything from another site.
+     *
+     * @param string $path Path relative to the plugin folder.
+     * @param string $alt  Alternative text.
+     * @return string HTML, or '' for anything else.
+     */
+    private static function image($path, $alt) {
+        if (!preg_match('#^[a-z0-9_-]+(?:/[a-z0-9_-]+)*\.(?:svg|png|jpe?g|gif|webp)$#i', $path)) {
+            return '';
+        }
+        $file = SEOPROANALYTICS_DIR . $path;
+        if (!is_file($file)) {
+            return '';
+        }
+
+        // Width and height stop the page jumping while the image loads.
+        $size = '';
+        if ('svg' === strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+            $head = (string) file_get_contents($file, false, null, 0, 2048); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local file.
+            if (preg_match('/<svg\b[^>]*?\swidth="(\d+)"[^>]*?\sheight="(\d+)"/', $head, $m)) {
+                $size = array((int) $m[1], (int) $m[2]);
+            }
+        } else {
+            $size = wp_getimagesize($file);
+        }
+        $dims = is_array($size) && !empty($size[0]) && !empty($size[1])
+            ? sprintf(' width="%d" height="%d"', $size[0], $size[1])
+            : '';
+
+        // The file's time in the address, so browsers fetch a changed image
+        // (such as a new banner after an update) instead of a cached one.
+        $url = add_query_arg('ver', (string) filemtime($file), SEOPROANALYTICS_URL . $path);
+
+        return sprintf(
+            '<p class="seoproan-readme-image"><img src="%1$s" alt="%2$s"%3$s decoding="async" /></p>',
+            esc_url($url),
+            esc_attr($alt),
+            $dims
+        );
+    }
+
+    /**
+     * Inline Markdown on escaped text.
+     *
+     * @param string $text Raw text.
+     * @return string HTML.
+     */
+    private static function inline($text) {
+        // A failed match (null) leaves the escaped text unformatted.
+        $text = esc_html($text);
+        $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text) ?? $text;
+        $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text) ?? $text;
+        $text = preg_replace('/(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])/', '<em>$1</em>', $text) ?? $text;
+
+        return preg_replace_callback('/\[([^\]]+)\]\(([^)\s]+)\)/', function ($m) {
+            $url = esc_url(html_entity_decode($m[2]), array('http', 'https'));
+            if ('#' === $m[2][0]) {
+                return sprintf('<a href="#%1$s">%2$s</a>', esc_attr(substr($m[2], 1)), $m[1]);
+            }
+            if ('' === $url) {
+                return $m[1];
+            }
+            return sprintf('<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a>', $url, $m[1]);
+        }, $text) ?? $text;
+    }
+}

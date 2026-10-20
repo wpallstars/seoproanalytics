@@ -1,0 +1,1067 @@
+<?php
+/**
+ * The statistics tables: names, definitions, upgrades and removal.
+ *
+ * Tables are made and changed with dbDelta() when VERSION is newer than
+ * the stored one, on admin requests and before processing, never on
+ * visitor pages. Layout and reasons: docs/architecture.md → Storage.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ *
+ * @package SEOProAnalytics
+ * @since 0.2.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class SEOProAnalytics_Schema {
+
+    /**
+     * Table layout version. Bump it with every change to definitions() and
+     * add a line.
+     *
+     * v1: dict, sessions, pageviews, events, props, daily.
+     * v2: daily.scroll (sum of the deepest scroll % of a page's views).
+     * v3: props keys owner_ts and key_ts replace ts and key_value.
+     * v4: clicks (clicks and form submits).
+     * v5: pageviews.search_id and key search_ts, sessions.login, pages
+     *     (what each address shows); daily rows for logged-in visits.
+     * v6: changes (the change log: markers on the timeline).
+     * v7: gsc_pages, gsc_queries, gsc_pairs, gsc_totals (search data from
+     *     Search Console and later Bing), imports (each import run).
+     * v8: experiments (a change's hypothesis, measured before and after).
+     * v9: queue (decision queue items someone accepted, did or dismissed).
+     * v10: page_facts (the content audit's facts about each published page).
+     * v11: page_links (links between the site's own pages) and
+     *      page_facts.links_in (pages linking to each).
+     * v12: page_facts.published (when each page was published) and
+     *      sitemap (the addresses in the site's own sitemaps).
+     * v13: targets (the site's chosen search queries and their pages).
+     * v14: gsc_appearance (Google search appearances by day).
+     * v15: daily.import_id (days imported from another statistics plugin,
+     *      SEOProAnalytics_Migrate; 0: summarised from the site's own visits).
+     * v16: ab_tests (A/B tests of blocks, read from posts when they are saved).
+     * v17: ab_exposures (the A/B test variants each page load showed).
+     * v18: links (backlinks: pages of other sites linking to the site's
+     *      pages, SEOProAnalytics_Backlinks).
+     * v19: inspections (Google's URL Inspection of each page,
+     *      SEOProAnalytics_Inspections).
+     * v20: links export source bits and per-provider scores and dates.
+     * v21: targets research counts and their independent measurement dates.
+     * v22: local backlink reviews and observed referring-page facts.
+     * v23: vitals (Chrome UX Report field data, SEOProAnalytics_Vitals).
+     * v24: spend (paid providers' charges per month and week,
+     *      the Connect add-on's) and serp (tracked search positions,
+     *      SEOProAnalytics_Serp).
+     * v25: links.classes (the owner's classes of a link) and link_metrics
+     *      (rank and referring domains of linking sites and pages,
+     *      SEOProAnalytics_Link_Metrics).
+     * v26: links.classes is int (room for more classes).
+     * v27: links.unclasses (classes the owner took off a link or page that
+     *      its page or a class list would give it).
+     * v28: crawl_pages and crawl_links (a crawl of the site made elsewhere
+     *      and imported, SEOProAnalytics_Crawl).
+     */
+    // v29: served title/description hashes, bounded dictionary references and H1 count.
+    // v30: served incoming counts (4 bytes/page), depth key and final link target (4 bytes/link).
+    // v31: previous response time (4 bytes/page); response_ms and bytes range keys for slow candidates.
+    // v32: owners (who is responsible for a page, target, Plan item or experiment, SEOProAnalytics_Owners).
+    // v33: links.classes and links.unclasses are bigint (35 classes; bits from 2^32).
+    const VERSION = 33;
+
+    /** Keys a later version replaced: table => key names (dbDelta() only adds). */
+    const OLD_KEYS = array('props' => array('ts', 'key_value'));
+
+    /** Option holding the version the tables were last made with. */
+    const OPTION = 'seoproanalytics_schema_version';
+
+    /** Seconds a request waits for another request's upgrade to finish. */
+    const WAIT = 10;
+
+    /** Kinds of text in the dictionary table. */
+    const DICT_PATH     = 1;
+    const DICT_HOST     = 2;
+    const DICT_UTM      = 3;
+    const DICT_EVENT    = 4;
+    const DICT_PROP_KEY = 5;
+    const DICT_PROP_VAL = 6;
+    const DICT_BROWSER  = 7;
+    const DICT_OS       = 8;
+    const DICT_REGION   = 9;
+    const DICT_CITY     = 10;
+    const DICT_LANGUAGE = 11;
+    const DICT_SELECTOR = 12;
+    const DICT_LABEL    = 13;
+    const DICT_TARGET   = 14;
+    const DICT_SEARCH   = 15;
+    const DICT_QUERY    = 16;
+    const DICT_APPEARANCE = 17;
+    const DICT_AB_TEST    = 18;
+    const DICT_AB_VARIANT = 19;
+    const DICT_URL        = 20;
+    const DICT_COVERAGE   = 21;
+
+    /** Search engines of the gsc_* rows (and of the serp rows, with the serp-only ones below). */
+    const ENGINE_GOOGLE = 1;
+    const ENGINE_BING   = 2;
+
+    /**
+     * Serp-only engines (SEOProAnalytics_Serp::ENGINES): Brave's and DeepSeek's
+     * web results, and the sources Brave (its LLM Context) and Linkup (its
+     * sourced answers) give an AI to answer from, kept apart from search
+     * places. Never in gsc_* rows.
+     */
+    const ENGINE_BRAVE     = 3;
+    const ENGINE_DEEPSEEK  = 4;
+    const ENGINE_BRAVE_AI  = 5;
+    const ENGINE_LINKUP_AI = 6;
+
+    /** Device of gsc_totals rows (as SEOProAnalytics_UA's device codes; 0 other). */
+    const GSC_DEVICES = array(
+        'DESKTOP' => 1,
+        'MOBILE'  => 2,
+        'TABLET'  => 3,
+    );
+
+    /** Flags of a pageview: the page was not found; a site search; the search found nothing. */
+    const PAGE_NOT_FOUND  = 1;
+    const PAGE_SEARCH     = 2;
+    const PAGE_NO_RESULTS = 4;
+
+    /** Kinds of rows in the clicks table. */
+    const CLICK = 1;
+    const FORM  = 2;
+
+    /** Owners of rows in the props table. */
+    const OWNER_PAGEVIEW = 1;
+    const OWNER_EVENT    = 2;
+
+    /**
+     * Data sets: live (the site's statistics) and demo (made-up visits in
+     * tables of their own, SEOProAnalytics_Demo). Same layout, never mixed.
+     */
+    const SETS = array('live', 'demo');
+
+    /** @var string The data set this request reads and writes. */
+    private static $set = 'live';
+
+    /**
+     * Table names without the prefix, in the order they are made.
+     *
+     * @return string[]
+     */
+    public static function names() {
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners');
+    }
+
+    /**
+     * Full name of one of the plugin's tables on the current site, in the
+     * current data set (demo tables: seoproanalytics_demo_*).
+     *
+     * @param string $name Name from names().
+     * @return string
+     */
+    public static function table($name) {
+        global $wpdb;
+        return $wpdb->prefix . 'seoproanalytics_' . (self::$set === 'demo' ? 'demo_' : '') . $name;
+    }
+
+    /**
+     * Name of an option that belongs to a data set (table version,
+     * processing and summary progress): as given for live, with _demo
+     * after it for demo.
+     *
+     * @param string $name Live option name.
+     * @return string
+     */
+    public static function option($name) {
+        return self::$set === 'demo' ? $name . '_demo' : $name;
+    }
+
+    /**
+     * Switch the data set for what follows; give the one returned back
+     * with use_set() when done. Cron and visitor requests stay on live.
+     *
+     * @param string $set live or demo.
+     * @return string The data set before.
+     */
+    public static function use_set($set) {
+        $before    = self::$set;
+        self::$set = $set === 'demo' ? 'demo' : 'live';
+        return $before;
+    }
+
+    /**
+     * The current data set.
+     *
+     * @return string live or demo.
+     */
+    public static function set() {
+        return self::$set;
+    }
+
+    /**
+     * Make or change the tables when they are older than VERSION.
+     *
+     * @return bool Whether the tables are at VERSION.
+     */
+    public static function maybe_upgrade() {
+        if (self::is_current()) {
+            return true;
+        }
+        // One upgrade at a time: requests at once (the dashboard asks
+        // several routes together) would run the same ALTERs, and the later
+        // ones fail on columns the first added. The lock is not autoloaded
+        // and lasts at most two minutes, should a request die holding it.
+        // Meanwhile the others wait a few seconds for it to finish, then
+        // report the tables not ready, so none queries a column not yet added.
+        $lock = self::option('seoproanalytics_schema_lock');
+        if (!add_option($lock, time(), '', false)) {
+            if ((int) get_option($lock, 0) > time() - 2 * MINUTE_IN_SECONDS) {
+                return self::wait_for_upgrade();
+            }
+            update_option($lock, time(), false);
+        }
+        try {
+            return self::install();
+        } finally {
+            delete_option($lock);
+        }
+    }
+
+    /**
+     * While another request upgrades: whether it finishes within WAIT
+     * seconds. Reads the stored version from the database, as the options
+     * cache keeps the value from before. Admin requests, WP-CLI and a site's first cron request only.
+     *
+     * @return bool Whether the tables are at VERSION.
+     */
+    private static function wait_for_upgrade() {
+        global $wpdb;
+        $name  = self::option(self::OPTION);
+        $until = microtime(true) + self::WAIT;
+        do {
+            usleep(250000);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- the options table by its unique name; the cached value is the stale one.
+            $version = (int) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name));
+            if ($version >= self::VERSION) {
+                wp_cache_delete($name, 'options');
+                wp_cache_delete('alloptions', 'options');
+                return true;
+            }
+        } while (microtime(true) < $until);
+        return false;
+    }
+
+    /**
+     * Whether the tables are at VERSION (no query: the option is autoloaded).
+     * Cron and the API check this, as older tables are upgraded on admin
+     * requests only (a site's first cron or WP-CLI request makes them new).
+     *
+     * @return bool
+     */
+    public static function is_current() {
+        return (int) get_option(self::option(self::OPTION), 0) >= self::VERSION;
+    }
+
+    /**
+     * Make or change every table with dbDelta(), then record VERSION.
+     *
+     * @return bool Whether every table exists afterwards.
+     */
+    public static function install() {
+        global $wpdb;
+
+        $before = (int) get_option(self::option(self::OPTION), 0);
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta(array_values(self::definitions()));
+
+        foreach (self::names() as $name) {
+            $table = self::table($name);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- checking our own table after dbDelta(); not cached on purpose.
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== $table) {
+                return false;
+            }
+        }
+        self::drop_old_keys();
+        if ($before > 0 && $before < 5) {
+            self::add_login_days();
+        }
+        // Live: autoloaded like the settings version, as maybe_upgrade()
+        // reads it on every admin request. Demo: read only when shown.
+        update_option(self::option(self::OPTION), self::VERSION, self::$set === 'live');
+        return true;
+    }
+
+    /**
+     * Drop keys a later version replaced, where they are still there.
+     */
+    private static function drop_old_keys() {
+        global $wpdb;
+        foreach (self::OLD_KEYS as $name => $keys) {
+            $table = self::table($name);
+            foreach ($keys as $key) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- reading our own table's keys while upgrading; not cached on purpose.
+                if ($wpdb->get_var($wpdb->prepare('SHOW INDEX FROM %i WHERE Key_name = %s', $table, $key))) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- upgrading our own table.
+                    $wpdb->query($wpdb->prepare('ALTER TABLE %i DROP INDEX %i', $table, $key));
+                }
+            }
+        }
+    }
+
+    /**
+     * v5: days summarised before visits recorded logging in get their
+     * logged-in row: every visit of theirs counts as not logged in, so the
+     * row is the site's row.
+     */
+    private static function add_login_days() {
+        global $wpdb;
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-rollup.php';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- upgrading our own table, once.
+        $wpdb->query($wpdb->prepare('INSERT IGNORE INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT day, %d, 0, visitors, visits, pageviews, bounces, engaged_ms, events FROM %i WHERE dim = 0', self::table('daily'), SEOProAnalytics_Rollup::DIMS['login'], self::table('daily')));
+    }
+
+    /**
+     * Delete the current data set's tables and version option (uninstall;
+     * removing demo data).
+     */
+    public static function drop() {
+        global $wpdb;
+        foreach (array_reverse(self::names()) as $name) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- removing our own tables on uninstall or with the demo data.
+            $wpdb->query($wpdb->prepare('DROP TABLE IF EXISTS %i', self::table($name)));
+        }
+        delete_option(self::option(self::OPTION));
+    }
+
+    /**
+     * CREATE TABLE statements in dbDelta()'s format: one column or key per
+     * line, two spaces after PRIMARY KEY, keys named.
+     *
+     * Times are Unix seconds (UTC); days are site-local dates. Text is a
+     * dict id. Revenue is in the currency's minor unit (cents).
+     *
+     * @return array<string,string> Name => statement.
+     */
+    public static function definitions() {
+        global $wpdb;
+        $charset = $wpdb->get_charset_collate();
+        $t       = array();
+        foreach (self::names() as $name) {
+            $t[$name] = self::table($name);
+        }
+
+        return array(
+            // Each distinct text of a kind, once.
+            'dict' => "CREATE TABLE {$t['dict']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  kind tinyint unsigned NOT NULL,
+  hash binary(8) NOT NULL,
+  value varchar(2048) NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY kind_hash (kind,hash)
+) $charset;",
+
+            // One row per visit.
+            'sessions' => "CREATE TABLE {$t['sessions']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  skey binary(8) NOT NULL,
+  visitor binary(8) NOT NULL,
+  day date NOT NULL,
+  started int unsigned NOT NULL,
+  ended int unsigned NOT NULL,
+  pageviews smallint unsigned NOT NULL DEFAULT 0,
+  events smallint unsigned NOT NULL DEFAULT 0,
+  engaged_ms int unsigned NOT NULL DEFAULT 0,
+  entry_id int unsigned NOT NULL DEFAULT 0,
+  exit_id int unsigned NOT NULL DEFAULT 0,
+  ref_host_id int unsigned NOT NULL DEFAULT 0,
+  ref_path_id int unsigned NOT NULL DEFAULT 0,
+  channel tinyint unsigned NOT NULL DEFAULT 0,
+  utm_source_id int unsigned NOT NULL DEFAULT 0,
+  utm_medium_id int unsigned NOT NULL DEFAULT 0,
+  utm_campaign_id int unsigned NOT NULL DEFAULT 0,
+  utm_term_id int unsigned NOT NULL DEFAULT 0,
+  utm_content_id int unsigned NOT NULL DEFAULT 0,
+  country char(2) NOT NULL DEFAULT '',
+  region_id int unsigned NOT NULL DEFAULT 0,
+  city_id int unsigned NOT NULL DEFAULT 0,
+  lang_id int unsigned NOT NULL DEFAULT 0,
+  browser_id int unsigned NOT NULL DEFAULT 0,
+  browser_ver smallint unsigned NOT NULL DEFAULT 0,
+  os_id int unsigned NOT NULL DEFAULT 0,
+  os_ver smallint unsigned NOT NULL DEFAULT 0,
+  device tinyint unsigned NOT NULL DEFAULT 0,
+  screen smallint unsigned NOT NULL DEFAULT 0,
+  source tinyint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  login tinyint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY skey (skey),
+  KEY started (started),
+  KEY day_visitor (day,visitor)
+) $charset;",
+
+            // One row per page load or SPA navigation. flags: PAGE_*
+            // constants. search_id: the site search's words (0: none, or
+            // not recorded).
+            'pageviews' => "CREATE TABLE {$t['pageviews']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  pkey binary(8) NOT NULL,
+  session_id bigint unsigned NOT NULL,
+  ts int unsigned NOT NULL,
+  seq smallint unsigned NOT NULL,
+  path_id int unsigned NOT NULL,
+  engaged_ms int unsigned NOT NULL DEFAULT 0,
+  scroll tinyint unsigned NOT NULL DEFAULT 0,
+  flags tinyint unsigned NOT NULL DEFAULT 0,
+  search_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY pkey (pkey),
+  UNIQUE KEY session_seq (session_id,seq),
+  KEY path_ts (path_id,ts),
+  KEY search_ts (search_id,ts),
+  KEY ts (ts)
+) $charset;",
+
+            // One row per custom or automatic event.
+            'events' => "CREATE TABLE {$t['events']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  session_id bigint unsigned NOT NULL,
+  ts int unsigned NOT NULL,
+  seq smallint unsigned NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  name_id int unsigned NOT NULL,
+  revenue bigint NOT NULL DEFAULT 0,
+  currency char(3) NOT NULL DEFAULT '',
+  PRIMARY KEY  (id),
+  KEY session_seq (session_id,seq),
+  KEY name_ts (name_id,ts),
+  KEY ts (ts)
+) $charset;",
+
+            // Properties of pageviews and events. Reads are by period:
+            // owner_ts lists keys and prunes; key_ts lists a key's values.
+            // Both hold the primary key too, so neither reads the rows.
+            'props' => "CREATE TABLE {$t['props']} (
+  owner tinyint unsigned NOT NULL,
+  owner_id bigint unsigned NOT NULL,
+  key_id int unsigned NOT NULL,
+  value_id int unsigned NOT NULL,
+  ts int unsigned NOT NULL,
+  PRIMARY KEY  (owner,owner_id,key_id),
+  KEY owner_ts (owner,ts),
+  KEY key_ts (key_id,ts,value_id)
+) $charset;",
+
+            // Finished days, per dimension and value (dim 0, val 0: the
+            // site; codes in SEOProAnalytics_Rollup::DIMS). For pages,
+            // engaged_ms and scroll are sums over the page's views.
+            // import_id: the imports row of a day imported from another
+            // statistics plugin (SEOProAnalytics_Migrate), 0 for the site's
+            // own; a day is either one or the other, never both.
+            'daily' => "CREATE TABLE {$t['daily']} (
+  day date NOT NULL,
+  dim tinyint unsigned NOT NULL,
+  val int unsigned NOT NULL,
+  visitors int unsigned NOT NULL DEFAULT 0,
+  visits int unsigned NOT NULL DEFAULT 0,
+  pageviews int unsigned NOT NULL DEFAULT 0,
+  bounces int unsigned NOT NULL DEFAULT 0,
+  engaged_ms bigint unsigned NOT NULL DEFAULT 0,
+  events int unsigned NOT NULL DEFAULT 0,
+  scroll bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (day,dim,val),
+  KEY dim_val_day (dim,val,day)
+) $charset;",
+
+            // One row per click or form submit (autocapture), on its page
+            // load: session_id, seq and path_id are the pageview's, so
+            // clicks never start or extend a visit. flags: 1 dead, 2
+            // outbound, 4 affiliate, 8 download. fields: a form's fields.
+            'clicks' => "CREATE TABLE {$t['clicks']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  session_id bigint unsigned NOT NULL,
+  ts int unsigned NOT NULL,
+  seq smallint unsigned NOT NULL,
+  path_id int unsigned NOT NULL,
+  kind tinyint unsigned NOT NULL,
+  selector_id int unsigned NOT NULL DEFAULT 0,
+  label_id int unsigned NOT NULL DEFAULT 0,
+  target_id int unsigned NOT NULL DEFAULT 0,
+  flags tinyint unsigned NOT NULL DEFAULT 0,
+  fields tinyint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY path_ts (path_id,ts),
+  KEY ts (ts)
+) $charset;",
+
+            // What an address shows, when it is one post, page or other
+            // single item: written by the processor from WordPress (the
+            // latest view wins), read by reports for authors, categories
+            // and post types. Names are looked up when a report is made.
+            'pages' => "CREATE TABLE {$t['pages']} (
+  path_id int unsigned NOT NULL,
+  post_id bigint unsigned NOT NULL DEFAULT 0,
+  post_type varchar(20) NOT NULL DEFAULT '',
+  author_id bigint unsigned NOT NULL DEFAULT 0,
+  term_id bigint unsigned NOT NULL DEFAULT 0,
+  seen int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (path_id),
+  KEY post_type (post_type),
+  KEY author_id (author_id),
+  KEY term_id (term_id)
+) $charset;",
+
+            // The change log (SEOProAnalytics_Changes): one row per change to
+            // the site, kept for good. kind and source: codes in
+            // SEOProAnalytics_Changes::KINDS and ::SOURCES. path_id: the page
+            // it affects (0: the whole site). object_type: the post type,
+            // or coupon, plugin, theme, core, option. meta: JSON details.
+            'changes' => "CREATE TABLE {$t['changes']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  ts int unsigned NOT NULL,
+  kind tinyint unsigned NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  object_type varchar(20) NOT NULL DEFAULT '',
+  object_id bigint unsigned NOT NULL DEFAULT 0,
+  old varchar(190) NOT NULL DEFAULT '',
+  new varchar(190) NOT NULL DEFAULT '',
+  meta text NOT NULL,
+  source tinyint unsigned NOT NULL DEFAULT 1,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY ts (ts),
+  KEY path_ts (path_id,ts),
+  KEY kind_ts (kind,ts)
+) $charset;",
+
+            // Search data (SEOProAnalytics_Search_Import): one row per search
+            // engine (ENGINE_*), day (the engine's own, Pacific time for
+            // Google) and page, query, page and query, or device and
+            // country. pos_impr: average position × impressions × 100, so
+            // SUM(pos_impr) / SUM(impressions) / 100 is the weighted
+            // average. import_id: the imports row that wrote it.
+            'gsc_pages' => "CREATE TABLE {$t['gsc_pages']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  path_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,path_id),
+  KEY path_day (path_id,day)
+) $charset;",
+
+            'gsc_queries' => "CREATE TABLE {$t['gsc_queries']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  query_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,query_id),
+  KEY query_day (query_id,day)
+) $charset;",
+
+            'gsc_pairs' => "CREATE TABLE {$t['gsc_pairs']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  path_id int unsigned NOT NULL,
+  query_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,path_id,query_id),
+  KEY path_day (path_id,day,query_id),
+  KEY query_day (query_id,day,path_id)
+) $charset;",
+
+            // country: the engine's code as given (Google: ISO 3166-1
+            // alpha-3, lower case; '' unknown). device: GSC_DEVICES.
+            'gsc_totals' => "CREATE TABLE {$t['gsc_totals']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  device tinyint unsigned NOT NULL,
+  country char(3) NOT NULL DEFAULT '',
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,device,country)
+) $charset;",
+
+            'gsc_appearance' => "CREATE TABLE {$t['gsc_appearance']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  appearance_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,appearance_id)
+) $charset;",
+
+            // One row per import run of an outside source, so it can be
+            // undone. status: 1 running, 2 done, 3 failed, 4 undone. days:
+            // the days it covers (day_from to day_to, both included).
+            'imports' => "CREATE TABLE {$t['imports']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  source varchar(20) NOT NULL,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  started int unsigned NOT NULL,
+  finished int unsigned NOT NULL DEFAULT 0,
+  day_from date NOT NULL,
+  day_to date NOT NULL,
+  rows_added int unsigned NOT NULL DEFAULT 0,
+  meta text NOT NULL,
+  PRIMARY KEY  (id),
+  KEY source_status (source,status)
+) $charset;",
+
+            // Experiments (SEOProAnalytics_Experiments): a hypothesis about a
+            // change, measured before and after against unchanged pages;
+            // kept for good (small). Codes in SEOProAnalytics_Experiments.
+            // start: the change's time; days: each window's length;
+            // review: the after window's last day. path_id 0: several
+            // pages, in meta.pages. meta: JSON (pages, goal, note,
+            // hypothesis, and the measurement a decision was made on).
+            'experiments' => "CREATE TABLE {$t['experiments']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  created int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  name varchar(190) NOT NULL DEFAULT '',
+  start int unsigned NOT NULL,
+  days tinyint unsigned NOT NULL DEFAULT 28,
+  review date NOT NULL,
+  engine tinyint unsigned NOT NULL DEFAULT 1,
+  metric tinyint unsigned NOT NULL DEFAULT 1,
+  direction tinyint unsigned NOT NULL DEFAULT 1,
+  threshold smallint unsigned NOT NULL DEFAULT 10,
+  change_id bigint unsigned NOT NULL DEFAULT 0,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  result tinyint unsigned NOT NULL DEFAULT 0,
+  decided int unsigned NOT NULL DEFAULT 0,
+  meta text NOT NULL,
+  PRIMARY KEY  (id),
+  KEY status_review (status,review),
+  KEY path_id (path_id),
+  KEY start (start)
+) $charset;",
+
+            // Decision queue items someone acted on (SEOProAnalytics_Queue);
+            // items nobody touched are worked out when the list is read.
+            // ikey: 8-byte hash of kind, engine, page and query. Codes in
+            // SEOProAnalytics_Queue. effort 0: the kind's. meta: JSON (the
+            // numbers and reason when it was acted on).
+            'queue' => "CREATE TABLE {$t['queue']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  ikey binary(8) NOT NULL,
+  kind tinyint unsigned NOT NULL,
+  engine tinyint unsigned NOT NULL DEFAULT 1,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  query_id int unsigned NOT NULL DEFAULT 0,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  effort tinyint unsigned NOT NULL DEFAULT 0,
+  experiment_id int unsigned NOT NULL DEFAULT 0,
+  created int unsigned NOT NULL,
+  updated int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  note varchar(190) NOT NULL DEFAULT '',
+  meta text NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY ikey (ikey),
+  KEY status_updated (status,updated)
+) $charset;",
+
+            // Content audit facts (SEOProAnalytics_Audit): one row per
+            // published page, read from WordPress when a post is saved and
+            // by the daily cron. Times are Unix seconds; lengths are
+            // characters. title_hash, desc_hash: 8-byte keys of the shown
+            // title and description (zeros for none). flags: the page's
+            // own findings, SEOProAnalytics_Audit::FLAGS. links_in: other pages
+            // whose content links to it (SEOProAnalytics_Links), at most 65535.
+            // published: when the post was published (0: not read yet).
+            'page_facts' => "CREATE TABLE {$t['page_facts']} (
+  path_id int unsigned NOT NULL,
+  post_id bigint unsigned NOT NULL DEFAULT 0,
+  checked int unsigned NOT NULL,
+  modified int unsigned NOT NULL DEFAULT 0,
+  title_len smallint unsigned NOT NULL DEFAULT 0,
+  seo_title_len smallint unsigned NOT NULL DEFAULT 0,
+  desc_len smallint unsigned NOT NULL DEFAULT 0,
+  title_hash binary(8) NOT NULL,
+  desc_hash binary(8) NOT NULL,
+  h1 tinyint unsigned NOT NULL DEFAULT 0,
+  words int unsigned NOT NULL DEFAULT 0,
+  images smallint unsigned NOT NULL DEFAULT 0,
+  images_no_alt smallint unsigned NOT NULL DEFAULT 0,
+  noindex tinyint unsigned NOT NULL DEFAULT 0,
+  canonical_away tinyint unsigned NOT NULL DEFAULT 0,
+  flags smallint unsigned NOT NULL DEFAULT 0,
+  links_in smallint unsigned NOT NULL DEFAULT 0,
+  published int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (path_id),
+  KEY post_id (post_id),
+  KEY checked (checked),
+  KEY flags (flags),
+  KEY title_hash (title_hash),
+  KEY desc_hash (desc_hash),
+  KEY links_in (links_in),
+  KEY published (published)
+) $charset;",
+
+            // Links in the content of published pages to the site's own
+            // pages (SEOProAnalytics_Links), read with their page_facts row:
+            // one row per page and page it links to, with the first link's
+            // text (a dictionary id, DICT_LABEL) and how many links there are.
+            'page_links' => "CREATE TABLE {$t['page_links']} (
+  from_path int unsigned NOT NULL,
+  to_path int unsigned NOT NULL,
+  text_id int unsigned NOT NULL DEFAULT 0,
+  links smallint unsigned NOT NULL DEFAULT 1,
+  PRIMARY KEY  (from_path,to_path),
+  KEY to_path (to_path)
+) $charset;",
+
+            // Addresses in the site's own sitemaps other than its published
+            // posts (SEOProAnalytics_Indexation): term and author archives and
+            // other providers', read by the daily cron. source: codes in
+            // SEOProAnalytics_Indexation::SOURCES. first_seen: when first
+            // listed; seen: the read that last listed it.
+            'sitemap' => "CREATE TABLE {$t['sitemap']} (
+  path_id int unsigned NOT NULL,
+  source tinyint unsigned NOT NULL DEFAULT 0,
+  first_seen int unsigned NOT NULL,
+  seen int unsigned NOT NULL,
+  PRIMARY KEY  (path_id),
+  KEY first_seen (first_seen),
+  KEY seen (seen)
+) $charset;",
+
+            // Search targets (SEOProAnalytics_Targets): the site's chosen
+            // queries (a dictionary id, DICT_QUERY) and the page meant for
+            // each (0: none chosen), imported by people and agents.
+            // priority: 0-100; status and source: codes in
+            // SEOProAnalytics_Targets. Small: read whole by its primary key.
+            'targets' => "CREATE TABLE {$t['targets']} (
+  query_id int unsigned NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  priority tinyint unsigned NOT NULL DEFAULT 50,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  source tinyint unsigned NOT NULL DEFAULT 1,
+  allintitle int unsigned DEFAULT NULL,
+  volume int unsigned DEFAULT NULL,
+  allintitle_measured varchar(10) NOT NULL DEFAULT '',
+  volume_measured varchar(10) NOT NULL DEFAULT '',
+  created int unsigned NOT NULL,
+  updated int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (query_id),
+  KEY path_id (path_id)
+) $charset;",
+
+            // A/B tests of blocks (SEOProAnalytics_AB_Tests): one row per test
+            // block, read from its post when the post is saved. test_id:
+            // the block's random id. variants: JSON list of {slug, label,
+            // weight}; goals: JSON list of goal ids. status: codes in
+            // SEOProAnalytics_AB_Tests::STATUSES. started, ended: when it
+            // first ran and when it ended; removed: when it left its post
+            // (rows stay, so its results stay readable). Times: Unix seconds.
+            'ab_tests' => "CREATE TABLE {$t['ab_tests']} (
+  test_id varchar(32) NOT NULL,
+  post_id bigint unsigned NOT NULL DEFAULT 0,
+  name varchar(190) NOT NULL DEFAULT '',
+  variants text NOT NULL,
+  goals text NOT NULL,
+  status tinyint unsigned NOT NULL DEFAULT 0,
+  winner varchar(64) NOT NULL DEFAULT '',
+  created int unsigned NOT NULL,
+  updated int unsigned NOT NULL,
+  started int unsigned NOT NULL DEFAULT 0,
+  ended int unsigned NOT NULL DEFAULT 0,
+  removed int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (test_id),
+  KEY post_id (post_id),
+  KEY status (status)
+) $charset;",
+
+            // One row per page load and A/B test it showed: the variant,
+            // written by the processor from the pageview's test:variant
+            // pairs (only tests and variants in ab_tests). test_id and
+            // variant_id are dict ids (DICT_AB_TEST, DICT_AB_VARIANT);
+            // pkey is the pageview's. clicks: clicks inside the variant.
+            // Kept as long as pageviews (by ts). Reports read test_day.
+            'ab_exposures' => "CREATE TABLE {$t['ab_exposures']} (
+  pkey binary(8) NOT NULL,
+  test_id int unsigned NOT NULL,
+  variant_id int unsigned NOT NULL,
+  session_id bigint unsigned NOT NULL,
+  day date NOT NULL,
+  ts int unsigned NOT NULL,
+  clicks smallint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (pkey,test_id),
+  KEY test_day (test_id,day,variant_id,session_id),
+  KEY ts (ts)
+) $charset;",
+
+            // Backlinks (SEOProAnalytics_Backlinks): one row per page of another
+            // site that sent visits or was found by a source (path_id 0:
+            // the page itself, its checks), and one per link on it to one
+            // of the site's pages (path_id: that page). lkey: 8-byte key of
+            // the source address and path_id. source_url_id: DICT_URL;
+            // anchor_id: DICT_LABEL. rel and found: bits in
+            // SEOProAnalytics_Backlinks::REL and ::FOUND. status: a link's
+            // LINK_* code, a page's PAGE_* code. first_seen, last_seen: a
+            // link's first and last check that found it (a page's first
+            // and last visit from it); lost: when it was lost; checked:
+            // the page's last check; misses: checks in a row without it;
+            // authority: a provider's score, 0 none; classes: the owner's
+            // classes of the link (SEOProAnalytics_Backlinks_Triage::classes() bits).
+            'links' => "CREATE TABLE {$t['links']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  lkey binary(8) NOT NULL,
+  source_host_id int unsigned NOT NULL DEFAULT 0,
+  source_url_id int unsigned NOT NULL DEFAULT 0,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  anchor_id int unsigned NOT NULL DEFAULT 0,
+  rel tinyint unsigned NOT NULL DEFAULT 0,
+  found smallint unsigned NOT NULL DEFAULT 0,
+  status tinyint unsigned NOT NULL DEFAULT 0,
+  first_seen int unsigned NOT NULL DEFAULT 0,
+  last_seen int unsigned NOT NULL DEFAULT 0,
+  lost int unsigned NOT NULL DEFAULT 0,
+  checked int unsigned NOT NULL DEFAULT 0,
+  misses tinyint unsigned NOT NULL DEFAULT 0,
+  authority smallint unsigned NOT NULL DEFAULT 0,
+  providers text DEFAULT NULL,
+  facts text DEFAULT NULL,
+  classes bigint unsigned NOT NULL DEFAULT 0,
+  unclasses bigint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY lkey (lkey),
+  KEY path_checked (path_id,checked),
+  KEY source_url (source_url_id),
+  KEY status_first (status,first_seen),
+  KEY lost (lost),
+  KEY source_host (source_host_id)
+) $charset;",
+
+            // Local owner decisions, independent of a link's lifecycle.
+            // rkey is SHA-256(scope + target); decision_id covers export reads.
+            'link_reviews' => "CREATE TABLE {$t['link_reviews']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  rkey binary(32) NOT NULL,
+  scope varchar(6) NOT NULL,
+  target text NOT NULL,
+  decision varchar(9) NOT NULL DEFAULT 'undecided',
+  imported tinyint unsigned NOT NULL DEFAULT 0,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  reviewed int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY rkey (rkey),
+  KEY decision_id (decision,id)
+) ENGINE=InnoDB $charset;",
+
+            // Linking sites' and pages' metrics (SEOProAnalytics_Link_Metrics):
+            // one row per dictionary id (a host, DICT_HOST, or a page's
+            // address, DICT_URL). dr: the provider's rank 0-100; ld:
+            // referring domains; ranked and counted: when each was read
+            // (0: never). Read by the primary key only.
+            'link_metrics' => "CREATE TABLE {$t['link_metrics']} (
+  target_id int unsigned NOT NULL,
+  dr tinyint unsigned NOT NULL DEFAULT 0,
+  ld int unsigned NOT NULL DEFAULT 0,
+  ranked int unsigned NOT NULL DEFAULT 0,
+  counted int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (target_id)
+) $charset;",
+
+            // Chrome UX Report field data (SEOProAnalytics_Vitals): one row per
+            // 28-day collection period's last day, page (path_id 0: the
+            // origin), form factor (PHONE, DESKTOP) and metric (lcp, inp,
+            // cls, fcp, ttfb), with its p75 and good, needs-improvement and
+            // poor shares. path_day reads one page's metric by day.
+            'vitals' => "CREATE TABLE {$t['vitals']} (
+  day date NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  form_factor varchar(7) NOT NULL,
+  metric varchar(4) NOT NULL,
+  p75 decimal(12,4) NOT NULL,
+  good decimal(7,6) NOT NULL,
+  ni decimal(7,6) NOT NULL,
+  poor decimal(7,6) NOT NULL,
+  PRIMARY KEY  (day,path_id,form_factor,metric),
+  KEY path_day (path_id,form_factor,metric,day)
+) $charset;",
+
+            // Paid providers' charges (the Connect add-on's): one row per
+            // source and period (Y-m for a month, o-\WW for an ISO week, both
+            // UTC), in millionths of a dollar. held: reserved for requests
+            // not settled yet (an unknown outcome keeps its reservation);
+            // stopped: requests refused until the period ends or the owner
+            // resumes them. Reservations are one conditional UPDATE each,
+            // so two runs can never pass a limit together.
+            'spend' => "CREATE TABLE {$t['spend']} (
+  source varchar(20) NOT NULL,
+  period varchar(8) NOT NULL,
+  spent bigint unsigned NOT NULL DEFAULT 0,
+  held bigint unsigned NOT NULL DEFAULT 0,
+  requests int unsigned NOT NULL DEFAULT 0,
+  stopped tinyint unsigned NOT NULL DEFAULT 0,
+  updated int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (source,period)
+) ENGINE=InnoDB $charset;",
+
+            // Tracked search positions (SEOProAnalytics_Serp): one row per
+            // engine (ENGINE_*), search target (DICT_QUERY), device
+            // (GSC_DEVICES: 1 desktop, 2 mobile; engines without devices
+            // use 1) and site-local day. position:
+            // the site's best organic place (0: not within the depth read;
+            // for an AI engine, its place among the answer's sources);
+            // path_id: its page; features: result features shown
+            // (SEOProAnalytics_Serp::FEATURES bits). day reads a week's checks.
+            'serp' => "CREATE TABLE {$t['serp']} (
+  engine tinyint unsigned NOT NULL,
+  query_id int unsigned NOT NULL,
+  device tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  position tinyint unsigned NOT NULL DEFAULT 0,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  features smallint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,query_id,device,day),
+  KEY day (day)
+) $charset;",
+
+            // Google's URL Inspection (SEOProAnalytics_Inspections): one row per
+            // page, the version in Google's index when it was last inspected
+            // (checked). verdict, indexing, robots, page_fetch, crawled_as
+            // and rich: codes of Google's values (SEOProAnalytics_Inspections's
+            // VERDICTS, INDEXING, ROBOTS, FETCH, CRAWLED_AS; 0 unspecified).
+            // coverage_id: Google's coverage state (DICT_COVERAGE);
+            // google_canonical_id, user_canonical_id: DICT_URL. crawled: the
+            // last crawl. flags: findings (SEOProAnalytics_Inspections::FLAGS).
+            // details: JSON of rich result types and issues, the sitemaps
+            // Google knows it from and Search Console's link.
+            'inspections' => "CREATE TABLE {$t['inspections']} (
+  path_id int unsigned NOT NULL,
+  checked int unsigned NOT NULL DEFAULT 0,
+  verdict tinyint unsigned NOT NULL DEFAULT 0,
+  coverage_id int unsigned NOT NULL DEFAULT 0,
+  indexing tinyint unsigned NOT NULL DEFAULT 0,
+  robots tinyint unsigned NOT NULL DEFAULT 0,
+  page_fetch tinyint unsigned NOT NULL DEFAULT 0,
+  crawled_as tinyint unsigned NOT NULL DEFAULT 0,
+  crawled int unsigned NOT NULL DEFAULT 0,
+  google_canonical_id int unsigned NOT NULL DEFAULT 0,
+  user_canonical_id int unsigned NOT NULL DEFAULT 0,
+  rich tinyint unsigned NOT NULL DEFAULT 0,
+  flags tinyint unsigned NOT NULL DEFAULT 0,
+  details text NOT NULL,
+  PRIMARY KEY  (path_id),
+  KEY checked (checked),
+  KEY verdict_checked (verdict,checked),
+  KEY coverage_checked (coverage_id,checked),
+  KEY flags (flags)
+) $charset;",
+
+            // A crawl of the site made elsewhere and imported
+            // (SEOProAnalytics_Crawl_Import): one row per address on the site's
+            // own hosts (DICT_PATH, no query), as the newest import that
+            // named it served it. status: the HTTP status, at the end of
+            // its redirects when the crawler followed them (0: no answer);
+            // prev_status, prev_flags: the import before's (NULL: none).
+            // flags: SEOProAnalytics_Crawl::FLAGS. hops: redirects followed;
+            // redirect_id: where they led (DICT_TARGET, as clicks name it).
+            // v29 adds 25 payload bytes: two BINARY(8) hashes, two 4-byte
+            // DICT_LABEL ids (flagged pages only), one 1-byte H1 count.
+            // NULL hashes/count mean not observed, including pre-v29 rows.
+            // The h1 key adds 5 payload bytes per row including path_id.
+            'crawl_pages' => "CREATE TABLE {$t['crawl_pages']} (
+  path_id int unsigned NOT NULL,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  crawled int unsigned NOT NULL DEFAULT 0,
+  status smallint unsigned NOT NULL DEFAULT 0,
+  prev_status smallint unsigned DEFAULT NULL,
+  flags tinyint unsigned NOT NULL DEFAULT 0,
+  prev_flags tinyint unsigned DEFAULT NULL,
+  depth smallint unsigned NOT NULL DEFAULT 0,
+  response_ms int unsigned NOT NULL DEFAULT 0,
+  prev_response_ms int unsigned DEFAULT NULL,
+  bytes int unsigned NOT NULL DEFAULT 0,
+  hops tinyint unsigned NOT NULL DEFAULT 0,
+  redirect_id int unsigned NOT NULL DEFAULT 0,
+  title_hash binary(8) DEFAULT NULL,
+  desc_hash binary(8) DEFAULT NULL,
+  title_id int unsigned NOT NULL DEFAULT 0,
+  desc_id int unsigned NOT NULL DEFAULT 0,
+  h1 tinyint unsigned DEFAULT NULL,
+  links_in smallint unsigned DEFAULT NULL,
+  links_in_body smallint unsigned DEFAULT NULL,
+  PRIMARY KEY  (path_id),
+  KEY import_id (import_id),
+  KEY status (status),
+  KEY flags (flags),
+  KEY hops (hops),
+  KEY h1 (h1),
+  KEY links_in (links_in),
+  KEY depth (depth),
+  KEY response_ms (response_ms),
+  KEY bytes (bytes)
+) $charset;",
+
+            // Links the imported crawl found from the site's pages to
+            // addresses that did not answer 2xx straight away (only those,
+            // so it stays small): one row per page (DICT_PATH) and address
+            // (DICT_TARGET: a path on the site, origin and path elsewhere,
+            // as clicks name them). status: the address's HTTP status at
+            // the end of its redirects (0: no answer); hops: redirects to
+            // that end; placement: SEOProAnalytics_Crawl::PLACEMENTS;
+            // anchor_id: DICT_LABEL.
+            'crawl_links' => "CREATE TABLE {$t['crawl_links']} (
+  from_path_id int unsigned NOT NULL,
+  target_id int unsigned NOT NULL,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  status smallint unsigned NOT NULL DEFAULT 0,
+  hops tinyint unsigned NOT NULL DEFAULT 0,
+  internal tinyint unsigned NOT NULL DEFAULT 0,
+  placement tinyint unsigned NOT NULL DEFAULT 0,
+  anchor_id int unsigned NOT NULL DEFAULT 0,
+  redirect_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (from_path_id,target_id),
+  KEY target_id (target_id),
+  KEY import_id (import_id),
+  KEY status (status),
+  KEY hops (hops)
+) $charset;",
+
+            // Owners (SEOProAnalytics_Owners): who is responsible for a page,
+            // search target, Plan item or experiment, set by a person or
+            // agent; kept for good (small). kind: SEOProAnalytics_Owners::KINDS.
+            // ref: the path id, query id, item key (its 8 bytes as a signed
+            // 64-bit number, so PHP reads it back exactly) or experiment id.
+            // user_id 0: nobody, set on purpose (a default owner is worked
+            // out when read, not stored).
+            'owners' => "CREATE TABLE {$t['owners']} (
+  kind tinyint unsigned NOT NULL,
+  ref bigint NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  assigned int unsigned NOT NULL,
+  assigned_by bigint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (kind,ref),
+  KEY user_kind (user_id,kind)
+) $charset;",
+        );
+    }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "seoproanalytics",
+  "private": true,
+  "description": "Build sources for SEO Pro Analytics (DEVELOPMENT.md → JavaScript builds). Nothing here ships; assets/build/ does.",
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "wp-scripts build --config webpack.config.js && npm run --silent build:tracker",
+    "build:tracker": "esbuild tracker=packages/tracker/src/index.ts tracker-test=packages/tracker/src/test-mode.ts --bundle --minify --format=iife --target=es2018 --legal-comments=none --banner:js='/*!\n * SPDX-License-Identifier: GPL-3.0-or-later\n * SPDX-FileCopyrightText: 2026 Marcus Quinn\n * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt\n * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.\n */' --log-level=warning --outdir=assets/build",
+    "start": "wp-scripts start --config webpack.config.js",
+    "check": "tsc -p tsconfig.json",
+    "typecheck": "npm run --silent check"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@wordpress/api-fetch": "^7.56.0",
+    "@wordpress/components": "^41.0.0",
+    "@wordpress/element": "^8.8.0",
+    "@wordpress/i18n": "^6.29.0",
+    "@wordpress/scripts": "^36.0.0",
+    "@wordpress/url": "^4.56.0",
+    "esbuild": "^0.28.2",
+    "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "js-yaml@5": "^5.4.1",
+    "katex": "^0.18.2",
+    "postcss-selector-parser": "^7.1.6",
+    "serialize-javascript": "^7.0.5",
+    "smol-toml": "^1.9.0",
+    "uuid@8": "^11.1.1"
+  }
+}

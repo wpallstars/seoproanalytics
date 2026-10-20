@@ -1,0 +1,89 @@
+# Core files: the same in every plugin made from the starter, apart from the
+# names (STANDARDS.md → Structure). scripts/sync-core.sh copies them from
+# the starter with the plugin's names, and --check lists any that differ.
+# Paths use the starter's names; a trailing / means every file below.
+# Change a core file in the starter first, then sync each plugin.
+
+# Bootstrap, feature registry, base feature, settings store and its
+# network settings and their sites (multisite).
+includes/class-seoproanalytics.php
+includes/class-seoproanalytics-feature.php
+includes/class-seoproanalytics-settings.php
+includes/class-seoproanalytics-network-settings.php
+includes/class-seoproanalytics-network-sites.php
+includes/class-seoproanalytics-network-differences.php
+
+# Shared GitHub updater: only the newest copy on a site runs.
+includes/github-updater/
+
+# Admin screen, its network screen, Read Me tab and the Plugins screen notes
+# for replaced plugins.
+admin/settings.php
+admin/data/readme.php
+admin/includes/class-admin-manager.php
+admin/includes/class-network-manager.php
+admin/includes/class-admin-page.php
+admin/includes/class-admin-theme.php
+admin/includes/class-settings-manager.php
+admin/includes/class-readme-manager.php
+admin/includes/class-replaced-plugins.php
+admin/css/seoproanalytics-header.css
+admin/css/seoproanalytics-admin.css
+admin/css/seoproanalytics-theme.css
+admin/js/seoproanalytics-admin.js
+admin/js/seoproanalytics-theme.js
+
+# Build, check, release and preview scripts.
+scripts/build-banner.sh
+scripts/build-release.sh
+scripts/ci-docker-mirror.sh
+scripts/core-files.txt
+scripts/core-public-classes.txt
+scripts/deploy-sites.sh
+scripts/lib/deploy-remote.sh
+scripts/lib/docker-wordpress.sh
+scripts/lib/plugin.sh
+scripts/lint.sh
+scripts/phpstan-bootstrap.php
+scripts/plugin-check.sh
+scripts/preflight-release.sh
+scripts/preview-browser.sh
+scripts/preview-site.sh
+scripts/provenance.sh
+scripts/readme-badges.sh
+scripts/rename-plugin.sh
+scripts/replaced-plugins.php
+scripts/smoke-queries.php
+scripts/smoke-test.sh
+scripts/sync-core.sh
+scripts/test-site.sh
+scripts/update-test.sh
+
+# CI and tool configuration.
+.github/
+.distignore
+.gitattributes
+.gitignore
+.gitleaks.toml
+.codacy.yml
+.eslintrc.json
+phpmd.xml.dist
+sonar-project.properties
+composer.json
+phpcs.xml.dist
+phpstan.neon.dist
+
+# Shared docs, and CLAUDE.md, which sends Claude Code to the plugin's own
+# AGENTS.md.
+CLAUDE.md
+STANDARDS.md
+STYLING.md
+DEVELOPMENT.md
+RELEASING.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+
+# Licence: the GPL-3.0 text and the starter's attribution terms, word for word.
+LICENSE
+ATTRIBUTION.txt

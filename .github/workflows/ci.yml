@@ -1,0 +1,233 @@
+# Checks for every pull request and every push to main. Run the same checks
+# locally with scripts/lint.sh, scripts/preflight-release.sh,
+# scripts/plugin-check.sh and scripts/smoke-test.sh (DEVELOPMENT.md).
+#
+# Lint runs on every push. The release and smoke-test jobs take longer, so
+# draft pull requests skip them until they are marked ready for review.
+# Actions are pinned to commit SHAs; Dependabot keeps them up to date.
+#
+# Jobs run on GitHub-hosted runners unless the repository variable CI_RUNNER
+# holds a self-hosted runner label, for example 4cpu-8gb (DEVELOPMENT.md →
+# Services setup). Set it only in private repositories: in a public one a
+# pull request from a fork could run code on the runner.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (PHP 7.4)
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "7.4"
+          coverage: none
+          tools: composer:v2
+
+      - name: Composer cache folder
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install development tools
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      # PHPStan's result cache: the latest run's is restored, so only files
+      # changed since then are analysed again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/phpstan
+          key: phpstan-${{ github.run_id }}
+          restore-keys: phpstan-
+
+      # A pinned, checksum-verified ShellCheck: self-hosted runners may have
+      # none, and Ubuntu's 0.9.0 package reports findings that current
+      # releases do not.
+      - name: ShellCheck
+        env:
+          SC_VERSION: "0.11.0"
+        run: |
+          # Only an install needs the runner's architecture: a runner that
+          # already has this version keeps it, whatever it runs on.
+          if [[ "$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')" != "$SC_VERSION" ]]; then
+            case "$RUNNER_ARCH" in
+              X64)
+                sc_platform=linux.x86_64
+                sc_sha256=b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+                ;;
+              ARM64)
+                sc_platform=linux.aarch64
+                sc_sha256=68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc
+                ;;
+              *)
+                printf 'Unsupported ShellCheck runner architecture: %s\n' "$RUNNER_ARCH" >&2
+                exit 1
+                ;;
+            esac
+            archive="$RUNNER_TEMP/shellcheck.tar.gz"
+            curl -fsSL --proto '=https' --tlsv1.2 -o "$archive" "https://github.com/koalaman/shellcheck/releases/download/v$SC_VERSION/shellcheck-v$SC_VERSION.$sc_platform.tar.gz"
+            printf '%s  %s\n' "$sc_sha256" "$archive" | sha256sum -c -
+            tar -xzf "$archive" -C "$RUNNER_TEMP"
+            sudo install -m 755 "$RUNNER_TEMP/shellcheck-v$SC_VERSION/shellcheck" /usr/local/bin/shellcheck
+          fi
+          shellcheck --version
+
+      - name: PHP syntax (7.4), JavaScript syntax, ShellCheck, PHPCS, PHPStan
+        run: scripts/lint.sh php js shell phpcs phpstan
+
+      # Plugins with a JavaScript build only (DEVELOPMENT.md → JavaScript
+      # builds): types and lint, then a fresh build must match assets/build/.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: hashFiles('package-lock.json') != ''
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: JavaScript build
+        if: hashFiles('package-lock.json') != ''
+        run: scripts/lint.sh build
+
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          # SHA-256 values from this release's actionlint_1.7.12_checksums.txt.
+          case "$RUNNER_ARCH" in
+            X64)
+              arch=amd64
+              sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+              ;;
+            ARM64)
+              arch=arm64
+              sha256=325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6
+              ;;
+            *) printf 'Unsupported actionlint runner architecture: %s\n' "$RUNNER_ARCH" >&2; exit 1 ;;
+          esac
+          tool_dir="$(mktemp -d "$RUNNER_TEMP/actionlint.XXXXXX")"
+          trap 'rm -rf "$tool_dir"' EXIT
+          archive="$tool_dir/actionlint.tar.gz"
+          curl -fsSL --retry 2 --proto '=https' --tlsv1.2 -o "$archive" "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_${arch}.tar.gz"
+          printf '%s  %s\n' "$sha256" "$archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$tool_dir" actionlint
+          "$tool_dir/actionlint" -color
+
+  release:
+    name: Release build, preflight and Plugin Check
+    needs: lint
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "7.4"
+          coverage: none
+          tools: none
+
+      - name: Preflight
+        run: scripts/preflight-release.sh --offline --no-docker
+
+      - name: Build both zips
+        run: scripts/build-release.sh --out dist
+
+      # Only restart disposable hosted daemons, never a shared self-hosted one.
+      # https://cloud.google.com/container-registry/docs/pulling-cached-images
+      - name: Docker Hub mirror
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: bash scripts/ci-docker-mirror.sh
+
+      - name: Plugin Check
+        run: |
+          args=()
+          for zip in dist/*.zip; do
+            args+=(--zip "$zip")
+          done
+          scripts/plugin-check.sh "${args[@]}" --keep-output dist/plugin-check
+
+      - name: Keep the zips and reports for testing
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ github.event.repository.name }}-build-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  smoke:
+    name: Smoke test (WordPress ${{ matrix.wp }}, PHP ${{ matrix.php }}${{ matrix.multisite && ', multisite' || '' }})
+    needs: lint
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Minimums (readme.txt, plugin header).
+          - wp: "6.2"
+            php: "7.4"
+          - wp: latest
+            php: "8.3"
+          # A network with the plugin network-activated (scripts/smoke-test.sh --multisite).
+          - wp: latest
+            php: "8.3"
+            multisite: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Docker Hub mirror
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: bash scripts/ci-docker-mirror.sh
+
+      - name: Smoke test
+        env:
+          SMOKE_WP: ${{ matrix.wp }}
+          SMOKE_PHP: ${{ matrix.php }}
+          SMOKE_MULTISITE: ${{ matrix.multisite && 'true' || 'false' }}
+        run: |
+          args=(--wp "$SMOKE_WP" --php "$SMOKE_PHP" --keep-log debug.log)
+          if [[ "$SMOKE_MULTISITE" == "true" ]]; then
+            args+=(--multisite)
+          fi
+          scripts/smoke-test.sh "${args[@]}"
+
+      - name: Keep debug.log
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: debug-log-wp${{ matrix.wp }}-php${{ matrix.php }}${{ matrix.multisite && '-multisite' || '' }}
+          path: debug.log
+          retention-days: 7
+          if-no-files-found: ignore

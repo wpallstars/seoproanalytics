@@ -1,0 +1,44 @@
+# PHPStan settings for SEO Pro Analytics's own files, added to phpstan.neon.dist
+# (which holds the settings every plugin made from the starter shares).
+# Add the plugin's own folders under paths (for example blocks) and each
+# ignore with the identifier, the file and the reason.
+parameters:
+	paths:
+		- collect.php
+	ignoreErrors:
+		# SEO Pro Analytics has no optional features yet: that list in
+		# SEOProAnalytics_Setup is empty, so PHPStan reads the core code that uses
+		# it as having no effect. Drop the ignore once the list is filled.
+		-
+			identifier: foreach.emptyArray
+			path: includes/class-seoproanalytics.php
+		# The WP-CLI commands: the starter's dev dependencies have no WP-CLI
+		# stubs, so PHPStan does not know WP_CLI and its format_items().
+		# The commands run in the smoke test and on the preview site.
+		-
+			identifiers:
+				- class.notFound
+				- function.notFound
+			paths:
+				- includes/stats/class-seoproanalytics-cli.php
+				- includes/stats/class-seoproanalytics-rename.php
+		# Purchases: the shops' classes and functions (WooCommerce's WC_Order,
+		# Easy Digital Downloads' edd_*_order_meta()) have no stubs in the dev
+		# dependencies. Each call is guarded by function_exists() or an
+		# instanceof check, and runs only when the shop calls its hook.
+		-
+			identifiers:
+				- class.notFound
+				- function.notFound
+			path: includes/stats/class-seoproanalytics-purchases.php
+		# Jetpack Stats import: Jetpack's classes (its connection Client and
+		# Manager, Modules, Jetpack_Options) have no stubs in the dev
+		# dependencies, so PHPStan does not know them and reads
+		# method_exists() on its Client as always false. Each use is guarded
+		# by class_exists() (and that method_exists()), in place or in
+		# client_ready(), and runs only while Jetpack is active.
+		-
+			identifiers:
+				- class.notFound
+				- function.impossibleType
+			path: includes/stats/migrate/class-seoproanalytics-migrate-jetpack.php

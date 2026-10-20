@@ -1,0 +1,390 @@
+/**
+ * SEO Pro Analytics screen header.
+ *
+ * The colour tokens, the full-width screen (.seoproan-wrap), its header, the
+ * tab bar under it (.seoproan-nav) and the main area: shared by the settings
+ * screen, whose stylesheet depends on this one, and the plugin's own
+ * screens (SEOProAnalytics_Admin_Manager::enqueue_header() and render_header()),
+ * so their tabs look the same. Only .seoproan-wrap, the header, .seoproan-nav (and
+ * its second row, .seoproan-subnav) and .seoproan-main are styled here, so a
+ * screen's content keeps its styles. Uses
+ * core admin tokens so the header follows the active admin colour scheme;
+ * logical properties keep RTL working.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-e4502af0f07e8a92. Copies, even of part, keep these lines.
+ */
+
+.seoproan-wrap {
+	--seoproan-accent: var(--wp-admin-theme-color, #2271b1);
+	--seoproan-accent-dark: var(--wp-admin-theme-color-darker-10, #135e96);
+	--seoproan-text: #1d2327;
+	--seoproan-muted: #646970;
+	--seoproan-border: #dcdcde;
+	--seoproan-surface: #fff;
+	--seoproan-subtle: #f6f7f7;
+	--seoproan-success: #008a20;
+	--seoproan-error: #d63638;
+	--seoproan-radius: 8px;
+	--seoproan-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+	--seoproan-focus: 0 0 0 2px var(--seoproan-surface), 0 0 0 4px var(--seoproan-accent);
+
+	margin-block-start: 0;
+	margin-inline: -20px 0;
+	color: var(--seoproan-text);
+
+	/* Start below the Screen Options / Notices tabs, so they never narrow the header. */
+	clear: both;
+}
+
+.seoproan-header,
+.seoproan-header *,
+.seoproan-header *::before,
+.seoproan-header *::after,
+.seoproan-nav,
+.seoproan-nav *,
+.seoproan-subnav,
+.seoproan-subnav * {
+	box-sizing: border-box;
+}
+
+/* Header ------------------------------------------------------------- */
+
+.seoproan-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px 24px;
+	padding: 14px 24px;
+	background: var(--seoproan-surface);
+	border-block-end: 1px solid var(--seoproan-border);
+}
+
+.seoproan-header__brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.seoproan-header__logo {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	font-size: 20px;
+	color: #fff;
+	background: var(--seoproan-accent);
+	border-radius: 6px;
+}
+
+.seoproan-wrap .seoproan-header__title {
+	margin: 0;
+	padding: 0;
+	font-size: 20px;
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+.seoproan-header__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-inline-start: auto;
+}
+
+.seoproan-wrap .seoproan-header__support {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+/* line-height: 1 stops the icon taking the button's taller line height,
+   which draws the glyph below the middle of its box. */
+.seoproan-wrap .seoproan-header__support .dashicons {
+	width: 18px;
+	height: 18px;
+	font-size: 18px;
+	line-height: 1;
+}
+
+.seoproan-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.6;
+	color: var(--seoproan-muted);
+	vertical-align: middle;
+	background: var(--seoproan-subtle);
+	border: 1px solid var(--seoproan-border);
+	border-radius: 999px;
+}
+
+.seoproan-badge--success {
+	color: #00450c;
+	background: #edfaef;
+	border-color: #b8e6bf;
+}
+
+/* The network screen (multisite), so it is never taken for a site's. */
+.seoproan-badge--network {
+	color: #fff;
+	background: var(--seoproan-accent);
+	border-color: var(--seoproan-accent);
+}
+
+/* Search ------------------------------------------------------------- */
+
+/* Stretch, so the field always matches the button's height, whatever
+   size the admin colour scheme or WordPress version gives buttons. */
+.seoproan-search {
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.seoproan-search__field {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+}
+
+.seoproan-wrap .seoproan-search__icon {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 9px;
+	margin-block: auto;
+	color: var(--seoproan-muted);
+	pointer-events: none;
+}
+
+.seoproan-wrap .seoproan-search__input {
+	width: 260px;
+	max-width: 100%;
+	height: auto;
+	min-height: 30px;
+	margin: 0;
+	padding-block: 0;
+	padding-inline: 34px 10px;
+	font-size: 14px;
+	line-height: normal;
+	color: var(--seoproan-text);
+	background: var(--seoproan-surface);
+
+	/* Border and corners stay core's, so they match core buttons in each version. */
+	box-shadow: none;
+	transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+
+.seoproan-wrap .seoproan-search__input::placeholder {
+	color: var(--seoproan-muted);
+	opacity: 1;
+}
+
+.seoproan-wrap .seoproan-search__input:hover {
+	border-color: var(--seoproan-accent);
+}
+
+.seoproan-wrap .seoproan-search__input:focus {
+	border-color: var(--seoproan-accent);
+	box-shadow: 0 0 0 1px var(--seoproan-accent);
+	outline: 2px solid transparent;
+}
+
+.seoproan-wrap .seoproan-search__field:focus-within .seoproan-search__icon {
+	color: var(--seoproan-accent);
+}
+
+.seoproan-wrap .seoproan-search__button {
+	margin: 0;
+}
+
+/* Navigation --------------------------------------------------------- */
+
+/* The tab bar under the header: the settings screen's groups of tabs, or
+   a plugin screen's own sections, in one look. */
+.seoproan-nav {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	padding-inline: 12px;
+	background: var(--seoproan-surface);
+	border-block-end: 1px solid var(--seoproan-border);
+	overflow-x: auto;
+}
+
+.seoproan-nav__group {
+	display: flex;
+	align-items: stretch;
+}
+
+.seoproan-nav__group + .seoproan-nav__group {
+	margin-inline-start: 8px;
+	padding-inline-start: 8px;
+	border-inline-start: 1px solid var(--seoproan-border);
+}
+
+.seoproan-nav__tab {
+	display: inline-flex;
+	align-items: center;
+	padding: 14px 12px 11px;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--seoproan-muted);
+	text-decoration: none;
+	white-space: nowrap;
+	border-block-end: 3px solid transparent;
+	transition: color 0.1s ease, border-color 0.1s ease;
+}
+
+.seoproan-nav__tab:hover {
+	color: var(--seoproan-text);
+}
+
+.seoproan-nav__tab:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.seoproan-nav__tab:focus-visible {
+	outline: 2px solid var(--seoproan-accent);
+	outline-offset: -4px;
+	border-radius: 4px;
+}
+
+.seoproan-nav__tab.is-active {
+	color: var(--seoproan-text);
+	font-weight: 600;
+	border-block-end-color: var(--seoproan-accent);
+}
+
+/* The second row: the tabs of the menu shown (a tab with 'menu'). */
+.seoproan-subnav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding: 8px 24px;
+	background: var(--seoproan-subtle);
+	border-block-end: 1px solid var(--seoproan-border);
+	overflow-x: auto;
+}
+
+.seoproan-subnav[hidden] {
+	display: none;
+}
+
+.seoproan-subnav__tab {
+	display: inline-flex;
+	align-items: center;
+	padding: 6px 12px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--seoproan-muted);
+	text-decoration: none;
+	white-space: nowrap;
+	border-radius: 999px;
+	transition: color 0.1s ease, background-color 0.1s ease;
+}
+
+.seoproan-subnav__tab:hover {
+	color: var(--seoproan-text);
+	background: var(--seoproan-surface);
+}
+
+.seoproan-subnav__tab:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.seoproan-subnav__tab:focus-visible {
+	outline: 2px solid var(--seoproan-accent);
+	outline-offset: 1px;
+}
+
+.seoproan-subnav__tab.is-active {
+	color: var(--seoproan-text);
+	font-weight: 600;
+	background: var(--seoproan-surface);
+	box-shadow: inset 0 0 0 1px var(--seoproan-border);
+}
+
+/* Main --------------------------------------------------------------- */
+
+.seoproan-wrap > .notice,
+.seoproan-wrap > div.updated,
+.seoproan-wrap > div.error {
+	margin: 16px 24px 0;
+}
+
+.seoproan-main {
+	max-width: 1200px;
+	padding: 24px;
+}
+
+/* Tabs drawn on the page but not shown. */
+.seoproan-main[hidden] {
+	display: none;
+}
+
+/* Responsive --------------------------------------------------------- */
+
+@media screen and (width <= 782px) {
+	.seoproan-wrap {
+		margin-inline-start: -10px;
+	}
+
+	/* One row that scrolls sideways. */
+	.seoproan-nav,
+	.seoproan-subnav {
+		flex-wrap: nowrap;
+	}
+
+	.seoproan-subnav {
+		padding-inline: 12px;
+	}
+
+	.seoproan-header,
+	.seoproan-main {
+		padding-inline: 12px;
+	}
+
+	/* Brand and website link on the first row, search across the second. */
+	.seoproan-search {
+		order: 1;
+		flex: 1 1 100%;
+		min-width: 0;
+	}
+
+	.seoproan-search__field {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.seoproan-wrap .seoproan-search__input {
+		flex: 1 1 0;
+		width: auto;
+		min-width: 0;
+		min-height: 40px;
+		font-size: 16px;
+	}
+
+	.seoproan-search .button {
+		flex-shrink: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* Accessibility override: stop motion even in more specific core or feature rules. */
+	.seoproan-header *,
+	.seoproan-header *::before,
+	.seoproan-header *::after,
+	.seoproan-nav__tab,
+	.seoproan-subnav__tab {
+		transition: none !important;
+		animation: none !important;
+	}
+}

@@ -1,0 +1,968 @@
+<?php
+/**
+ * Settings → Import: bring another statistics plugin's history across
+ * (SEOProAnalytics_Migrate). Lists each plugin whose data is on the site, its
+ * days, the imports so far with their check against the plugin's own
+ * counts, the next steps, and removing what the plugin left behind. The
+ * screen is drawn here from SEOProAnalytics_Migrate::status(); the dry run,
+ * import (with its progress), undo and cleanup call the REST routes
+ * (/migrate, /imports) through admin/js/seoproanalytics-import.js.
+ *
+ * Not drawn with the other settings tabs: it reads other plugins' tables
+ * (detection, cached for ten minutes), so it loads only when opened.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ *
+ * @package SEOProAnalytics
+ * @since 0.9.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class SEOProAnalytics_Import_Tab {
+
+    /** Tab slug. */
+    const TAB = 'import';
+
+    /** The tab's script. */
+    const JS_FILE = 'admin/js/seoproanalytics-import.js';
+
+    /**
+     * Register the tab and its script (admin requests only).
+     */
+    public static function init() {
+        add_filter('seoproanalytics_admin_tabs', array(__CLASS__, 'tabs'));
+        add_action('seoproanalytics_admin_enqueue', array(__CLASS__, 'enqueue'));
+    }
+
+    /**
+     * Add the tab after Connections (or Data).
+     *
+     * @param array<string,array<string,mixed>> $tabs Tabs.
+     * @return array<string,array<string,mixed>>
+     */
+    public static function tabs($tabs) {
+        $tab   = array(
+            'label'      => __('Import', 'seoproanalytics'),
+            'group'      => 'settings',
+            'capability' => 'manage_options',
+            'render'     => array(__CLASS__, 'render'),
+        );
+        $after = isset($tabs['connections']) ? 'connections' : 'data';
+        $out   = array();
+        foreach ((array) $tabs as $slug => $value) {
+            $out[$slug] = $value;
+            if ($slug === $after) {
+                $out[self::TAB] = $tab;
+            }
+        }
+        if (!isset($out[self::TAB])) {
+            $out[self::TAB] = $tab;
+        }
+        return $out;
+    }
+
+    /**
+     * Enqueue the tab's script when the tab is drawn.
+     *
+     * @param string $tab A tab drawn on the page.
+     */
+    public static function enqueue($tab) {
+        if ($tab !== self::TAB) {
+            return;
+        }
+        $version = file_exists(SEOPROANALYTICS_DIR . self::JS_FILE) ? (string) filemtime(SEOPROANALYTICS_DIR . self::JS_FILE) : SEOPROANALYTICS_VERSION;
+        wp_enqueue_script('seoproanalytics-import', SEOPROANALYTICS_URL . self::JS_FILE, array('seoproanalytics-admin', 'wp-api-fetch', 'wp-i18n', 'wp-a11y'), $version, true);
+        wp_set_script_translations('seoproanalytics-import', 'seoproanalytics');
+        wp_add_inline_style('seoproanalytics-admin', '.seoproan-import{padding:16px 20px;min-width:0}.seoproan-import h3{margin:0 0 4px;font-size:14px}.seoproan-import h4{margin:16px 0 4px;font-size:13px}.seoproan-import .form-table th{width:180px;padding-block:8px}.seoproan-import .form-table td{padding-block:8px}.seoproan-import__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.seoproan-import__message:empty,.seoproan-import__plan:empty{display:none}.seoproan-import__plan{margin-top:12px;border-top:1px solid var(--seoproan-border,#dcdcde);padding-top:4px}.seoproan-import__scroll{position:relative;margin-top:8px;overflow-x:auto}.seoproan-import__scroll table{max-width:760px}.seoproan-import__steps{margin:8px 0 0 1.5em}.seoproan-import__steps li{margin-bottom:8px;max-width:72em}.seoproan-import progress{width:100%;max-width:480px;height:16px}.seoproan-import fieldset{margin-top:16px}.seoproan-import fieldset legend{font-weight:600}.seoproan-import fieldset label{display:block;margin:4px 0}.seoproan-import code{overflow-wrap:anywhere}.seoproan-import ul.seoproan-import__list{list-style:disc;margin:4px 0 0 1.5em}.seoproan-import td.num,.seoproan-import th.num{text-align:end;white-space:nowrap}.seoproan-import__scroll table.seoproan-import__settings{max-width:960px}.seoproan-import__settings th,.seoproan-import__settings td{vertical-align:top}.seoproan-import__settings thead th{white-space:nowrap}.seoproan-import__settings td.seoproan-import__setting{min-width:14em}.seoproan-import__setting label,.seoproan-import__setting strong{display:block;font-weight:600}.seoproan-import__setting .description{display:block;margin-top:2px}.seoproan-import__settings tr.is-kept td{color:var(--seoproan-muted,#646970)}.seoproan-import__scroll table.seoproan-import__history{max-width:none}.seoproan-import__history td{vertical-align:top}.seoproan-import__history .button{margin-top:4px}.seoproan-import__file{overflow-wrap:anywhere;font-weight:600}');
+    }
+
+    /**
+     * Draw the tab.
+     */
+    public static function render() {
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-migrate.php';
+        $status  = SEOProAnalytics_Migrate::status();
+        $sources = (array) $status['sources'];
+        $job     = (array) $status['job'];
+        $names   = array();
+        foreach (SEOProAnalytics_Migrate::sources() as $class) {
+            $names[] = $class::NAME;
+        }
+        ?>
+        <div class="seoproan-section" data-seoproan-import-root data-seoproan-job="<?php echo esc_attr((string) $job['status']); ?>">
+            <div class="seoproan-section__intro">
+                <h2 class="seoproan-section__title"><?php esc_html_e('Import', 'seoproanalytics'); ?></h2>
+                <p class="seoproan-section__desc"><?php esc_html_e('Bring the history of another statistics plugin across, so the charts start before SEO Pro Analytics was installed. Each day comes from one place only: SEO Pro Analytics\'s own days are never replaced, and a day another import filled is skipped. Every import can be undone. The other plugin\'s data is only read; once it is switched off, you can remove what it left behind.', 'seoproanalytics'); ?></p>
+            </div>
+            <div class="seoproan-import__message" data-seoproan-message role="alert"></div>
+            <?php if ($job['status'] === 'running') : ?>
+                <?php self::render_job($job); ?>
+            <?php endif; ?>
+            <div class="seoproan-cards">
+                <?php self::render_links(); ?>
+                <?php self::render_crawl(); ?>
+                <?php
+                foreach ($sources as $source) {
+                    self::render_source($source, $status);
+                }
+                if (!$sources) {
+                    self::render_none($names, $status['own_from']);
+                }
+                if ($status['imports']) {
+                    self::render_imports($status['imports'], !empty($status['can']['import']));
+                }
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /** Upload an export without creating a public media-library attachment. */
+    private static function render_links() {
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-backlinks-import.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-backlinks-history.php';
+        $job = SEOProAnalytics_Backlinks_Import::status();
+        ?>
+        <section class="seoproan-card seoproan-import" data-seoproan-links>
+            <h3><?php esc_html_e('Links', 'seoproanalytics'); ?></h3>
+            <p><?php esc_html_e('Import a CSV from Search Console, Ahrefs, Semrush, Majestic, Moz or Bing, or a generic source URL / target URL export. Up to 100,000 rows and 50 MB. It carries on in the background; exports never mark missing links lost.', 'seoproanalytics'); ?></p>
+            <p class="description">
+                <?php
+                echo esc_html(
+                    SEOProAnalytics_Statistics::backlinks()
+                        ? __('Search Console names the page linking, not the page it links to: each page an export names is opened to read its links to this site, a batch every minute, starting a minute after the import. Until then it is listed under Search → Backlinks → Reported.', 'seoproanalytics')
+                        : __('Checking pages for links is off (Settings → Data → Check pages that send visitors for links), so the pages an export names stay unchecked under Search → Backlinks → Reported, and exports without the page linked to add no links.', 'seoproanalytics')
+                );
+                ?>
+            </p>
+            <form data-seoproan-links-form>
+                <label for="seoproan-links-file"><?php esc_html_e('Links CSV', 'seoproanalytics'); ?></label>
+                <input id="seoproan-links-file" type="file" accept=".csv,text/csv" required>
+                <label for="seoproan-links-source"><?php esc_html_e('Export source', 'seoproanalytics'); ?></label>
+                <select id="seoproan-links-source">
+                    <option value=""><?php esc_html_e('Detect from headers', 'seoproanalytics'); ?></option>
+                    <?php foreach (SEOProAnalytics_Backlinks_Import::SOURCES as $source) : ?>
+                        <option value="<?php echo esc_attr($source); ?>"><?php echo esc_html($source === 'gsc' ? 'Search Console' : ucfirst($source)); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button class="button button-primary" type="submit"><?php esc_html_e('Import links', 'seoproanalytics'); ?></button>
+            </form>
+            <p data-seoproan-links-status role="status" data-status="<?php echo esc_attr((string) $job['status']); ?>"<?php echo $job['status'] === 'idle' ? ' hidden' : ''; ?>><?php echo esc_html(self::links_status($job)); ?></p>
+            <progress data-seoproan-links-progress max="<?php echo esc_attr((string) max(1, $job['total'])); ?>" value="<?php echo esc_attr((string) $job['done']); ?>"<?php echo $job['status'] === 'running' ? '' : ' hidden'; ?>></progress>
+            <?php self::render_links_history(SEOProAnalytics_Backlinks_History::out()); ?>
+        </section>
+        <?php
+    }
+
+    /**
+     * Import a crawl made elsewhere: one crawl's exports (pages and links)
+     * from LibreCrawl, the aidevops site crawler or any CSV or JSON. The
+     * plugin never crawls and never fetches an export.
+     */
+    private static function render_crawl() {
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-crawl.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-crawl-import.php';
+        $job     = SEOProAnalytics_Crawl_Import::status();
+        $imports = SEOProAnalytics_Schema::is_current() ? SEOProAnalytics_Crawl_Import::imports() : array();
+        ?>
+        <section class="seoproan-card seoproan-import" data-seoproan-crawl data-seoproan-source="crawl">
+            <h3><?php esc_html_e('Site crawl', 'seoproanalytics'); ?></h3>
+            <p><?php esc_html_e('Import a crawl of the site made with LibreCrawl, the aidevops site crawler or any crawler that exports CSV or JSON: what each page served once the theme, plugins, caching and the host had their say, and the links that fail or redirect. Choose the crawl\'s files together (pages, and broken links or all links): up to 10 files, 50 MB each. SEO Pro Analytics never crawls the site itself.', 'seoproanalytics'); ?></p>
+            <p class="description"><?php esc_html_e('Errors, noindex or a canonical address WordPress does not set, and links that fail become Audit findings and Plan items, weighed by search and conversions; clicked outbound and affiliate links that fail are listed too. A page whose answer changed since the last import is a served change on the timeline. Each import replaces the crawl before it and can be undone.', 'seoproanalytics'); ?></p>
+            <form data-seoproan-crawl-form>
+                <label for="seoproan-crawl-files"><?php esc_html_e('Crawl files', 'seoproanalytics'); ?></label>
+                <input id="seoproan-crawl-files" type="file" accept=".csv,.json,text/csv,application/json" multiple required>
+                <label for="seoproan-crawl-format"><?php esc_html_e('Crawler', 'seoproanalytics'); ?></label>
+                <select id="seoproan-crawl-format">
+                    <option value=""><?php esc_html_e('Detect from columns', 'seoproanalytics'); ?></option>
+                    <?php foreach (SEOProAnalytics_Crawl_Import::FORMATS as $format) : ?>
+                        <option value="<?php echo esc_attr($format); ?>"><?php echo esc_html(self::crawl_format_label($format)); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button class="button button-primary" type="submit"><?php esc_html_e('Import crawl', 'seoproanalytics'); ?></button>
+                <label><input id="seoproan-crawl-complete" type="checkbox"> <?php esc_html_e('This crawl covered the whole site', 'seoproanalytics'); ?></label>
+                <p class="description"><?php esc_html_e('Leave unchecked if the crawl stopped at its page limit. Only a complete crawl can identify pages it did not reach. Incoming counts need an all-links export, not a broken-links-only list.', 'seoproanalytics'); ?></p>
+            </form>
+            <p data-seoproan-crawl-status role="status" data-status="<?php echo esc_attr((string) $job['status']); ?>"<?php echo $job['status'] === 'idle' ? ' hidden' : ''; ?>><?php echo esc_html(self::crawl_status($job)); ?></p>
+            <progress data-seoproan-crawl-progress max="<?php echo esc_attr((string) max(1, (int) $job['total'])); ?>" value="<?php echo esc_attr((string) $job['done']); ?>"<?php echo $job['status'] === 'running' ? '' : ' hidden'; ?>></progress>
+            <?php self::render_crawl_history($imports); ?>
+        </section>
+        <?php
+    }
+
+    /**
+     * A crawler's name.
+     *
+     * @param string $format SEOProAnalytics_Crawl_Import::FORMATS.
+     * @return string
+     */
+    private static function crawl_format_label($format) {
+        $labels = array(
+            'librecrawl' => 'LibreCrawl',
+            'aidevops'   => __('aidevops site crawler', 'seoproanalytics'),
+            'csv'        => __('Other CSV or JSON', 'seoproanalytics'),
+        );
+        return isset($labels[$format]) ? $labels[$format] : (string) $format;
+    }
+
+    /**
+     * The crawl import's progress in words.
+     *
+     * @param array<string,mixed> $job SEOProAnalytics_Crawl_Import::status().
+     * @return string
+     */
+    private static function crawl_status(array $job) {
+        if ($job['status'] === 'running') {
+            /* translators: 1: rows done, 2: rows in all */
+            return sprintf(__('Importing: %1$s of %2$s rows.', 'seoproanalytics'), number_format_i18n((int) $job['done']), number_format_i18n((int) $job['total']));
+        }
+        if ($job['status'] === 'error') {
+            return isset($job['error']) && $job['error'] !== '' ? (string) $job['error'] : __('The last crawl import stopped. Import the files again.', 'seoproanalytics');
+        }
+        /* translators: 1: pages, 2: links that fail or redirect, 3: rows skipped */
+        return $job['status'] === 'done' ? sprintf(__('Last crawl import done: %1$s pages, %2$s links that fail or redirect, %3$s rows skipped.', 'seoproanalytics'), number_format_i18n((int) $job['pages']), number_format_i18n((int) $job['links']), number_format_i18n((int) $job['skipped'])) : '';
+    }
+
+    /**
+     * The crawl imports: when, the files, what was kept, and undo.
+     *
+     * @param array<int,array<string,mixed>> $imports SEOProAnalytics_Crawl_Import::imports().
+     */
+    private static function render_crawl_history(array $imports) {
+        if (!$imports) {
+            return;
+        }
+        require_once SEOPROANALYTICS_DIR . 'includes/admin/class-seoproanalytics-dashboard.php';
+        $audit = admin_url('admin.php?page=' . SEOProAnalytics_Dashboard::SLUG) . '#/search?report=audit';
+        ?>
+        <h4><?php esc_html_e('Imported', 'seoproanalytics'); ?></h4>
+        <div class="seoproan-import__scroll">
+            <table class="widefat striped seoproan-import__history">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e('When', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('Files', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('Crawler', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Pages', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Links kept', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Skipped', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Served changes', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('Status', 'seoproanalytics'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($imports as $import) : ?>
+                        <tr>
+                            <td><?php echo esc_html($import['started'] ? (string) wp_date((string) get_option('date_format') . ' ' . (string) get_option('time_format'), (int) strtotime((string) $import['started'])) : '–'); ?></td>
+                            <td>
+                                <?php foreach ((array) $import['files'] as $file) : ?>
+                                    <span class="seoproan-import__file"><?php echo esc_html(isset($file['name']) ? (string) $file['name'] : ''); ?></span>
+                                    <?php if (!empty($file['kind'])) : ?>
+                                        <span class="description">(<?php echo esc_html($file['kind'] === 'links' ? __('links', 'seoproanalytics') : __('pages', 'seoproanalytics')); ?>)</span>
+                                    <?php endif; ?>
+                                    <br>
+                                <?php endforeach; ?>
+                            </td>
+                            <td><?php echo esc_html(($import['origin'] ?? '') === 'server' ? __('LibreCrawl server', 'seoproanalytics') : self::crawl_format_label((string) $import['format'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['pages'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['links'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['skipped'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['changes'])); ?></td>
+                            <td>
+                                <?php echo esc_html(self::crawl_import_label((string) $import['status'])); ?>
+                                <?php if ($import['error'] !== '') : ?>
+                                    <br><span class="description"><?php echo esc_html((string) $import['error']); ?></span>
+                                <?php endif; ?>
+                                <?php if ($import['status'] === 'done') : ?>
+                                    <br><a href="<?php echo esc_url($audit); ?>"><?php esc_html_e('See in Search → Audit', 'seoproanalytics'); ?></a>
+                                    <br><button type="button" class="button button-small" data-seoproan-action="crawlUndo" data-seoproan-import="<?php echo esc_attr((string) $import['id']); ?>"><?php esc_html_e('Undo', 'seoproanalytics'); ?></button>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <p class="description"><?php esc_html_e('Undo deletes the rows an import wrote; the crawl it replaced is not brought back, so import those files again for that. Served changes on the timeline are kept.', 'seoproanalytics'); ?></p>
+        <?php
+    }
+
+    /**
+     * A crawl import's status, in words.
+     *
+     * @param string $status running, done, failed, undone.
+     * @return string
+     */
+    private static function crawl_import_label($status) {
+        $labels = array(
+            'running' => __('Importing', 'seoproanalytics'),
+            'done'    => __('Done', 'seoproanalytics'),
+            'failed'  => __('Stopped', 'seoproanalytics'),
+            'undone'  => __('Undone', 'seoproanalytics'),
+        );
+        return isset($labels[$status]) ? $labels[$status] : $status;
+    }
+
+    /**
+     * The links import's progress in words.
+     *
+     * @param array<string,mixed> $job SEOProAnalytics_Backlinks_Import::status().
+     * @return string
+     */
+    private static function links_status(array $job) {
+        if ($job['status'] === 'running') {
+            /* translators: 1: rows done, 2: rows in all */
+            return sprintf(__('Importing: %1$s of %2$s rows.', 'seoproanalytics'), number_format_i18n((int) $job['done']), number_format_i18n((int) $job['total']));
+        }
+        if ($job['status'] === 'error') {
+            return __('The last import stopped: a row could not be written. Import the file again; rows already written are kept once.', 'seoproanalytics');
+        }
+        /* translators: 1: rows kept, 2: rows skipped */
+        return $job['status'] === 'done' ? sprintf(__('Last import done: %1$s rows kept, %2$s skipped.', 'seoproanalytics'), number_format_i18n((int) $job['accepted']), number_format_i18n((int) $job['skipped'])) : '';
+    }
+
+    /**
+     * The link exports imported: when, who, the file (to download again),
+     * the rows and where to see them.
+     *
+     * @param array<int,array<string,mixed>> $imports SEOProAnalytics_Backlinks_History::out().
+     */
+    private static function render_links_history(array $imports) {
+        if (!$imports) {
+            return;
+        }
+        ?>
+        <h4><?php esc_html_e('Imported', 'seoproanalytics'); ?></h4>
+        <div class="seoproan-import__scroll">
+            <table class="widefat striped seoproan-import__history">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e('When', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('File', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('Source', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Rows', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Kept', 'seoproanalytics'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Skipped', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('Status', 'seoproanalytics'); ?></th>
+                        <th scope="col"><?php esc_html_e('Results', 'seoproanalytics'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($imports as $import) : ?>
+                        <tr>
+                            <td>
+                                <?php echo esc_html((string) wp_date((string) get_option('date_format') . ' ' . (string) get_option('time_format'), (int) strtotime((string) $import['started']))); ?>
+                                <br><span class="description"><?php echo esc_html(trim((string) $import['user'] . ' · ' . self::via_label((string) $import['via']), ' ·')); ?></span>
+                            </td>
+                            <td>
+                                <span class="seoproan-import__file"><?php echo esc_html((string) $import['name']); ?></span>
+                                <br><span class="description"><?php echo esc_html($import['file'] ? (string) size_format((int) $import['bytes']) : __('File not kept', 'seoproanalytics')); ?></span>
+                                <?php if ($import['file']) : ?>
+                                    <br><a class="button button-small" href="<?php echo esc_url(self::links_file_url((int) $import['id'])); ?>" download="<?php echo esc_attr((string) $import['name']); ?>">
+                                        <?php esc_html_e('Download', 'seoproanalytics'); ?>
+                                        <span class="screen-reader-text"><?php echo esc_html((string) $import['name']); ?></span>
+                                    </a>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html(self::links_source_label((string) $import['source'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['total'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['accepted'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['skipped'])); ?></td>
+                            <td><?php echo esc_html(self::links_status_label($import)); ?></td>
+                            <td>
+                                <?php if ((int) $import['accepted'] > 0) : ?>
+                                    <a href="<?php echo esc_url(self::backlinks_url((string) $import['source'])); ?>"><?php esc_html_e('See in Search → Backlinks', 'seoproanalytics'); ?></a>
+                                <?php else : ?>
+                                    —
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <p class="description"><?php esc_html_e('The last 20 imports are listed; their files are kept for download (up to 200 MB in all), readable only by administrators here. Rows that name the same link again are merged, so results are by source, not by file.', 'seoproanalytics'); ?></p>
+        <?php
+    }
+
+    /**
+     * An import's status, in words.
+     *
+     * @param array<string,mixed> $import SEOProAnalytics_Backlinks_History::out() entry.
+     * @return string
+     */
+    private static function links_status_label(array $import) {
+        if ($import['status'] === 'running') {
+            /* translators: 1: rows done, 2: rows in all */
+            return sprintf(__('Importing: %1$s of %2$s', 'seoproanalytics'), number_format_i18n((int) $import['done']), number_format_i18n((int) $import['total']));
+        }
+        return $import['status'] === 'done' ? __('Done', 'seoproanalytics') : __('Stopped', 'seoproanalytics');
+    }
+
+    /**
+     * How an import came in, in words.
+     *
+     * @param string $via upload, cli or rest.
+     * @return string
+     */
+    private static function via_label($via) {
+        $labels = array(
+            'upload' => __('uploaded here', 'seoproanalytics'),
+            'cli'    => 'WP-CLI',
+            'rest'   => __('REST API rows', 'seoproanalytics'),
+        );
+        return isset($labels[$via]) ? $labels[$via] : $via;
+    }
+
+    /**
+     * An export source's name.
+     *
+     * @param string $source SEOProAnalytics_Backlinks_Import::SOURCES.
+     * @return string
+     */
+    private static function links_source_label($source) {
+        $labels = array(
+            'gsc'     => 'Search Console',
+            'ahrefs'  => 'Ahrefs',
+            'semrush' => 'Semrush',
+            'majestic' => 'Majestic',
+            'moz'     => 'Moz',
+            'bing'    => 'Bing',
+            'generic' => __('Source URL / target URL', 'seoproanalytics'),
+        );
+        return isset($labels[$source]) ? $labels[$source] : $source;
+    }
+
+    /**
+     * Download an import's file again (the owner's REST route, with the
+     * REST nonce for the signed-in person).
+     *
+     * @param int $id Entry id.
+     * @return string Unescaped URL.
+     */
+    private static function links_file_url($id) {
+        return add_query_arg('_wpnonce', wp_create_nonce('wp_rest'), rest_url(SEOProAnalytics_Collection::REST_NAMESPACE . '/backlinks/imports/' . $id . '/file'));
+    }
+
+    /**
+     * Search → Backlinks → Reported, of one source.
+     *
+     * @param string $source Export source.
+     * @return string Unescaped URL.
+     */
+    private static function backlinks_url($source) {
+        require_once SEOPROANALYTICS_DIR . 'includes/admin/class-seoproanalytics-dashboard.php';
+        return admin_url('admin.php?page=' . SEOProAnalytics_Dashboard::SLUG) . '#/search?report=backlinks&backlinks=reported' . ($source !== '' ? '&found=' . rawurlencode($source) : '');
+    }
+
+    /**
+     * The running import, with its progress (the script polls it).
+     *
+     * @param array<string,mixed> $job SEOProAnalytics_Migrate::job().
+     */
+    private static function render_job(array $job) {
+        list($done, $total) = self::progress($job);
+        ?>
+        <section class="seoproan-card seoproan-import" data-seoproan-progress>
+            <h3><?php esc_html_e('Importing…', 'seoproanalytics'); ?></h3>
+            <progress max="<?php echo esc_attr((string) max(1, $total)); ?>" value="<?php echo esc_attr((string) $done); ?>"></progress>
+            <p class="description" data-seoproan-progress-text aria-live="polite">
+                <?php
+                /* translators: 1: days done, 2: days in all */
+                echo esc_html(sprintf(__('%1$d of %2$d days. It carries on in the background; you can leave this page.', 'seoproanalytics'), $done, $total));
+                ?>
+            </p>
+        </section>
+        <?php
+    }
+
+    /**
+     * Days done and in all, across the job's queue.
+     *
+     * @param array<string,mixed> $job SEOProAnalytics_Migrate::job().
+     * @return array{0:int,1:int}
+     */
+    public static function progress(array $job) {
+        $done  = 0;
+        $total = 0;
+        foreach (isset($job['queue']) ? (array) $job['queue'] : array() as $item) {
+            $done  += (int) $item['done'];
+            $total += (int) $item['total'];
+        }
+        return array($done, $total);
+    }
+
+    /**
+     * No plugin's data was found.
+     *
+     * @param string[] $names    Plugins SEO Pro Analytics can import from.
+     * @param string   $own_from SEO Pro Analytics's own first day.
+     */
+    private static function render_none(array $names, $own_from) {
+        ?>
+        <section class="seoproan-card seoproan-import" data-seoproan-source="">
+            <h3><?php esc_html_e('No other statistics found', 'seoproanalytics'); ?></h3>
+            <p>
+                <?php
+                /* translators: %s: list of plugin names */
+                echo esc_html(sprintf(__('SEO Pro Analytics looked for the data of: %s. None is on this site, active or not.', 'seoproanalytics'), implode(', ', $names)));
+                ?>
+            </p>
+            <?php if ($own_from !== '') : ?>
+                <p class="description">
+                    <?php
+                    /* translators: %s: a day */
+                    echo esc_html(sprintf(__('SEO Pro Analytics\'s own statistics start on %s.', 'seoproanalytics'), self::day($own_from)));
+                    ?>
+                </p>
+            <?php endif; ?>
+            <div class="seoproan-import__actions">
+                <button type="button" class="button" data-seoproan-action="refresh"><?php esc_html_e('Look again', 'seoproanalytics'); ?></button>
+            </div>
+        </section>
+        <?php
+    }
+
+    /**
+     * One plugin's card: its data, the dry run and import, the next steps
+     * after an import, and removing its leftovers.
+     *
+     * @param array<string,mixed> $source SEOProAnalytics_Migrate::found() entry.
+     * @param array<string,mixed> $status SEOProAnalytics_Migrate::status().
+     */
+    private static function render_source(array $source, array $status) {
+        $key      = (string) $source['key'];
+        $state    = (string) $source['plugin']['state'];
+        $done     = array_filter((array) $status['imports'], static function ($import) use ($key) {
+            return $import['source'] === $key && $import['status'] === 'done' && $import['rows'] > 0;
+        });
+        $running  = $status['job']['status'] === 'running';
+        $can      = !empty($status['can']['import']);
+        $inactive = $state === 'inactive' || $state === 'missing';
+        // Why its history cannot be imported now (Jetpack: connect it first).
+        $note     = isset($source['unavailable']) ? (string) $source['unavailable'] : '';
+        ?>
+        <section class="seoproan-card seoproan-import" id="<?php echo esc_attr('seoproan-import-' . $key); ?>" data-seoproan-source="<?php echo esc_attr($key); ?>">
+            <h3>
+                <?php echo esc_html((string) $source['name']); ?>
+                <span class="seoproan-badge"><?php echo esc_html(self::state_label($state)); ?></span>
+            </h3>
+            <?php self::render_source_facts($source, $status, $note); ?>
+
+            <?php if ((string) $source['from'] !== '' && $note === '' && $can) : ?>
+                <div class="seoproan-import__actions">
+                    <button type="button" class="button button-primary" data-seoproan-action="plan" <?php disabled($running); ?>><?php esc_html_e('Check what would be imported', 'seoproanalytics'); ?></button>
+                    <span class="description"><?php esc_html_e('Changes nothing.', 'seoproanalytics'); ?></span>
+                </div>
+                <div class="seoproan-import__plan" data-seoproan-plan></div>
+            <?php endif; ?>
+
+            <?php if ($done) : ?>
+                <?php self::render_next_steps($source, reset($done), $status); ?>
+            <?php elseif ($inactive && !empty($source['leftovers']) && !empty($status['can']['cleanup'])) : ?>
+                <h4><?php esc_html_e('Remove leftover data', 'seoproanalytics'); ?></h4>
+                <?php if ((string) $source['from'] !== '') : ?>
+                    <div class="notice notice-warning inline"><p><?php esc_html_e('Its statistics have not been imported yet. Removing its data deletes them for good.', 'seoproanalytics'); ?></p></div>
+                <?php endif; ?>
+                <?php self::render_cleanup(); ?>
+            <?php endif; ?>
+        </section>
+        <?php
+    }
+
+    /**
+     * A plugin card's facts: the days of statistics it has, why they cannot
+     * be imported now, and SEO Pro Analytics's own first day.
+     *
+     * @param array<string,mixed> $source SEOProAnalytics_Migrate::found() entry.
+     * @param array<string,mixed> $status SEOProAnalytics_Migrate::status().
+     * @param string              $note   Why its history cannot be imported now, or ''.
+     */
+    private static function render_source_facts(array $source, array $status, $note) {
+        // A table of facts with row headers, so not role="presentation" (it would hide the headers from screen readers).
+        ?>
+        <table class="form-table">
+            <tbody>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Statistics', 'seoproanalytics'); ?></th>
+                    <td>
+                        <?php if ((string) $source['from'] !== '') : ?>
+                            <?php
+                            /* translators: 1: first day, 2: last day, 3: number of days */
+                            echo esc_html(sprintf(_n('%1$s to %2$s: %3$s day with statistics', '%1$s to %2$s: %3$s days with statistics', (int) $source['days'], 'seoproanalytics'), self::day((string) $source['from']), self::day((string) $source['to']), number_format_i18n((int) $source['days'])));
+                            ?>
+                            <?php if ((string) $source['version'] !== '') : ?>
+                                <br><span class="description">
+                                    <?php
+                                    /* translators: %s: version number */
+                                    echo esc_html(sprintf(__('Recorded by version %s.', 'seoproanalytics'), (string) $source['version']));
+                                    ?>
+                                </span>
+                            <?php endif; ?>
+                        <?php elseif ($note === '') : ?>
+                            <?php esc_html_e('None left. Only the data it left behind is still on the site.', 'seoproanalytics'); ?>
+                        <?php endif; ?>
+                        <?php if ($note !== '') : ?>
+                            <div class="notice notice-warning inline"><p><?php echo esc_html($note); ?></p></div>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php if ((string) $status['own_from'] !== '') : ?>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('SEO Pro Analytics', 'seoproanalytics'); ?></th>
+                        <td>
+                            <?php
+                            /* translators: %s: a day */
+                            echo esc_html(sprintf(__('Own statistics from %s. Only the days before it are imported.', 'seoproanalytics'), self::day((string) $status['own_from'])));
+                            ?>
+                            <br><span class="description"><?php esc_html_e('That first day counts only from when SEO Pro Analytics started, so it may look lower than the days around it.', 'seoproanalytics'); ?></span>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    /**
+     * The steps after an import: check the days, switch the plugin off and
+     * delete it, then remove what it left behind.
+     *
+     * @param array<string,mixed> $source SEOProAnalytics_Migrate::found() entry.
+     * @param array<string,mixed> $import Its newest finished import.
+     * @param array<string,mixed> $status SEOProAnalytics_Migrate::status().
+     */
+    private static function render_next_steps(array $source, array $import, array $status) {
+        $state     = (string) $source['plugin']['state'];
+        $file      = (string) $source['plugin']['file'];
+        $uninstall = $source['uninstall_setting'];
+        ?>
+        <h4><?php esc_html_e('Next steps', 'seoproanalytics'); ?></h4>
+        <ol class="seoproan-import__steps">
+            <li>
+                <strong><?php esc_html_e('Check the imported days.', 'seoproanalytics'); ?></strong>
+                <?php
+                /* translators: 1: first day, 2: last day */
+                echo esc_html(sprintf(__('%1$s to %2$s are in the reports, with a note on the timeline. The check against its own counts is under Imports below.', 'seoproanalytics'), self::day((string) $import['from']), self::day((string) $import['to'])));
+                ?>
+                <a href="<?php echo esc_url(self::overview_url((string) $import['from'], (string) $import['to'])); ?>"><?php esc_html_e('Open Visitors for those days', 'seoproanalytics'); ?></a>
+            </li>
+            <li>
+                <strong>
+                    <?php
+                    /* translators: %s: plugin name */
+                    echo esc_html(sprintf(__('Switch %s off and delete it.', 'seoproanalytics'), (string) $source['name']));
+                    ?>
+                </strong>
+                <?php if (is_array($uninstall)) : ?>
+                    <?php
+                    echo esc_html(
+                        $uninstall['on']
+                            /* translators: 1: setting name, 2: where it is */
+                            ? sprintf(__('Its "%1$s" setting (%2$s) is on, so deleting it removes its data too.', 'seoproanalytics'), (string) $uninstall['label'], (string) $uninstall['where'])
+                            /* translators: 1: setting name, 2: where it is */
+                            : sprintf(__('To have it remove its own data when deleted, first turn on "%1$s" (%2$s).', 'seoproanalytics'), (string) $uninstall['label'], (string) $uninstall['where'])
+                    );
+                    ?>
+                <?php else : ?>
+                    <?php esc_html_e('It has no setting to remove its data when it is deleted, so its tables stay until step 3.', 'seoproanalytics'); ?>
+                <?php endif; ?>
+                <?php self::render_plugin_action($state, $file); ?>
+            </li>
+            <li>
+                <strong><?php esc_html_e('Remove leftover data.', 'seoproanalytics'); ?></strong>
+                <?php if ($state === 'active' || $state === 'network') : ?>
+                    <?php esc_html_e('Once it is switched off, this removes the tables, options and files it left behind.', 'seoproanalytics'); ?>
+                <?php elseif (empty($source['leftovers'])) : ?>
+                    <?php esc_html_e('Nothing is left.', 'seoproanalytics'); ?>
+                <?php elseif (empty($status['can']['cleanup'])) : ?>
+                    <?php esc_html_e('Removing another plugin\'s data needs the right to delete plugins and to change settings.', 'seoproanalytics'); ?>
+                <?php else : ?>
+                    <?php self::render_cleanup(); ?>
+                <?php endif; ?>
+            </li>
+        </ol>
+        <?php
+    }
+
+    /**
+     * Deactivate or delete links like core's, for people who can.
+     *
+     * @param string $state Plugin state.
+     * @param string $file  Plugin file.
+     */
+    private static function render_plugin_action($state, $file) {
+        if ($file === '') {
+            return;
+        }
+        if ($state === 'active' && current_user_can('deactivate_plugin', $file)) {
+            $url = wp_nonce_url(add_query_arg(array('action' => 'deactivate', 'plugin' => rawurlencode($file)), self_admin_url('plugins.php')), 'deactivate-plugin_' . $file);
+            printf('<br><a class="button button-small" href="%1$s">%2$s</a>', esc_url($url), esc_html__('Deactivate', 'seoproanalytics'));
+        } elseif ($state === 'network' && current_user_can('manage_network_plugins')) {
+            printf('<br><a href="%1$s">%2$s</a>', esc_url(network_admin_url('plugins.php')), esc_html__('It is active for the whole network: deactivate it in Network Admin → Plugins.', 'seoproanalytics'));
+        } elseif ($state === 'inactive' && !is_multisite() && current_user_can('delete_plugins')) {
+            $url = wp_nonce_url(add_query_arg(array('action' => 'delete-selected', 'checked[]' => rawurlencode($file)), self_admin_url('plugins.php')), 'bulk-plugins');
+            printf('<br><a class="button button-small" href="%1$s">%2$s</a>', esc_url($url), esc_html__('Delete', 'seoproanalytics'));
+        }
+    }
+
+    /**
+     * The button that lists, then removes, what a plugin left behind.
+     */
+    private static function render_cleanup() {
+        ?>
+        <p><?php esc_html_e('Lists exactly what it left on this site; nothing is removed until you confirm. Imported days stay.', 'seoproanalytics'); ?></p>
+        <div class="seoproan-import__actions">
+            <button type="button" class="button" data-seoproan-action="leftovers"><?php esc_html_e('List leftover data', 'seoproanalytics'); ?></button>
+        </div>
+        <div class="seoproan-import__plan" data-seoproan-leftovers></div>
+        <?php
+    }
+
+    /**
+     * Imports from other statistics plugins, with their check.
+     *
+     * @param array<int,array<string,mixed>> $imports SEOProAnalytics_Migrate::imports().
+     * @param bool                           $can     Whether the user may undo.
+     */
+    private static function render_imports(array $imports, $can) {
+        $schema = SEOProAnalytics_Settings::schema();
+        ?>
+        <section class="seoproan-card seoproan-import" data-seoproan-source="">
+            <h3><?php esc_html_e('Imports', 'seoproanalytics'); ?></h3>
+            <p class="description"><?php esc_html_e('Undo deletes the days an import added (settings it filled in stay). To fill the same days from another plugin, undo, then import again.', 'seoproanalytics'); ?></p>
+            <div class="seoproan-import__scroll">
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e('Import', 'seoproanalytics'); ?></th>
+                            <th scope="col"><?php esc_html_e('Days', 'seoproanalytics'); ?></th>
+                            <th scope="col"><?php esc_html_e('Check', 'seoproanalytics'); ?></th>
+                            <th scope="col"><?php esc_html_e('Status', 'seoproanalytics'); ?></th>
+                            <th scope="col"><span class="screen-reader-text"><?php esc_html_e('Actions', 'seoproanalytics'); ?></span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($imports as $import) : ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html((string) $import['name']); ?></strong>
+                                    <?php echo esc_html((string) $import['version'] !== '' ? ' ' . $import['version'] : ''); ?>
+                                    <br><span class="description">#<?php echo esc_html((string) $import['id']); ?> · <?php echo esc_html(self::ago((int) $import['started'])); ?></span>
+                                </td>
+                                <td>
+                                    <?php self::render_import_days($import); ?>
+                                </td>
+                                <td><?php self::render_check((array) $import['check'], (string) $import['name']); ?></td>
+                                <td>
+                                    <?php self::render_import_status($import, $schema); ?>
+                                </td>
+                                <td>
+                                    <?php if ($can && $import['status'] === 'done' && $import['rows'] > 0) : ?>
+                                        <button type="button" class="button button-small" data-seoproan-action="undo" data-seoproan-import="<?php echo esc_attr((string) $import['id']); ?>"><?php esc_html_e('Undo', 'seoproanalytics'); ?></button>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <?php
+    }
+
+    /**
+     * An import's days: first to last, how many and their rows, the days it
+     * skipped, and a link to them in Visitors.
+     *
+     * @param array<string,mixed> $import SEOProAnalytics_Migrate::imports() entry.
+     */
+    private static function render_import_days(array $import) {
+        if ($import['from'] !== '') {
+            echo esc_html($import['from'] === $import['to'] ? self::day($import['from']) : self::day($import['from']) . ' – ' . self::day($import['to']));
+        }
+        ?>
+        <br><span class="description">
+            <?php
+            /* translators: 1: number of days, 2: number of rows */
+            echo esc_html(sprintf(__('%1$s days, %2$s rows', 'seoproanalytics'), number_format_i18n((int) $import['days']), number_format_i18n((int) $import['rows'])));
+            ?>
+        </span>
+        <?php self::render_skipped((array) $import['skipped']); ?>
+        <?php if ($import['status'] === 'done' && $import['rows'] > 0 && $import['from'] !== '') : ?>
+            <br><a href="<?php echo esc_url(self::overview_url((string) $import['from'], (string) $import['to'])); ?>"><?php esc_html_e('Visitors on these days', 'seoproanalytics'); ?></a>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * An import's status, its error, and the settings it filled in.
+     *
+     * @param array<string,mixed> $import SEOProAnalytics_Migrate::imports() entry.
+     * @param array<string,array> $schema SEOProAnalytics_Settings::schema().
+     */
+    private static function render_import_status(array $import, array $schema) {
+        echo esc_html(self::status_label((string) $import['status']));
+        ?>
+        <?php if ((string) $import['error'] !== '') : ?>
+            <br><?php echo esc_html((string) $import['error']); ?>
+        <?php endif; ?>
+        <?php if ($import['settings']) : ?>
+            <br><span class="description"><?php esc_html_e('Settings filled in:', 'seoproanalytics'); ?></span>
+            <ul class="seoproan-import__list">
+                <?php foreach ((array) $import['settings'] as $key => $change) : ?>
+                    <li>
+                        <?php
+                        $label = isset($schema[$key]['label']) ? (string) $schema[$key]['label'] : (string) $key;
+                        /* translators: 1: setting, 2: before, 3: after */
+                        echo esc_html(sprintf(__('%1$s: %2$s → %3$s', 'seoproanalytics'), $label, (string) $change[0], (string) $change[1]));
+                        ?>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+        <?php
+    }
+
+    /**
+     * Days an import skipped, and why.
+     *
+     * @param array<string,mixed> $skipped Import's skipped.
+     */
+    private static function render_skipped(array $skipped) {
+        $names = array();
+        foreach (SEOProAnalytics_Migrate::sources() as $key => $class) {
+            $names[$key] = $class::NAME;
+        }
+        $lines = array();
+        if (!empty($skipped['own'])) {
+            /* translators: %s: number of days */
+            $lines[] = sprintf(_n('%s day skipped: SEO Pro Analytics\'s own', '%s days skipped: SEO Pro Analytics\'s own', (int) $skipped['own'], 'seoproanalytics'), number_format_i18n((int) $skipped['own']));
+        }
+        foreach (isset($skipped['imported']) ? (array) $skipped['imported'] : array() as $by => $count) {
+            /* translators: 1: number of days, 2: plugin name */
+            $lines[] = sprintf(_n('%1$s day skipped: imported from %2$s', '%1$s days skipped: imported from %2$s', (int) $count, 'seoproanalytics'), number_format_i18n((int) $count), isset($names[$by]) ? $names[$by] : (string) $by);
+        }
+        if (!empty($skipped['empty'])) {
+            /* translators: %s: number of days */
+            $lines[] = sprintf(_n('%s day without visits', '%s days without visits', (int) $skipped['empty'], 'seoproanalytics'), number_format_i18n((int) $skipped['empty']));
+        }
+        if (!empty($skipped['failed'])) {
+            /* translators: %s: number of days */
+            $lines[] = sprintf(_n('%s day could not be written', '%s days could not be written', (int) $skipped['failed'], 'seoproanalytics'), number_format_i18n((int) $skipped['failed']));
+        }
+        foreach ($lines as $line) {
+            echo '<br><span class="description">' . esc_html($line) . '</span>';
+        }
+    }
+
+    /**
+     * The plugin's own counts beside the imported ones.
+     *
+     * @param array<string,mixed> $check  Import's check: source, imported.
+     * @param string              $name   Plugin name.
+     */
+    private static function render_check(array $check, $name) {
+        if (empty($check['source']) || empty($check['imported'])) {
+            echo '—';
+            return;
+        }
+        $metrics = array(
+            'pageviews' => __('Pageviews', 'seoproanalytics'),
+            'visits'    => __('Visits', 'seoproanalytics'),
+        );
+        ?>
+        <table class="seoproan-import__check">
+            <thead>
+                <tr>
+                    <td></td>
+                    <th scope="col" class="num"><?php echo esc_html($name); ?></th>
+                    <th scope="col" class="num"><?php esc_html_e('Imported', 'seoproanalytics'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($metrics as $metric => $label) : ?>
+                    <tr>
+                        <th scope="row"><?php echo esc_html($label); ?></th>
+                        <td class="num"><?php echo esc_html(number_format_i18n((int) (isset($check['source'][$metric]) ? $check['source'][$metric] : 0))); ?></td>
+                        <td class="num"><?php echo esc_html(number_format_i18n((int) (isset($check['imported'][$metric]) ? $check['imported'][$metric] : 0))); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    /**
+     * Visitors for some days (#/overview; each section's view is in the address).
+     *
+     * @param string $from First day.
+     * @param string $to   Last day.
+     * @return string Unescaped URL.
+     */
+    private static function overview_url($from, $to) {
+        require_once SEOPROANALYTICS_DIR . 'includes/admin/class-seoproanalytics-dashboard.php';
+        return admin_url('admin.php?page=' . SEOProAnalytics_Dashboard::SLUG) . '#/overview?range=custom&from=' . rawurlencode($from) . '&to=' . rawurlencode($to);
+    }
+
+    /**
+     * A day in the site's date format.
+     *
+     * @param string $ymd Y-m-d.
+     * @return string
+     */
+    private static function day($ymd) {
+        $time = strtotime($ymd . ' 12:00:00 UTC');
+        $text = $ymd !== '' && $time ? wp_date((string) get_option('date_format'), $time, new DateTimeZone('UTC')) : '';
+        return is_string($text) && $text !== '' ? $text : $ymd;
+    }
+
+    /**
+     * Time since, in words.
+     *
+     * @param int $time Unix time.
+     * @return string
+     */
+    private static function ago($time) {
+        /* translators: %s: time span such as "5 mins" */
+        return $time ? sprintf(__('%s ago', 'seoproanalytics'), human_time_diff($time)) : __('never', 'seoproanalytics');
+    }
+
+    /**
+     * A plugin's state, in words.
+     *
+     * @param string $state active, network, inactive or missing.
+     * @return string
+     */
+    private static function state_label($state) {
+        $labels = array(
+            'active'   => __('Active', 'seoproanalytics'),
+            'network'  => __('Active on the network', 'seoproanalytics'),
+            'inactive' => __('Inactive', 'seoproanalytics'),
+            'missing'  => __('Deleted, data left', 'seoproanalytics'),
+        );
+        return isset($labels[$state]) ? $labels[$state] : $state;
+    }
+
+    /**
+     * An import status, in words.
+     *
+     * @param string $status running, done, failed or undone.
+     * @return string
+     */
+    private static function status_label($status) {
+        $labels = array(
+            'running' => __('Running', 'seoproanalytics'),
+            'done'    => __('Done', 'seoproanalytics'),
+            'failed'  => __('Failed', 'seoproanalytics'),
+            'undone'  => __('Undone', 'seoproanalytics'),
+        );
+        return isset($labels[$status]) ? $labels[$status] : $status;
+    }
+}

@@ -1,0 +1,554 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ */
+@import url("./dashboard.css");
+
+.seoproan-share {
+	margin: 0;
+	font:
+		14px/1.5 system-ui,
+		sans-serif;
+	background: #fff;
+}
+
+.seoproan-report,
+.seoproan-share-unlock {
+	padding: 24px;
+	margin: auto;
+}
+
+.seoproan-share-unlock {
+	max-width: 400px;
+}
+
+.seoproan-share .seoproan-report {
+	--seoproan-accent: var(--seoproan-share-accent);
+	--wp-admin-theme-color: var(--seoproan-share-accent);
+
+	/* Hover and press stay in the report's accent (WordPress darkens its own admin colour). */
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--seoproan-share-accent) 88%, #000);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--seoproan-share-accent) 76%, #000);
+	--seoproan-background: #fff;
+	--seoproan-grid: rgb(127 127 127 / 18%);
+
+	color-scheme: light;
+	background: var(--seoproan-background);
+	min-height: 100vh;
+	box-sizing: border-box;
+}
+
+.seoproan-share .seoproan-report.is-dark,
+.seoproan-share-dark .seoproan-modal {
+	color-scheme: dark;
+
+	--seoproan-text: #f0f0f1;
+	--seoproan-muted: #c3c4c7;
+	--seoproan-subtle: #c3c4c7;
+	--seoproan-border: #646970;
+	--seoproan-hover: #2c3338;
+	--seoproan-background: #1d2327;
+	--seoproan-divider: #2c3338;
+	--seoproan-field-border: #8c8f94;
+	--seoproan-good: #68de7c;
+	--seoproan-bad: #ff8085;
+	--seoproan-grid: rgb(255 255 255 / 10%);
+	--seoproan-map-empty: #2c3338;
+
+	/* Chart tooltips: a raised panel with an edge, not a box the colour of the page. */
+	--seoproan-tip-bg: #2c3338;
+	--seoproan-tip-text: #f0f0f1;
+	--seoproan-tip-muted: #c3c4c7;
+	--seoproan-tip-ring: 0 0 0 1px #50575e, 0 4px 12px rgb(0 0 0 / 45%);
+
+	/* Change log groups, lighter so the markers stand out (DESIGN.md → Markers). */
+	--seoproan-mark-content: #7b90ff;
+	--seoproan-mark-seo: #b48ef0;
+	--seoproan-mark-product: #4ab866;
+	--seoproan-mark-site: #dba617;
+	--seoproan-mark-search: #f086ae;
+	--seoproan-mark-note: #dcdcde;
+}
+
+/* The head: logo and title on the left, light or dark and print on the right. */
+.seoproan-share-head {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px 24px;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--seoproan-border);
+}
+
+.seoproan-share-head__brand {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	min-width: 0;
+	color: var(--seoproan-text) !important;
+	text-decoration: none;
+}
+
+.seoproan-share-head__brand img {
+	max-width: 160px;
+	max-height: 64px;
+	object-fit: contain;
+}
+
+.seoproan-share-head__titles {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.seoproan-share-head h1 {
+	margin: 0;
+	font-size: 24px;
+	line-height: 1.25;
+	color: var(--seoproan-text);
+}
+
+.seoproan-share-head__subtitle {
+	color: var(--seoproan-muted);
+	font-size: 14px;
+}
+
+.seoproan-share-head__tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
+/* A click leaves no ring; the keyboard still shows where focus is. */
+.seoproan-share .components-button:focus:not(:focus-visible) {
+	box-shadow: none;
+	outline: none;
+}
+
+.seoproan-share .components-button.is-secondary:focus:not(:focus-visible) {
+	box-shadow: inset 0 0 0 1px var(--seoproan-accent);
+}
+
+.seoproan-share-nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+.seoproan-share-note {
+	margin: 0 0 16px;
+	max-width: 72ch;
+	color: var(--seoproan-text);
+	white-space: pre-line;
+}
+
+.seoproan-share-locks {
+	margin: 0 0 16px;
+	color: var(--seoproan-muted);
+}
+
+/* Changes as a dated list: for paper only (on screen, the chart's markers). */
+.seoproan-share-changes {
+	display: none;
+}
+
+.seoproan-share-changes h2 {
+	margin: 0 0 8px;
+	font-size: 16px;
+}
+
+.seoproan-share-changes ol {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.seoproan-share-changes li {
+	display: grid;
+	grid-template-columns: 9.5em 8em 1fr;
+	gap: 12px;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--seoproan-border);
+	break-inside: avoid;
+}
+
+.seoproan-share-changes time,
+.seoproan-share-changes__group {
+	color: var(--seoproan-muted);
+}
+
+.seoproan-share-changes code {
+	margin-inline-start: 8px;
+	font-size: 12px;
+	background: none;
+	padding: 0;
+}
+
+.seoproan-share-foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	align-items: center;
+	margin-top: 32px;
+	padding-top: 16px;
+	border-top: 1px solid var(--seoproan-border);
+	color: var(--seoproan-muted);
+}
+
+.seoproan-share-foot img {
+	max-width: 120px;
+	max-height: 48px;
+	object-fit: contain;
+}
+
+.seoproan-share-foot p {
+	margin: 0;
+}
+
+.seoproan-share-foot__credit {
+	margin-inline-start: auto !important;
+	font-size: 12px;
+}
+
+.seoproan-share a {
+	color: var(--seoproan-accent);
+}
+
+.seoproan-share .components-card,
+.seoproan-share .seoproan-app-card {
+	background: var(--seoproan-background);
+	color: var(--seoproan-text);
+}
+
+.seoproan-share .components-button {
+	color: var(--seoproan-accent);
+}
+
+.seoproan-share .components-button.is-primary {
+	background: var(--seoproan-accent);
+	color: #fff;
+}
+
+.seoproan-share .is-dark .components-button.is-primary {
+	color: #1d2327;
+}
+
+.seoproan-share input,
+.seoproan-share select {
+	background: var(--seoproan-background);
+	color: var(--seoproan-text);
+	max-width: 100%;
+}
+
+.seoproan-share .seoproan-chart-lane__marker,
+.seoproan-share .seoproan-change-dots {
+	background: var(--seoproan-background);
+}
+
+.seoproan-share .widefat {
+	border-collapse: collapse;
+	width: 100%;
+	color: var(--seoproan-text);
+}
+
+.seoproan-share .widefat th,
+.seoproan-share .widefat td {
+	padding: 8px;
+	text-align: start;
+	border-bottom: 1px solid var(--seoproan-border);
+}
+
+.seoproan-share .striped tr:nth-child(odd) {
+	background: var(--seoproan-hover);
+}
+
+.seoproan-share .screen-reader-text {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+}
+
+.seoproan-share .seoproan-changes-modal .seoproan-form__actions .is-secondary {
+	display: none;
+}
+
+.seoproan-share .components-modal__frame {
+	background: var(--seoproan-background, #fff);
+	color: var(--seoproan-text);
+}
+
+.seoproan-share .components-select-control__input {
+	background: var(--seoproan-background);
+	color: var(--seoproan-text);
+}
+
+.seoproan-share-dark {
+	background: #1d2327;
+}
+
+/* Dialogs open outside the report: the same accent (set on the page). */
+.seoproan-share .seoproan-modal {
+	--seoproan-accent: var(--seoproan-share-accent, #2271b1);
+	--wp-admin-theme-color: var(--seoproan-share-accent, #2271b1);
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--seoproan-share-accent, #2271b1) 88%, #000);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--seoproan-share-accent, #2271b1) 76%, #000);
+}
+
+.seoproan-share .seoproan-modal .components-button.is-primary {
+	background: var(--seoproan-accent);
+	color: #fff;
+}
+
+.seoproan-share-dark .seoproan-modal .components-button.is-primary {
+	color: #1d2327;
+}
+
+.seoproan-print-dialog .seoproan-fieldset {
+	display: grid;
+	gap: 8px;
+}
+
+/* Getting ready to print: every tab of the chosen sections, one section after another. */
+.seoproan-share-preparing {
+	margin-bottom: 16px;
+}
+
+.seoproan-share-preparing .components-notice {
+	margin: 0;
+}
+
+.seoproan-share-print + .seoproan-share-print {
+	margin-top: 32px;
+}
+
+.seoproan-share-print__title {
+	margin: 0 0 12px;
+	font-size: 20px;
+	color: var(--seoproan-text);
+}
+
+.seoproan-print-tab + .seoproan-print-tab {
+	margin-top: 16px;
+}
+
+.seoproan-print-tab__title {
+	margin: 0 0 8px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--seoproan-muted);
+	text-transform: none;
+}
+
+/* Hover and press stay in the report's accent in dark mode too (light: on .seoproan-report above). */
+.seoproan-share .seoproan-report.is-dark {
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--seoproan-share-accent) 85%, #fff);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--seoproan-share-accent) 70%, #fff);
+}
+
+.seoproan-share .is-dark .components-button:not(.is-primary):hover:not(:disabled) {
+	background: var(--seoproan-hover);
+}
+
+/* Dark fields and notices: WordPress paints them white. */
+.seoproan-share .is-dark .components-input-control__container {
+	background: var(--seoproan-background);
+	color: var(--seoproan-text);
+}
+
+.seoproan-share .is-dark .components-input-control__container select,
+.seoproan-share .is-dark .components-input-control__container input {
+	color: var(--seoproan-text);
+}
+
+.seoproan-share .is-dark .components-input-control__backdrop {
+	border-color: var(--seoproan-border) !important;
+}
+
+.seoproan-share .is-dark .components-notice {
+	background: var(--seoproan-hover);
+	color: var(--seoproan-text);
+}
+
+@media (width <= 480px) {
+	.seoproan-report {
+		padding: 12px;
+	}
+
+	.seoproan-share .seoproan-controls .components-base-control {
+		min-width: 0;
+	}
+}
+
+/* Paper: light whatever the screen, darker greys for contrast, no controls, cards kept whole. */
+@page {
+	margin: 14mm 12mm;
+}
+
+@media print {
+	.seoproan-share,
+	.seoproan-share-dark {
+		background: #fff !important;
+	}
+
+	.seoproan-share .seoproan-report,
+	.seoproan-share .seoproan-report.is-dark {
+		color-scheme: light;
+
+		--seoproan-text: #000;
+		--seoproan-muted: #2c3338;
+		--seoproan-subtle: #3c434a;
+		--seoproan-border: #8c8f94;
+		--seoproan-hover: #f6f7f7;
+		--seoproan-background: #fff;
+		--seoproan-grid: rgb(0 0 0 / 25%);
+		--seoproan-map-empty: #dcdcde;
+		--seoproan-good: #00701f;
+		--seoproan-bad: #b32d2e;
+
+		min-height: 0;
+		padding: 0;
+		color: #000;
+		background: #fff;
+	}
+
+	.seoproan-share .seoproan-toolbar,
+	.seoproan-share .seoproan-share-nav,
+	.seoproan-share .seoproan-share-head__tools,
+	.seoproan-share .seoproan-filter-add,
+	.seoproan-share .seoproan-search-nav,
+	.seoproan-share .seoproan-engines,
+	.seoproan-share .seoproan-actions,
+	.seoproan-share-preparing,
+	.seoproan-share .seoproan-chip__remove,
+	.seoproan-share .seoproan-filters .components-button,
+	.seoproan-share form.seoproan-properties__event,
+	.seoproan-share .components-modal__screen-overlay,
+	.seoproan-share button.seoproan-clearable__clear {
+		display: none !important;
+	}
+
+	.seoproan-share-head {
+		break-after: avoid;
+	}
+
+	/* Each printed section starts a page. A panel of several tabs runs on across pages: a tab with a short list stays whole (its name with it), long tables break between rows. */
+	.seoproan-share-print + .seoproan-share-print {
+		break-before: page;
+		margin-top: 0;
+	}
+
+	.seoproan-share-print__title {
+		break-after: avoid;
+	}
+
+	.seoproan-share .seoproan-app-card.is-print-all {
+		break-inside: auto;
+	}
+
+	/* A grid row keeps the height its card had before the page breaks moved its tabs down: stack the cards instead, so none runs into the next. */
+	.seoproan-share-print .seoproan-grid {
+		display: block;
+	}
+
+	.seoproan-share .seoproan-print-tab:has(.seoproan-rows) {
+		break-inside: avoid;
+	}
+
+	.seoproan-share .seoproan-print-tab__title {
+		color: #2c3338;
+		break-after: avoid;
+	}
+
+	.seoproan-share-changes {
+		display: block;
+		margin-top: 24px;
+		break-before: auto;
+	}
+
+	.seoproan-share-changes h2,
+	.seoproan-share h2,
+	.seoproan-share h3 {
+		break-after: avoid;
+	}
+
+	.seoproan-share .seoproan-app-card,
+	.seoproan-share .components-card,
+	.seoproan-share .seoproan-summary {
+		break-inside: avoid;
+		box-shadow: none !important;
+		border: 1px solid var(--seoproan-border);
+		margin-bottom: 12px;
+	}
+
+	.seoproan-share .seoproan-grid,
+	.seoproan-share .seoproan-app-cards {
+		gap: 12px;
+	}
+
+	.seoproan-share table {
+		break-inside: auto;
+	}
+
+	.seoproan-share thead {
+		display: table-header-group;
+	}
+
+	.seoproan-share tr {
+		break-inside: avoid;
+	}
+
+	.seoproan-share .seoproan-table-scroll {
+		overflow: visible !important;
+	}
+
+	.seoproan-share a {
+		color: #000;
+		text-decoration: underline;
+	}
+
+	.seoproan-share a.seoproan-share-head__brand {
+		text-decoration: none;
+	}
+
+	/* The chart was drawn for the screen's width: fit it to the page. The dated list replaces the changes lane. */
+	.seoproan-share .seoproan-chart__plot .uplot,
+	.seoproan-share .seoproan-chart__plot .u-wrap {
+		width: 100% !important;
+		height: auto !important;
+	}
+
+	.seoproan-share .seoproan-chart__plot canvas {
+		width: 100% !important;
+		height: auto !important;
+	}
+
+	.seoproan-share .seoproan-chart__plot {
+		min-height: 0 !important;
+	}
+
+	.seoproan-share .seoproan-chart__plot .u-over,
+	.seoproan-share .seoproan-chart__plot .u-under,
+	.seoproan-share .seoproan-chart-lane,
+	.seoproan-share .seoproan-chart-guide {
+		display: none !important;
+	}
+
+	.seoproan-share .striped tr:nth-child(odd) {
+		background: #f6f7f7;
+	}
+
+	.seoproan-share-foot {
+		break-inside: avoid;
+		color: #2c3338;
+	}
+}

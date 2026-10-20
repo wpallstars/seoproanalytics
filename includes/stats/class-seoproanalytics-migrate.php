@@ -1,0 +1,1789 @@
+<?php
+/**
+ * Moving from another statistics plugin: find its data on the site, import
+ * its history into the daily table as whole days, check it against the
+ * plugin's own counts, carry over its settings, and remove what it leaves
+ * behind once it is switched off.
+ *
+ * Each day is filled once: only days before SEO Pro Analytics's own first day,
+ * and not already filled by an import (of the same plugin or another one).
+ * Imported rows carry their imports row's id in daily.import_id, so undo
+ * removes exactly them and the daily summaries never touch them. One
+ * adapter per plugin (SEOProAnalytics_Migrate_Source); add more with the
+ * seoproanalytics_migrate_sources filter. Design: docs/architecture.md →
+ * Moving from other statistics plugins.
+ *
+ * The admin and REST start a job that cron (and the Import tab's polling)
+ * moves on in batches of days within BUDGET, under a lock; WP-CLI runs to
+ * the end. Nothing here runs on visitor pages.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ *
+ * @package SEOProAnalytics
+ * @since 0.9.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+require_once __DIR__ . '/migrate/class-seoproanalytics-migrate-source.php';
+require_once __DIR__ . '/class-seoproanalytics-dict.php';
+require_once __DIR__ . '/class-seoproanalytics-query.php';
+require_once __DIR__ . '/class-seoproanalytics-rollup.php';
+
+final class SEOProAnalytics_Migrate {
+
+    /** Adapters: imports.source => class (in includes/stats/migrate/). */
+    const SOURCES = array(
+        'burst-statistics' => 'SEOProAnalytics_Migrate_Burst',
+        'koko-analytics'   => 'SEOProAnalytics_Migrate_Koko',
+        'statify'          => 'SEOProAnalytics_Migrate_Statify',
+        'wp-statistics'    => 'SEOProAnalytics_Migrate_WP_Statistics',
+        'independent'      => 'SEOProAnalytics_Migrate_Independent_Analytics',
+        'slimstat'         => 'SEOProAnalytics_Migrate_Slimstat',
+        'matomo'           => 'SEOProAnalytics_Migrate_Matomo',
+        'jetpack'          => 'SEOProAnalytics_Migrate_Jetpack',
+    );
+
+    /** Tries per day when a remote source is busy, before the import stops. */
+    const TRIES = 6;
+
+    /** SEOProAnalytics_Changes's file, loaded when an import writes to the change log. */
+    const CHANGES_FILE = '/class-seoproanalytics-changes.php';
+
+    /** Cron hook of a running import. */
+    const HOOK = SEOProAnalytics_Collection::MIGRATE_HOOK;
+
+    /** The running or last import job (autoload off). */
+    const STATE_OPTION = 'seoproanalytics_migrate';
+
+    /** The run lock (autoload off). */
+    const LOCK_OPTION = 'seoproanalytics_migrate_lock';
+
+    /** Transient: the plugins found, for CACHE_TIME. */
+    const CACHE = SEOProAnalytics_Collection::MIGRATE_FOUND;
+    const CACHE_TIME = 10 * MINUTE_IN_SECONDS;
+
+    /** Seconds per cron run; a read of the status moves a job on for STEP. */
+    const BUDGET = 20;
+    const STEP   = 10;
+
+    /** A lock older than this was left by a run that died. */
+    const LOCK_TIME = 10 * MINUTE_IN_SECONDS;
+
+    /** Rows per INSERT and per DELETE. */
+    const BATCH = 500;
+    const DELETE_BATCH = 5000;
+
+    /** Days read for the dry run's row estimate. */
+    const SAMPLE = 3;
+
+    /**
+     * Rows (SEOProAnalytics_Migrate_Source::size()) above which the dry run
+     * estimates a plugin's counts from SAMPLE days instead of adding up
+     * every day, so it answers in seconds.
+     */
+    const LARGE = 250000;
+
+    /** imports.status, as SEOProAnalytics_Search_Import's. */
+    const RUNNING = 1;
+    const DONE    = 2;
+    const FAILED  = 3;
+    const UNDONE  = 4;
+
+    /** Metric columns of the daily table. */
+    const METRICS = array('visitors', 'visits', 'pageviews', 'bounces', 'engaged_ms', 'events', 'scroll');
+
+    /**
+     * Adapters by key: the built-in ones and those added with the filter.
+     *
+     * @return array<string,class-string<SEOProAnalytics_Migrate_Source>> Key => class.
+     */
+    public static function sources() {
+        /**
+         * Filter the statistics plugins SEO Pro Analytics can import from.
+         *
+         * @param array<string,string> $sources imports.source key => class
+         *                                      extending SEOProAnalytics_Migrate_Source
+         *                                      (loaded by then), whose KEY is the key.
+         */
+        $sources = (array) apply_filters('seoproanalytics_migrate_sources', self::SOURCES);
+        $out     = array();
+        foreach ($sources as $key => $class) {
+            $class = (string) $class;
+            if (isset(self::SOURCES[$key]) && self::SOURCES[$key] === $class && !class_exists($class, false)) {
+                require_once __DIR__ . '/migrate/class-' . strtolower(str_replace('_', '-', $class)) . '.php';
+            }
+            if (class_exists($class) && is_subclass_of($class, 'SEOProAnalytics_Migrate_Source') && $class::KEY === (string) $key && strlen((string) $key) <= 20) {
+                $out[(string) $key] = $class;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * An adapter.
+     *
+     * @param string $key Its key.
+     * @return SEOProAnalytics_Migrate_Source|null
+     */
+    public static function source($key) {
+        $sources = self::sources();
+        return isset($sources[$key]) ? new $sources[$key]() : null;
+    }
+
+    /**
+     * Whether an imports row is a migration (not a search data import).
+     *
+     * @param string $source imports.source.
+     * @return bool
+     */
+    public static function owns($source) {
+        return isset(self::SOURCES[$source]) || isset(self::sources()[$source]);
+    }
+
+    /**
+     * The plugins whose statistics are on the site (or, while they are not
+     * active, whose leftovers are), cached for CACHE_TIME. Looking also
+     * saves what the moving notices show (save_notices()).
+     *
+     * @param bool $fresh Look again.
+     * @return array<string,array<string,mixed>> Key => key, name, version, from, to, days, pending (days still to import, -1 unknown), plugin (file, state), leftovers (whether any), uninstall_setting, unavailable (why it cannot be imported now, '' for nothing).
+     */
+    public static function found($fresh = false) {
+        $cached = $fresh ? false : get_transient(self::CACHE);
+        if (is_array($cached)) {
+            return $cached;
+        }
+        $before = SEOProAnalytics_Schema::use_set('live');
+        try {
+            $out = array();
+            foreach (self::sources() as $key => $class) {
+                $item = self::found_item($key, $class);
+                if ($item !== null) {
+                    $out[$key] = $item;
+                }
+            }
+            set_transient(self::CACHE, $out, self::CACHE_TIME);
+            self::save_notices($out);
+            return $out;
+        } finally {
+            SEOProAnalytics_Schema::use_set($before);
+        }
+    }
+
+    /**
+     * One plugin for found(), or null when it has neither statistics nor
+     * leftovers and nothing keeps it from being imported.
+     *
+     * @param string                                   $key   Adapter key.
+     * @param class-string<SEOProAnalytics_Migrate_Source> $class Adapter class.
+     * @return array<string,mixed>|null
+     */
+    private static function found_item($key, $class) {
+        $source = new $class();
+        $data   = $source->detect();
+        $plugin = $source->plugin();
+        $note   = $source->unavailable();
+        $any    = self::any_leftovers($source, $plugin);
+        if ($data['from'] === '' && !$any && $note === '') {
+            return null;
+        }
+        // The days it has and those still to import, in one pass over its days.
+        $plan = $data['from'] !== '' && $note === '' ? self::make_plan($key, array(), false) : null;
+        $days = self::found_days($source, $data, $plan);
+        $todo = is_array($plan) ? $plan['import'] : array();
+        return array(
+            'key'               => $key,
+            'name'              => $class::NAME,
+            'version'           => $data['version'],
+            'from'              => $data['from'],
+            'to'                => $data['to'],
+            'days'              => $days,
+            'pending'           => self::pending_days($note, $plan),
+            'pending_from'      => $todo ? (string) min($todo) : '',
+            'pending_to'        => $todo ? (string) max($todo) : '',
+            'plugin'            => $plugin,
+            'leftovers'         => $any,
+            'uninstall_setting' => $source->uninstall_setting(),
+            'unavailable'       => $note,
+        );
+    }
+
+    /**
+     * Whether a plugin that is not running left anything behind (a network
+     * list alone does not count). A running plugin's are not looked for.
+     *
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @param array<string,string>       $plugin From its plugin().
+     * @return bool
+     */
+    private static function any_leftovers(SEOProAnalytics_Migrate_Source $source, array $plugin) {
+        if ($plugin['state'] === 'active' || $plugin['state'] === 'network') {
+            return false;
+        }
+        return (bool) array_filter(array_diff_key($source->leftovers(), array('network' => true)));
+    }
+
+    /**
+     * The days a plugin has statistics for: from its plan, or its day list.
+     *
+     * @param SEOProAnalytics_Migrate_Source             $source Adapter.
+     * @param array<string,string>                   $data   From its detect().
+     * @param array<string,mixed>|WP_Error|null      $plan   From make_plan(), or null.
+     * @return int
+     */
+    private static function found_days(SEOProAnalytics_Migrate_Source $source, array $data, $plan) {
+        if (is_array($plan)) {
+            return (int) $plan['days'];
+        }
+        return $data['from'] !== '' ? count($source->day_list($data['from'], $data['to'])) : 0;
+    }
+
+    /**
+     * Days still to import: unknown (-1) while it cannot hand its history
+     * over, so the notices wait.
+     *
+     * @param string                            $note Why it cannot be imported now ('' for nothing).
+     * @param array<string,mixed>|WP_Error|null $plan From make_plan(), or null.
+     * @return int
+     */
+    private static function pending_days($note, $plan) {
+        if ($note !== '') {
+            return -1;
+        }
+        if ($plan === null) {
+            return 0;
+        }
+        return is_array($plan) ? count($plan['import']) : -1;
+    }
+
+    /**
+     * Save what the moving notices show (SEOProAnalytics_Migrate_Notices): per
+     * plugin found, only facts, no words (people see them in their own
+     * language). Leftovers: whether it leaves data once switched off
+     * (statistics, or leftovers found while it was off).
+     *
+     * @param array<string,array<string,mixed>> $found From found().
+     */
+    private static function save_notices(array $found) {
+        $imported = array();
+        if (SEOProAnalytics_Schema::is_current()) {
+            foreach (self::imports() as $import) {
+                if ($import['status'] === 'done' && $import['rows'] > 0) {
+                    $imported[$import['source']] = true;
+                }
+            }
+        }
+        $sources = array();
+        foreach ($found as $key => $item) {
+            $sources[$key] = array(
+                'name'         => (string) $item['name'],
+                'file'         => (string) $item['plugin']['file'],
+                'from'         => (string) $item['from'],
+                'to'           => (string) $item['to'],
+                'pending'      => (int) $item['pending'],
+                'pending_from' => (string) $item['pending_from'],
+                'pending_to'   => (string) $item['pending_to'],
+                'imported'     => isset($imported[$key]),
+                'leftovers'    => !empty($item['leftovers']) || (string) $item['from'] !== '',
+            );
+        }
+        update_option(SEOProAnalytics_Collection::MIGRATE_NOTICES, array('at' => time(), 'sources' => $sources), false);
+    }
+
+    /**
+     * Look for the plugins again after an import, undo or cleanup changed
+     * their data, so the moving notices show the next step at once. These
+     * are actions people or the job take, never a screen load.
+     */
+    public static function forget_found() {
+        self::found(true);
+    }
+
+    /**
+     * Everything the Import tab shows: the plugins found, the job, SEO Pro
+     * Stats's own first day and the imports so far.
+     *
+     * @param bool $fresh Look for plugins again.
+     * @return array<string,mixed>
+     */
+    public static function status($fresh = false) {
+        $before = SEOProAnalytics_Schema::use_set('live');
+        try {
+            $current = SEOProAnalytics_Schema::is_current();
+            return array(
+                'sources'  => self::found($fresh),
+                'job'      => self::job(),
+                'own_from' => $current ? self::own_from() : '',
+                'imports'  => $current ? self::imports() : array(),
+                'can'      => array(
+                    'import'  => SEOProAnalytics_Settings::can_change(),
+                    'cleanup' => self::can_cleanup(),
+                ),
+            );
+        } finally {
+            SEOProAnalytics_Schema::use_set($before);
+        }
+    }
+
+    /**
+     * SEO Pro Analytics's own first day (site time zone): its first summarised
+     * day, or the day of the first visit it stored, or today. Imports fill
+     * only days before it.
+     *
+     * @return string Y-m-d.
+     */
+    public static function own_from() {
+        global $wpdb;
+        $days     = array((string) wp_date('Y-m-d'));
+        $imported = SEOProAnalytics_Rollup::imported()['through'];
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table: the primary key from the day after the imported ones, one entry.
+        $own = (string) $wpdb->get_var($wpdb->prepare('SELECT day FROM %i WHERE day > %s AND dim = 0 AND import_id = 0 ORDER BY day LIMIT 1', SEOProAnalytics_Schema::table('daily'), $imported !== '' ? $imported : '1000-01-01'));
+        if ($own !== '') {
+            $days[] = $own;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; MIN() on index `started` reads one entry.
+        $first = (int) $wpdb->get_var($wpdb->prepare('SELECT MIN(started) FROM %i', SEOProAnalytics_Schema::table('sessions')));
+        if ($first > 0) {
+            $days[] = (string) wp_date('Y-m-d', $first);
+        }
+        sort($days);
+        return $days[0];
+    }
+
+    /**
+     * Which of some days already have a site row in the daily table, and
+     * whose: 0 for SEO Pro Analytics's own, else the imports row's id. One
+     * primary key lookup per day.
+     *
+     * @param string[] $days Y-m-d.
+     * @return array<string,int> Day => import_id.
+     */
+    public static function filled(array $days) {
+        global $wpdb;
+        $out = array();
+        foreach (array_chunk(array_values($days), self::BATCH) as $chunk) {
+            $holders = implode(', ', array_fill(0, count($chunk), '%s'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key (day, dim 0, val 0); $holders holds only placeholders, one per day.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT day, import_id FROM %i WHERE day IN ($holders) AND dim = 0 AND val = 0", array_merge(array(SEOProAnalytics_Schema::table('daily')), $chunk)), ARRAY_A);
+            foreach ((array) $rows as $row) {
+                $out[(string) $row['day']] = (int) $row['import_id'];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The dry run: what an import would do. Writes nothing.
+     *
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $args from, to (Y-m-d, optional), prefer (adapter key, optional); settings is the import's, not the plan's.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function plan($key, array $args = array()) {
+        $before = SEOProAnalytics_Schema::use_set('live');
+        try {
+            return self::make_plan($key, $args, true);
+        } finally {
+            SEOProAnalytics_Schema::use_set($before);
+        }
+    }
+
+    /**
+     * plan(), on the live data set.
+     *
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $args from, to, prefer (strings; anything else is ignored).
+     * @param bool                $full With the overlap, rows and settings (the dry run), not only the days.
+     * @return array<string,mixed>|WP_Error
+     */
+    private static function make_plan($key, array $args, $full) {
+        $source = self::source($key);
+        if (!$source) {
+            return new WP_Error('seoproanalytics_migrate_unknown', __('SEO Pro Analytics cannot import from that plugin.', 'seoproanalytics'), array('status' => 404));
+        }
+        $data = self::plan_source($source, $args);
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        $from = !empty($args['from']) ? max((string) $args['from'], $data['from']) : $data['from'];
+        $to   = !empty($args['to']) ? min((string) $args['to'], $data['to']) : $data['to'];
+        $own  = self::own_from();
+        $days = $source->day_list($from, $to);
+
+        list($import, $skipped) = self::sort_days($days, $own);
+        $plan = array(
+            'source'   => $key,
+            'name'     => $source::NAME,
+            'version'  => $data['version'],
+            'from'     => $from,
+            'to'       => $to,
+            'own_from' => $own,
+            'days'     => count($days),
+            'import'   => $import,
+            'skipped'  => $skipped,
+        );
+        return $full ? self::dry_run($plan, $source, $args) : $plan;
+    }
+
+    /**
+     * What a plan starts from: the adapter's span, once it can be imported
+     * and the days asked for are written as days.
+     *
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @param array<string,mixed>        $args   from, to.
+     * @return array<string,string>|WP_Error From its detect().
+     */
+    private static function plan_source(SEOProAnalytics_Migrate_Source $source, array $args) {
+        if (!SEOProAnalytics_Schema::is_current()) {
+            return new WP_Error('seoproanalytics_tables', __('The statistics tables are being updated. Try again after visiting wp-admin.', 'seoproanalytics'), array('status' => 503));
+        }
+        $data = $source->detect();
+        $note = $source->unavailable();
+        if ($note !== '') {
+            return new WP_Error('seoproanalytics_migrate_unavailable', $note, array('status' => 409));
+        }
+        if ($data['from'] === '') {
+            /* translators: %s: plugin name. */
+            return new WP_Error('seoproanalytics_migrate_empty', sprintf(__('There are no %s statistics on this site.', 'seoproanalytics'), $source::NAME), array('status' => 404));
+        }
+        foreach (array('from', 'to') as $end) {
+            if (!empty($args[$end]) && !preg_match('~^\d{4}-\d{2}-\d{2}$~', (string) $args[$end])) {
+                return new WP_Error('seoproanalytics_migrate_day', __('Days are written as YYYY-MM-DD.', 'seoproanalytics'), array('status' => 400));
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * A plugin's days: those to import, and those skipped because SEO Pro
+     * Stats counted them itself (or from its own first day) or an import
+     * filled them, by its plugin.
+     *
+     * @param string[] $days Its days.
+     * @param string   $own  SEO Pro Analytics's own first day.
+     * @return array{0:string[],1:array{own:int,imported:array<string,int>}} Days to import, skipped.
+     */
+    private static function sort_days(array $days, $own) {
+        $filled  = self::filled($days);
+        $owners  = self::owners(array_values(array_filter(array_unique($filled))));
+        $import  = array();
+        $skipped = array('own' => 0, 'imported' => array());
+        foreach ($days as $day) {
+            if ($day >= $own || (isset($filled[$day]) && $filled[$day] === 0)) {
+                $skipped['own']++;
+            } elseif (isset($filled[$day])) {
+                $by                       = isset($owners[$filled[$day]]) ? $owners[$filled[$day]] : 'unknown';
+                $skipped['imported'][$by] = (isset($skipped['imported'][$by]) ? $skipped['imported'][$by] : 0) + 1;
+            } else {
+                $import[] = $day;
+            }
+        }
+        return array($import, $skipped);
+    }
+
+    /**
+     * The dry run's additions to a plan: the plugins sharing its days, the
+     * one preferred, rows, settings and counts.
+     *
+     * @param array<string,mixed>        $plan   From make_plan().
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @param array<string,mixed>        $args   prefer.
+     * @return array<string,mixed>
+     */
+    private static function dry_run(array $plan, SEOProAnalytics_Migrate_Source $source, array $args) {
+        $key    = $plan['source'];
+        $import = $plan['import'];
+        // Plugins not imported yet with statistics on the same days.
+        $estimated       = false;
+        $plan['overlap'] = self::overlaps($source, $key, $import, $estimated);
+        $prefer          = isset($args['prefer']) ? (string) $args['prefer'] : '';
+        $choices         = array_merge(array($key), wp_list_pluck($plan['overlap'], 'source'));
+        $plan['prefer']  = in_array($prefer, $choices, true) ? $prefer : $key;
+        $plan['rows']    = self::estimate($source, $import);
+        $plan['settings'] = self::settings_plan($source);
+        $plan['totals']    = self::range_totals($source, $import, $estimated);
+        $plan['estimated'] = $estimated;
+        $plan['plugin']    = $source->plugin();
+        $plan['import']   = array(
+            'days' => count($import),
+            'from' => $import ? min($import) : '',
+            'to'   => $import ? max($import) : '',
+        );
+        return $plan;
+    }
+
+    /**
+     * The other plugins with statistics on days a plan would import, with
+     * their page views and ours on those days.
+     *
+     * @param SEOProAnalytics_Migrate_Source $source    Adapter.
+     * @param string                     $key       Its key.
+     * @param string[]                   $import    Days it would import.
+     * @param bool                       $estimated Set to true when a count is estimated.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function overlaps(SEOProAnalytics_Migrate_Source $source, $key, array $import, &$estimated) {
+        $out = array();
+        foreach (self::sources() as $other_key => $class) {
+            if ($other_key === $key || !$import) {
+                continue;
+            }
+            $other = new $class();
+            $span  = $other->detect();
+            if ($span['from'] === '') {
+                continue;
+            }
+            $shared = array_values(array_intersect($import, $other->day_list(max(min($import), $span['from']), min(max($import), $span['to']))));
+            if (!$shared) {
+                continue;
+            }
+            $ours   = self::range_totals($source, $shared, $estimated);
+            $theirs = self::range_totals($other, $shared, $estimated);
+            $out[]  = array(
+                'source'    => $other_key,
+                'name'      => $class::NAME,
+                'from'      => min($shared),
+                'to'        => max($shared),
+                'days'      => count($shared),
+                'pageviews' => array($key => $ours['pageviews'], $other_key => $theirs['pageviews']),
+                'suggested' => $theirs['pageviews'] > $ours['pageviews'] ? $other_key : $key,
+            );
+        }
+        return $out;
+    }
+
+    /**
+     * A plugin's own counts for some days, for the dry run: added up over
+     * their range, or, for a large source (LARGE), estimated from SAMPLE of
+     * the days (a quarter, half and three quarters through) so the dry run
+     * stays quick.
+     *
+     * @param SEOProAnalytics_Migrate_Source $source    Adapter.
+     * @param string[]                   $days      Days, oldest first.
+     * @param bool                       $estimated Set to true when estimated.
+     * @return array{pageviews:int,visits:int,visitors:int}
+     */
+    private static function range_totals(SEOProAnalytics_Migrate_Source $source, array $days, &$estimated) {
+        $out   = array('pageviews' => 0, 'visits' => 0, 'visitors' => 0);
+        $count = count($days);
+        if (!$count) {
+            return $out;
+        }
+        if ($count <= self::SAMPLE || $source->size() <= self::LARGE) {
+            return $source->totals(min($days), max($days));
+        }
+        // Days a quarter, half and three quarters through: the first and last are often part days (installed, today).
+        $estimated = true;
+        $sample    = array_values(array_unique(array($days[(int) floor($count / 4)], $days[(int) floor($count / 2)], $days[(int) floor($count * 3 / 4)])));
+        foreach ($sample as $day) {
+            foreach ($source->totals($day, $day) as $metric => $value) {
+                $out[$metric] += (int) $value;
+            }
+        }
+        foreach ($out as $metric => $value) {
+            $out[$metric] = (int) round($value * $count / count($sample));
+        }
+        return $out;
+    }
+
+    /**
+     * Rows an import would write per dimension, estimated from a few of its
+     * days (the first, middle and last). Days a remote source cannot read
+     * now (a web request, WordPress.com busy) are left out; none read: no
+     * estimate.
+     *
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @param string[]                   $days   Days to import.
+     * @return array<string,int> Dimension ('site' for the totals) => rows.
+     */
+    private static function estimate(SEOProAnalytics_Migrate_Source $source, array $days) {
+        $count = count($days);
+        if (!$count) {
+            return array();
+        }
+        $sample = array_values(array_unique(array($days[0], $days[(int) floor($count / 2)], $days[$count - 1])));
+        $sums   = array();
+        $read_n = 0;
+        foreach (array_slice($sample, 0, self::SAMPLE) as $day) {
+            $read = $source->days($day, $day);
+            if (is_wp_error($read)) {
+                continue;
+            }
+            $read_n++;
+            foreach (isset($read[$day]) ? self::encode($read[$day], false) : array() as $row) {
+                $name        = self::dimension_name($row[0]);
+                $sums[$name] = (isset($sums[$name]) ? $sums[$name] : 0) + 1;
+            }
+        }
+        $out = array();
+        foreach ($read_n ? $sums : array() as $name => $rows) {
+            $out[$name] = (int) round($rows / $read_n * $count);
+        }
+        return $out;
+    }
+
+    /**
+     * The adapter's settings with ours: what is set now and whether the
+     * import would change it (only settings still at their default).
+     *
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function settings_plan(SEOProAnalytics_Migrate_Source $source) {
+        $schema   = SEOProAnalytics_Settings::schema();
+        $defaults = SEOProAnalytics_Settings::defaults();
+        $out      = array();
+        foreach ($source->settings() as $setting) {
+            $key = (string) $setting['key'];
+            if (!isset($schema[$key])) {
+                continue;
+            }
+            $now     = SEOProAnalytics_Settings::get($key);
+            $value   = SEOProAnalytics_Settings::sanitize_value($setting['value'], $schema[$key]);
+            $default = self::same($now, $defaults[$key]);
+            $same    = self::same($now, $value);
+            // Already the same comes first: nothing would change either way.
+            $reason = '';
+            if ($same) {
+                $reason = 'same';
+            } elseif (!$default) {
+                $reason = 'set';
+            }
+            $out[] = array(
+                'key'    => $key,
+                'label'  => isset($schema[$key]['label']) ? (string) $schema[$key]['label'] : $key,
+                'theirs' => (string) $setting['label'],
+                'from'   => (string) $setting['from'],
+                'now'    => self::words($now, $schema[$key]),
+                'to'     => self::words($value, $schema[$key]),
+                'value'  => $value,
+                'also'   => isset($setting['also']) ? (array) $setting['also'] : array(),
+                'change' => $default && !$same,
+                'reason' => $reason,
+            );
+        }
+        return $out;
+    }
+
+    /**
+     * Whether two setting values are the same (lists in any order).
+     *
+     * @param mixed $a Value.
+     * @param mixed $b Value.
+     * @return bool
+     */
+    private static function same($a, $b) {
+        if (is_array($a) && is_array($b)) {
+            $a = array_map('strval', $a);
+            $b = array_map('strval', $b);
+            sort($a);
+            sort($b);
+            return $a === $b;
+        }
+        if (is_bool($a) || is_bool($b)) {
+            return (bool) $a === (bool) $b;
+        }
+        return (string) (is_array($a) ? implode(',', $a) : $a) === (string) (is_array($b) ? implode(',', $b) : $b);
+    }
+
+    /**
+     * A setting's value in words, for the dry run.
+     *
+     * @param mixed               $value Value.
+     * @param array<string,mixed> $field Schema entry.
+     * @return string
+     */
+    private static function words($value, array $field) {
+        if (isset($field['type']) && $field['type'] === 'bool') {
+            return $value ? __('On', 'seoproanalytics') : __('Off', 'seoproanalytics');
+        }
+        if (is_array($value)) {
+            $labels = SEOProAnalytics_Settings::options_for($field);
+            $names  = array();
+            foreach ($value as $item) {
+                $names[] = isset($labels[$item]) ? (string) $labels[$item] : (string) $item;
+            }
+            return $names ? implode(', ', $names) : __('None', 'seoproanalytics');
+        }
+        $value = trim((string) $value);
+        if ($value === '') {
+            return __('None', 'seoproanalytics');
+        }
+        $lines = explode("\n", str_replace(array("\r\n", "\r"), "\n", $value));
+        /* translators: %d: number of lines. */
+        return count($lines) > 3 ? sprintf(_n('%d line', '%d lines', count($lines), 'seoproanalytics'), count($lines)) : implode(', ', $lines);
+    }
+
+    /**
+     * Start an import job: the preferred plugin first when another shares
+     * days with this one, then this one. Cron carries it on, and so does
+     * each read of the status while the Import tab is open.
+     *
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $args from, to, prefer, settings (the setting keys to carry over; absent or null: all it would change).
+     * @param bool                $cron Schedule it (false: the caller runs step() itself, as WP-CLI does).
+     * @return array<string,mixed>|WP_Error The job.
+     */
+    public static function start($key, array $args = array(), $cron = true) {
+        $job = self::state();
+        if (isset($job['status']) && $job['status'] === 'running') {
+            return new WP_Error('seoproanalytics_import_busy', __('An import is already running. Wait for it to finish.', 'seoproanalytics'), array('status' => 409));
+        }
+        $plan = self::plan($key, $args);
+        if (is_wp_error($plan)) {
+            return $plan;
+        }
+        $queue = array();
+        foreach (array_unique(array($plan['prefer'], $key)) as $item) {
+            $queue[] = array('key' => $item, 'id' => 0, 'days' => null, 'total' => 0, 'done' => 0, 'rows' => 0);
+        }
+        $state = array(
+            'status'   => 'running',
+            'from'     => isset($args['from']) ? (string) $args['from'] : '',
+            'to'       => isset($args['to']) ? (string) $args['to'] : '',
+            // The settings chosen in the dry run (null: all it would change).
+            'settings' => isset($args['settings']) && is_array($args['settings']) ? array_values(array_map('strval', $args['settings'])) : null,
+            'queue'    => $queue,
+            'current'  => 0,
+            'started'  => time(),
+            'finished' => 0,
+            'stepped'  => 0,
+            'user'     => get_current_user_id(),
+        );
+        update_option(self::STATE_OPTION, $state, false);
+        if ($cron) {
+            wp_schedule_single_event(time(), self::HOOK);
+        }
+        return self::job();
+    }
+
+    /**
+     * WP-CLI: run an import to the end.
+     *
+     * @param string              $key      Adapter key.
+     * @param array<string,mixed> $args     from, to, prefer, settings (as start()).
+     * @param callable|null       $progress Called with the job after each step.
+     * @return array<string,mixed>|WP_Error The job.
+     */
+    public static function run($key, array $args = array(), $progress = null) {
+        $job = self::start($key, $args, false);
+        if (is_wp_error($job)) {
+            return $job;
+        }
+        do {
+            $job = self::step(self::BUDGET);
+            if ($progress) {
+                call_user_func($progress, $job);
+            }
+            $wait = self::wait_until() - time();
+            if ($job['status'] === 'running' && empty($job['locked']) && $wait > 0) {
+                // A remote source asked to wait.
+                sleep(min($wait, 10 * MINUTE_IN_SECONDS));
+            }
+        } while ($job['status'] === 'running' && empty($job['locked']));
+        return $job;
+    }
+
+    /**
+     * Cron: move the job on, and come back while it runs.
+     */
+    public static function cron() {
+        $job = self::step(self::BUDGET);
+        if ($job['status'] === 'running') {
+            wp_schedule_single_event(max(time() + 5, self::wait_until()), self::HOOK);
+        }
+    }
+
+    /**
+     * Move a running job on while a status read waits for it (the Import
+     * tab's polling): a short step when no other request holds the lock.
+     *
+     * @return array<string,mixed> The job.
+     */
+    public static function nudge() {
+        $job = self::state();
+        if (!isset($job['status']) || $job['status'] !== 'running') {
+            return self::job();
+        }
+        if (!wp_next_scheduled(self::HOOK)) {
+            wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::HOOK);
+        }
+        return self::step(self::STEP);
+    }
+
+    /**
+     * Import days within a budget, under the lock.
+     *
+     * @param int $budget Seconds.
+     * @return array<string,mixed> The job; locked: another request holds the lock.
+     */
+    public static function step($budget) {
+        if (!self::lock()) {
+            return self::job() + array('locked' => true);
+        }
+        $before = SEOProAnalytics_Schema::use_set('live');
+        try {
+            $state = self::state();
+            if (!isset($state['status']) || $state['status'] !== 'running') {
+                return self::job();
+            }
+            $start = microtime(true);
+            $own   = self::own_from();
+            while (isset($state['queue'][$state['current']]) && SEOProAnalytics_Feature::more_time($start, $budget)) {
+                $item = &$state['queue'][$state['current']];
+                if (!empty($item['wait']) && (int) $item['wait'] > time()) {
+                    // A remote source asked to wait.
+                    unset($item);
+                    break;
+                }
+                $item = self::step_item($item, $own);
+                if ($item['days'] === array() && !empty($item['id'])) {
+                    self::finish($item);
+                    $state['current']++;
+                }
+                unset($item);
+                update_option(self::STATE_OPTION, $state, false);
+            }
+            if (!isset($state['queue'][$state['current']])) {
+                $state['status']   = 'done';
+                $state['finished'] = time();
+                self::refresh_imported();
+                self::forget_found();
+            }
+            $state['stepped'] = time();
+            update_option(self::STATE_OPTION, $state, false);
+            return self::job();
+        } finally {
+            SEOProAnalytics_Schema::use_set($before);
+            self::unlock();
+        }
+    }
+
+    /**
+     * One day of a queue item (or its start: the imports row and its days).
+     *
+     * @param array<string,mixed> $item Queue item.
+     * @param string              $own  SEO Pro Analytics's own first day.
+     * @return array<string,mixed> The item.
+     */
+    private static function step_item(array $item, $own) {
+        $source = self::source((string) $item['key']);
+        if (!$source) {
+            $item['days'] = array();
+            $item['id']   = $item['id'] ? $item['id'] : -1;
+            return $item;
+        }
+        if (empty($item['id'])) {
+            return self::start_item($item);
+        }
+        $day = (string) array_shift($item['days']);
+        $item['done']++;
+        $filled = self::filled(array($day));
+        if ($day >= $own || isset($filled[$day])) {
+            // Filled meanwhile (by our own count or another import).
+            return self::skip_filled($item, $day >= $own ? 0 : $filled[$day]);
+        }
+        return self::import_day($item, $source, $day);
+    }
+
+    /**
+     * A queue item's start: its plan's days and its imports row.
+     *
+     * @param array<string,mixed> $item Queue item.
+     * @return array<string,mixed> The item.
+     */
+    private static function start_item(array $item) {
+        $plan = self::make_plan((string) $item['key'], array_filter(array('from' => self::state()['from'], 'to' => self::state()['to'])), false);
+        if (is_wp_error($plan)) {
+            $item['days']  = array();
+            $item['id']    = -1;
+            $item['error'] = $plan->get_error_message();
+            return $item;
+        }
+        $item['days']    = $plan['import'];
+        $item['total']   = count($plan['import']);
+        $item['skipped'] = $plan['skipped'];
+        $item['version'] = $plan['version'];
+        $item['first']   = '';
+        $item['last']    = '';
+        $item['ours']    = array_fill_keys(array('pageviews', 'visits', 'visitors'), 0);
+        $item['theirs']  = array_fill_keys(array('pageviews', 'visits', 'visitors'), 0);
+        $item['imported'] = 0;
+        $item['id']       = self::insert_import((string) $item['key'], $plan);
+        if ($item['id'] <= 0) {
+            $item['id']    = -1;
+            $item['days']  = array();
+            $item['error'] = __('The import could not be recorded.', 'seoproanalytics');
+        }
+        return $item;
+    }
+
+    /**
+     * Count a day that was filled meanwhile as skipped: SEO Pro Analytics's own
+     * (holder 0), or by the plugin of the import that filled it.
+     *
+     * @param array<string,mixed> $item   Queue item.
+     * @param int                 $holder 0 for our own, else the imports row's id.
+     * @return array<string,mixed> The item.
+     */
+    private static function skip_filled(array $item, $holder) {
+        if ($holder === 0) {
+            $item['skipped']['own']++;
+            return $item;
+        }
+        $owner                            = self::owners(array($holder));
+        $by                               = isset($owner[$holder]) ? $owner[$holder] : 'unknown';
+        $item['skipped']['imported'][$by] = (isset($item['skipped']['imported'][$by]) ? $item['skipped']['imported'][$by] : 0) + 1;
+        return $item;
+    }
+
+    /**
+     * Read one day from the adapter and write it, then add its counts and
+     * the plugin's own to the check.
+     *
+     * @param array<string,mixed>        $item   Queue item.
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @param string                     $day    Y-m-d.
+     * @return array<string,mixed> The item.
+     */
+    private static function import_day(array $item, SEOProAnalytics_Migrate_Source $source, $day) {
+        $read = $source->days($day, $day);
+        if (is_wp_error($read)) {
+            return self::retry_item($item, $day, $read);
+        }
+        $item['tries'] = 0;
+        $item['wait']  = 0;
+        $rows = isset($read[$day]) ? self::encode($read[$day], true) : array();
+        if (!$rows) {
+            $item['skipped']['empty'] = (isset($item['skipped']['empty']) ? $item['skipped']['empty'] : 0) + 1;
+            return $item;
+        }
+        $written = self::write($day, (int) $item['id'], $rows);
+        if ($written === false) {
+            $item['skipped']['failed'] = (isset($item['skipped']['failed']) ? $item['skipped']['failed'] : 0) + 1;
+            return $item;
+        }
+        $item['rows'] += $written;
+        $item['imported']++;
+        $item['first'] = $item['first'] === '' ? $day : min($item['first'], $day);
+        $item['last']  = max($item['last'], $day);
+        $item['ours']  = self::add_site_counts($item['ours'], $rows);
+        foreach ($source->totals($day, $day) as $metric => $count) {
+            $item['theirs'][$metric] += (int) $count;
+        }
+        return $item;
+    }
+
+    /**
+     * Add a written day's site totals (its first site row) to the check.
+     *
+     * @param array<string,int>                                 $ours Page views, visits and visitors so far.
+     * @param array<int,array{0:int,1:int,2:array<string,int>}> $rows From encode().
+     * @return array<string,int>
+     */
+    private static function add_site_counts(array $ours, array $rows) {
+        foreach ($rows as $row) {
+            if ($row[0] === 0) {
+                foreach (array('pageviews', 'visits', 'visitors') as $metric) {
+                    $ours[$metric] += $row[2][$metric];
+                }
+                break;
+            }
+        }
+        return $ours;
+    }
+
+    /**
+     * A day a remote source could not read: put it back to read again
+     * after the wait its error asks for (retry seconds; 0: in a request
+     * that may fetch, without counting a try), or stop the item with the
+     * error when trying again cannot help or after TRIES tries.
+     *
+     * @param array<string,mixed> $item  Queue item.
+     * @param string              $day   The day.
+     * @param WP_Error            $error From the adapter's days().
+     * @return array<string,mixed> The item; wait set: the step stops here.
+     */
+    private static function retry_item(array $item, $day, WP_Error $error) {
+        $data  = $error->get_error_data();
+        $retry = is_array($data) && isset($data['retry']) ? (int) $data['retry'] : -1;
+        $tries = isset($item['tries']) ? (int) $item['tries'] : 0;
+        if ($retry < 0 || ($retry > 0 && $tries + 1 >= self::TRIES)) {
+            $item['days']  = array();
+            $item['error'] = $error->get_error_message();
+            return $item;
+        }
+        array_unshift($item['days'], $day);
+        $item['done']--;
+        if ($retry > 0) {
+            $item['tries'] = $tries + 1;
+            // Longer after each try.
+            $retry *= $item['tries'];
+        }
+        $item['wait']   = time() + max(1, $retry);
+        $item['notice'] = $retry > 0 ? $error->get_error_message() : '';
+        return $item;
+    }
+
+    /**
+     * When the running job's current item may be read again (0: now).
+     *
+     * @return int Unix time.
+     */
+    private static function wait_until() {
+        $state = self::state();
+        if (!isset($state['status'], $state['queue'], $state['current']) || $state['status'] !== 'running' || !isset($state['queue'][$state['current']]['wait'])) {
+            return 0;
+        }
+        return (int) $state['queue'][$state['current']]['wait'];
+    }
+
+    /**
+     * Rows read from an adapter as daily rows: dimension code, value
+     * (dictionary id or code) and all the metrics, one row per code and
+     * value (values that become the same are added together).
+     *
+     * @param array<int,array{0:string,1:int|string,2:array<string,int>}> $rows Adapter rows.
+     * @param bool                                                         $ids  Add new texts to the dictionary (false: the dry run; texts count as one value each).
+     * @return array<int,array{0:int,1:int,2:array<string,int>}>
+     */
+    public static function encode(array $rows, $ids) {
+        $kinds = array(
+            'page'         => SEOProAnalytics_Schema::DICT_PATH,
+            'entry'        => SEOProAnalytics_Schema::DICT_PATH,
+            'exit'         => SEOProAnalytics_Schema::DICT_PATH,
+            'landing'      => SEOProAnalytics_Schema::DICT_PATH,
+            'source'       => SEOProAnalytics_Schema::DICT_HOST,
+            'utm_source'   => SEOProAnalytics_Schema::DICT_UTM,
+            'utm_medium'   => SEOProAnalytics_Schema::DICT_UTM,
+            'utm_campaign' => SEOProAnalytics_Schema::DICT_UTM,
+            'utm_term'     => SEOProAnalytics_Schema::DICT_UTM,
+            'utm_content'  => SEOProAnalytics_Schema::DICT_UTM,
+            'browser'      => SEOProAnalytics_Schema::DICT_BROWSER,
+            'os'           => SEOProAnalytics_Schema::DICT_OS,
+        );
+        $dict = self::encode_dict($rows, $kinds, $ids);
+        $out  = array();
+        foreach ($rows as $row) {
+            list($name, $value, $metrics) = $row;
+            $dim = self::daily_dim($name);
+            if ($dim === null) {
+                continue;
+            }
+            $val = self::daily_val($name, $value, $kinds, $dict);
+            if ($val < 0) {
+                continue;
+            }
+            $key = $dim . ':' . $val;
+            if (!isset($out[$key])) {
+                $out[$key] = array($dim, $val, array_fill_keys(self::METRICS, 0));
+            }
+            foreach (self::METRICS as $metric) {
+                $out[$key][2][$metric] += isset($metrics[$metric]) ? max(0, (int) $metrics[$metric]) : 0;
+            }
+        }
+        return array_values($out);
+    }
+
+    /**
+     * The dictionary ids of the texts in adapter rows, by dictionary kind.
+     *
+     * @param array<int,array{0:string,1:int|string,2:array<string,int>}> $rows  Adapter rows.
+     * @param array<string,int>                                            $kinds Dimension name => dictionary kind.
+     * @param bool                                                         $ids   Add new texts to the dictionary (false: the dry run's stand-in ids).
+     * @return array<int,array<string,int>> Kind => text => id.
+     */
+    private static function encode_dict(array $rows, array $kinds, $ids) {
+        $texts = array();
+        foreach ($rows as $row) {
+            if (isset($kinds[$row[0]])) {
+                $texts[$kinds[$row[0]]][] = (string) $row[1];
+            }
+        }
+        $dict = array();
+        foreach ($texts as $kind => $values) {
+            $dict[$kind] = $ids ? SEOProAnalytics_Dict::ids($kind, $values) : self::dry_dict($values);
+        }
+        return $dict;
+    }
+
+    /**
+     * The dry run's stand-in ids: texts count as one value each, the empty
+     * text as none.
+     *
+     * @param string[] $values Texts.
+     * @return array<string,int> Text => id.
+     */
+    private static function dry_dict(array $values) {
+        $dict = array('' => 0);
+        foreach (array_values(array_unique(array_map(array('SEOProAnalytics_Dict', 'clean'), $values))) as $i => $value) {
+            $dict[$value] = $value === '' ? 0 : $i + 1;
+        }
+        return $dict;
+    }
+
+    /**
+     * The daily table's dimension code of an adapter row's name.
+     *
+     * @param string $name '' for the site totals, or a dimension name.
+     * @return int|null Null for a dimension the daily table does not keep.
+     */
+    private static function daily_dim($name) {
+        if ($name === '') {
+            return 0;
+        }
+        if ($name === 'landing') {
+            return SEOProAnalytics_Rollup::SEARCH_LANDING;
+        }
+        return isset(SEOProAnalytics_Rollup::DIMS[$name]) ? SEOProAnalytics_Rollup::DIMS[$name] : null;
+    }
+
+    /**
+     * The daily table's value of an adapter row: 0 for the site totals, a
+     * dictionary id for a text, a country's code, or the number itself.
+     *
+     * @param string                       $name  '' or a dimension name.
+     * @param int|string                   $value The adapter's value.
+     * @param array<string,int>            $kinds Dimension name => dictionary kind.
+     * @param array<int,array<string,int>> $dict  From encode_dict().
+     * @return int Below 0: a value the daily table does not keep.
+     */
+    private static function daily_val($name, $value, array $kinds, array $dict) {
+        if ($name === '') {
+            return 0;
+        }
+        if (isset($kinds[$name])) {
+            $clean = SEOProAnalytics_Dict::clean((string) $value);
+            return isset($dict[$kinds[$name]][$clean]) ? (int) $dict[$kinds[$name]][$clean] : 0;
+        }
+        if ($name === 'country') {
+            return SEOProAnalytics_Rollup::country_value((string) $value);
+        }
+        return (int) $value;
+    }
+
+    /**
+     * A daily code's dimension name, for the dry run.
+     *
+     * @param int $dim Code.
+     * @return string
+     */
+    private static function dimension_name($dim) {
+        if ($dim === 0) {
+            return 'site';
+        }
+        if ($dim === SEOProAnalytics_Rollup::SEARCH_LANDING) {
+            return 'landing';
+        }
+        $name = array_search($dim, SEOProAnalytics_Rollup::DIMS, true);
+        return $name === false ? (string) $dim : (string) $name;
+    }
+
+    /**
+     * Write one imported day, all or nothing.
+     *
+     * @param string                                         $day    Y-m-d.
+     * @param int                                            $import imports.id.
+     * @param array<int,array{0:int,1:int,2:array<string,int>}> $rows From encode().
+     * @return int|false Rows written.
+     */
+    private static function write($day, $import, array $rows) {
+        global $wpdb;
+        $table = SEOProAnalytics_Schema::table('daily');
+        $count = 0;
+        $ok    = true;
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
+        $wpdb->query('START TRANSACTION');
+        foreach (array_chunk($rows, self::BATCH) as $chunk) {
+            $args = array($table);
+            foreach ($chunk as $row) {
+                array_push($args, $day, $row[0], $row[1]);
+                foreach (self::METRICS as $metric) {
+                    $args[] = $row[2][$metric];
+                }
+                $args[] = $import;
+            }
+            $groups = implode(', ', array_fill(0, count($chunk), '(%s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)'));
+            $result = $wpdb->query($wpdb->prepare("INSERT INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events, scroll, import_id) VALUES $groups", $args));
+            if ($result === false) {
+                $ok = false;
+                break;
+            }
+            $count += (int) $result;
+        }
+        if ($ok) {
+            $wpdb->query('COMMIT');
+        } else {
+            $wpdb->query('ROLLBACK');
+        }
+        // phpcs:enable
+        return $ok ? $count : false;
+    }
+
+    /**
+     * Add an imports row for a run.
+     *
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $plan From make_plan().
+     * @return int Its id, or 0.
+     */
+    private static function insert_import($key, array $plan) {
+        global $wpdb;
+        $days = (array) $plan['import'];
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table.
+        $ok = $wpdb->insert(SEOProAnalytics_Schema::table('imports'), array(
+            'source'   => $key,
+            'status'   => self::RUNNING,
+            'started'  => time(),
+            'day_from' => $days ? min($days) : $plan['from'],
+            'day_to'   => $days ? max($days) : $plan['to'],
+            'meta'     => (string) wp_json_encode(array('version' => $plan['version'], 'range' => array($plan['from'], $plan['to']))),
+        ), array('%s', '%d', '%d', '%s', '%s', '%s'));
+        return $ok ? (int) $wpdb->insert_id : 0;
+    }
+
+    /**
+     * Finish a queue item: its imports row (days, rows, what was skipped,
+     * the check against the plugin's own counts, the settings carried
+     * over), its settings, and a note on the timeline.
+     *
+     * @param array<string,mixed> $item Queue item.
+     */
+    private static function finish(array &$item) {
+        global $wpdb;
+        if ((int) $item['id'] <= 0) {
+            return;
+        }
+        $source   = self::source((string) $item['key']);
+        $state    = self::state();
+        $chosen   = isset($state['settings']) && is_array($state['settings']) ? $state['settings'] : null;
+        $settings = $source ? self::apply_settings($source, $chosen) : array();
+        $meta     = array(
+            'version'  => isset($item['version']) ? (string) $item['version'] : '',
+            'days'     => (int) $item['imported'],
+            'skipped'  => isset($item['skipped']) ? $item['skipped'] : array(),
+            'check'    => array('source' => $item['theirs'], 'imported' => $item['ours']),
+            'settings' => $settings,
+        );
+        if (!empty($item['error'])) {
+            $meta['error'] = (string) $item['error'];
+        }
+        if ($source && $item['last'] !== '') {
+            require_once __DIR__ . self::CHANGES_FILE;
+            /* translators: %s: plugin name. */
+            $note = SEOProAnalytics_Changes::annotate(sprintf(__('Statistics imported from %s', 'seoproanalytics'), $source::NAME), '', $item['last'] . ' 23:59');
+            if (is_array($note) && isset($note['id'])) {
+                $meta['note'] = (int) $note['id'];
+            }
+        }
+        $values = array(
+            'status'     => empty($item['error']) ? self::DONE : self::FAILED,
+            'finished'   => time(),
+            'rows_added' => (int) $item['rows'],
+            'meta'       => (string) wp_json_encode($meta),
+        );
+        if ($item['first'] !== '') {
+            $values['day_from'] = $item['first'];
+            $values['day_to']   = $item['last'];
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+        $wpdb->update(SEOProAnalytics_Schema::table('imports'), $values, array('id' => (int) $item['id']));
+        self::refresh_imported();
+    }
+
+    /**
+     * Carry over the adapter's settings that are still at our default,
+     * of those chosen. The plugin's own options are never written.
+     *
+     * @param SEOProAnalytics_Migrate_Source $source Adapter.
+     * @param string[]|null              $only   Setting keys chosen (null: all; a key's also settings follow it).
+     * @return array<string,array{0:string,1:string}> Key => before, after (in words).
+     */
+    private static function apply_settings(SEOProAnalytics_Migrate_Source $source, $only = null) {
+        $schema   = SEOProAnalytics_Settings::schema();
+        $defaults = SEOProAnalytics_Settings::defaults();
+        $changed  = array();
+        foreach (self::settings_plan($source) as $setting) {
+            if (!$setting['change'] || ($only !== null && !in_array($setting['key'], $only, true))) {
+                continue;
+            }
+            $saved = SEOProAnalytics_Settings::set($setting['key'], $setting['value']);
+            if (is_wp_error($saved)) {
+                continue;
+            }
+            $changed[$setting['key']] = array($setting['now'], $setting['to']);
+            $changed = self::apply_also($setting['also'], $schema, $defaults, $changed);
+        }
+        return $changed;
+    }
+
+    /**
+     * Carry over the settings that follow a carried-over one, each only
+     * while still at our default and when it would change.
+     *
+     * @param array<string,mixed>                    $also     Key => value.
+     * @param array<string,array<string,mixed>>      $schema   Settings schema.
+     * @param array<string,mixed>                    $defaults Settings defaults.
+     * @param array<string,array{0:string,1:string}> $changed  Changed so far.
+     * @return array<string,array{0:string,1:string}> With these added.
+     */
+    private static function apply_also(array $also, array $schema, array $defaults, array $changed) {
+        foreach ($also as $key => $value) {
+            if (isset($schema[$key]) && self::same(SEOProAnalytics_Settings::get($key), $defaults[$key]) && !self::same($defaults[$key], $value)) {
+                $before = self::words(SEOProAnalytics_Settings::get($key), $schema[$key]);
+                if (!is_wp_error(SEOProAnalytics_Settings::set($key, $value))) {
+                    $changed[$key] = array($before, self::words($value, $schema[$key]));
+                }
+            }
+        }
+        return $changed;
+    }
+
+    /**
+     * Record the last imported day and the time, so the daily summaries
+     * are read for imported days and report caches start again.
+     */
+    private static function refresh_imported() {
+        global $wpdb;
+        $keys = array_keys(self::SOURCES + self::sources());
+        $in   = implode(', ', array_fill(0, count($keys), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own small table; $in holds only placeholders.
+        $through = (string) $wpdb->get_var($wpdb->prepare("SELECT MAX(day_to) FROM %i WHERE source IN ($in) AND status = %d AND rows_added > 0", array_merge(array(SEOProAnalytics_Schema::table('imports')), $keys, array(self::DONE))));
+        update_option(SEOProAnalytics_Schema::option(SEOProAnalytics_Rollup::IMPORTED_OPTION), array('through' => $through, 'at' => time()), false);
+    }
+
+    /**
+     * Undo a migration import: delete its daily rows (its days through the
+     * primary key, and its id) and its timeline note. Settings it carried
+     * over stay.
+     *
+     * @param int $id imports.id.
+     * @return int|WP_Error Rows deleted.
+     */
+    public static function undo($id) {
+        global $wpdb;
+        $before = SEOProAnalytics_Schema::use_set('live');
+        try {
+            $table = SEOProAnalytics_Schema::table('imports');
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+            $row = $wpdb->get_row($wpdb->prepare('SELECT * FROM %i WHERE id = %d', $table, (int) $id), ARRAY_A);
+            if (!$row || !self::owns((string) $row['source'])) {
+                return new WP_Error('seoproanalytics_import_unknown', __('There is no import with that ID.', 'seoproanalytics'), array('status' => 404));
+            }
+            if ((int) $row['status'] === self::UNDONE) {
+                return 0;
+            }
+            $job = self::state();
+            if ((int) $row['status'] === self::RUNNING && isset($job['status']) && $job['status'] === 'running') {
+                return new WP_Error('seoproanalytics_import_busy', __('That import is still running. Undo it when it has finished.', 'seoproanalytics'), array('status' => 409));
+            }
+            $deleted = 0;
+            do {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table: the import's days by primary key, and its id, in batches.
+                $rows     = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day >= %s AND day <= %s AND import_id = %d LIMIT %d', SEOProAnalytics_Schema::table('daily'), $row['day_from'], $row['day_to'], (int) $id, self::DELETE_BATCH));
+                $deleted += (int) $rows;
+            } while ($rows === self::DELETE_BATCH);
+            $meta = json_decode((string) $row['meta'], true);
+            if (is_array($meta) && !empty($meta['note'])) {
+                require_once __DIR__ . self::CHANGES_FILE;
+                SEOProAnalytics_Changes::delete_note((int) $meta['note']);
+            }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+            $wpdb->update($table, array('status' => self::UNDONE, 'finished' => time()), array('id' => (int) $id));
+            self::refresh_imported();
+            self::forget_found();
+            return $deleted;
+        } finally {
+            SEOProAnalytics_Schema::use_set($before);
+        }
+    }
+
+    /**
+     * Migration imports, newest first, with their check and settings.
+     *
+     * @param int $limit Most rows.
+     * @return array<int,array<string,mixed>>
+     */
+    public static function imports($limit = 20) {
+        global $wpdb;
+        $names = array();
+        foreach (self::sources() as $key => $class) {
+            $names[$key] = $class::NAME;
+        }
+        $keys = array_keys(self::SOURCES + $names);
+        $in   = implode(', ', array_fill(0, count($keys), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own small table; $in holds only placeholders.
+        $rows     = $wpdb->get_results($wpdb->prepare("SELECT * FROM %i WHERE source IN ($in) ORDER BY id DESC LIMIT %d", array_merge(array(SEOProAnalytics_Schema::table('imports')), $keys, array((int) $limit))), ARRAY_A);
+        $out = array();
+        foreach ((array) $rows as $row) {
+            $out[] = self::import_row($row, $names);
+        }
+        return $out;
+    }
+
+    /**
+     * An imports row as imports() lists it.
+     *
+     * @param array<string,string> $row   The imports row.
+     * @param array<string,string> $names Adapter key => plugin name.
+     * @return array<string,mixed>
+     */
+    private static function import_row(array $row, array $names) {
+        $statuses = array(self::RUNNING => 'running', self::DONE => 'done', self::FAILED => 'failed', self::UNDONE => 'undone');
+        $meta     = json_decode((string) $row['meta'], true);
+        $meta     = is_array($meta) ? $meta : array();
+        return array(
+            'id'       => (int) $row['id'],
+            'source'   => (string) $row['source'],
+            'name'     => isset($names[$row['source']]) ? $names[$row['source']] : (string) $row['source'],
+            'status'   => isset($statuses[(int) $row['status']]) ? $statuses[(int) $row['status']] : 'unknown',
+            'started'  => (int) $row['started'],
+            'finished' => (int) $row['finished'],
+            'from'     => (string) $row['day_from'],
+            'to'       => (string) $row['day_to'],
+            'days'     => isset($meta['days']) ? (int) $meta['days'] : 0,
+            'rows'     => (int) $row['rows_added'],
+            'version'  => isset($meta['version']) ? (string) $meta['version'] : '',
+            'skipped'  => isset($meta['skipped']) ? $meta['skipped'] : array(),
+            'check'    => isset($meta['check']) ? $meta['check'] : array(),
+            'settings' => isset($meta['settings']) ? $meta['settings'] : array(),
+            'error'    => isset($meta['error']) ? (string) $meta['error'] : '',
+        );
+    }
+
+    /**
+     * The sources of some imports rows.
+     *
+     * @param int[] $ids imports.id.
+     * @return array<int,string> Id => source key.
+     */
+    private static function owners(array $ids) {
+        global $wpdb;
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (!$ids) {
+            return array();
+        }
+        $in = implode(', ', array_fill(0, count($ids), '%d'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by primary key; $in holds only placeholders.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT id, source FROM %i WHERE id IN ($in)", array_merge(array(SEOProAnalytics_Schema::table('imports')), $ids)), ARRAY_A);
+        $out  = array();
+        foreach ((array) $rows as $row) {
+            $out[(int) $row['id']] = (string) $row['source'];
+        }
+        return $out;
+    }
+
+    /**
+     * The job as the Import tab and WP-CLI show it.
+     *
+     * @return array<string,mixed>
+     */
+    public static function job() {
+        $state = self::state();
+        if (!isset($state['status'])) {
+            return array('status' => 'none');
+        }
+        $items = array();
+        foreach ((array) $state['queue'] as $item) {
+            $class   = isset(self::sources()[$item['key']]) ? self::sources()[$item['key']] : '';
+            $items[] = array(
+                'source' => (string) $item['key'],
+                'name'   => $class ? $class::NAME : (string) $item['key'],
+                'id'     => max(0, (int) $item['id']),
+                'total'  => (int) $item['total'],
+                'done'   => (int) $item['done'],
+                'rows'   => (int) $item['rows'],
+                'error'  => isset($item['error']) ? (string) $item['error'] : '',
+                // A remote source asked to wait: why, and until when.
+                'notice' => !empty($item['wait']) && (int) $item['wait'] > time() && isset($item['notice']) ? (string) $item['notice'] : '',
+                'wait'   => !empty($item['wait']) && (int) $item['wait'] > time() ? (int) $item['wait'] : 0,
+            );
+        }
+        return array(
+            'status'   => (string) $state['status'],
+            'queue'    => $items,
+            'started'  => (int) $state['started'],
+            'finished' => (int) $state['finished'],
+        );
+    }
+
+    /**
+     * The stored job.
+     *
+     * @return array<string,mixed>
+     */
+    private static function state() {
+        $state = get_option(self::STATE_OPTION, array());
+        return is_array($state) ? $state : array();
+    }
+
+    /**
+     * Whether the current user may remove another plugin's leftovers.
+     * WP-CLI runs as the server's user, who can delete them anyway.
+     *
+     * @return bool
+     */
+    public static function can_cleanup() {
+        if (defined('WP_CLI') && WP_CLI) {
+            return true;
+        }
+        return current_user_can('delete_plugins') && current_user_can('manage_options') && SEOProAnalytics_Settings::can_change();
+    }
+
+    /**
+     * Remove what a plugin left behind: exactly the list from its
+     * adapter's leftovers(), on this site only, and only while the plugin
+     * is not active here or on the network. Cannot be undone; imported
+     * days stay.
+     *
+     * @param string $key     Adapter key.
+     * @param bool   $dry_run Only list them.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function cleanup($key, $dry_run = true) {
+        $source = self::source($key);
+        if (!$source) {
+            return new WP_Error('seoproanalytics_migrate_unknown', __('SEO Pro Analytics cannot import from that plugin.', 'seoproanalytics'), array('status' => 404));
+        }
+        if (!self::can_cleanup()) {
+            return new WP_Error('seoproanalytics_migrate_cleanup_denied', __('Removing another plugin\'s data needs the right to delete plugins and to change settings.', 'seoproanalytics'), array('status' => 403));
+        }
+        $plugin = $source->plugin();
+        if ($plugin['state'] === 'active' || $plugin['state'] === 'network') {
+            return new WP_Error(
+                'seoproanalytics_migrate_active',
+                /* translators: %s: plugin name. */
+                sprintf(__('%s is active. Deactivate it first: its data can only be removed while it is not running.', 'seoproanalytics'), $source::NAME),
+                array('status' => 409, 'plugin' => $plugin)
+            );
+        }
+        $list = $source->leftovers();
+        $out  = array('source' => $key, 'name' => $source::NAME, 'plugin' => $plugin, 'leftovers' => $list, 'dry_run' => (bool) $dry_run);
+        if ($dry_run) {
+            return $out;
+        }
+        $out['removed'] = self::remove($list);
+        SEOProAnalytics_Migrate_Source::forget_tables();
+        self::forget_found();
+        $out['left'] = $source->leftovers();
+
+        $before = SEOProAnalytics_Schema::use_set('live');
+        try {
+            if (SEOProAnalytics_Schema::is_current()) {
+                require_once __DIR__ . self::CHANGES_FILE;
+                /* translators: %s: plugin name. */
+                SEOProAnalytics_Changes::annotate(sprintf(__('Leftover data of %s removed', 'seoproanalytics'), $source::NAME));
+            }
+        } finally {
+            SEOProAnalytics_Schema::use_set($before);
+        }
+        return $out;
+    }
+
+    /**
+     * Delete a leftovers list on this site (network-wide items are only
+     * listed, never deleted here).
+     *
+     * @param array<string,mixed> $list From leftovers().
+     * @return array<string,int> Kind => items removed.
+     */
+    private static function remove(array $list) {
+        $done = array_fill_keys(array('tables', 'options', 'transients', 'cron', 'user_meta', 'post_meta', 'roles', 'files'), 0);
+        $done['tables'] = self::drop_tables((array) $list['tables']);
+        foreach (array('options', 'transients') as $kind) {
+            $done[$kind] = self::delete_options((array) $list[$kind]);
+        }
+        $done['cron']      = self::unschedule_hooks((array) $list['cron']);
+        $done['user_meta'] = self::delete_meta_keys('user', (array) $list['user_meta']);
+        $done['post_meta'] = self::delete_meta_keys('post', isset($list['post_meta']) ? (array) $list['post_meta'] : array());
+        $done['roles']     = self::remove_roles(isset($list['roles']) ? (array) $list['roles'] : array());
+        $done['files']     = self::remove_files((array) $list['files']);
+        return $done;
+    }
+
+    /**
+     * Drop listed tables of this site (its prefix), one name at a time.
+     *
+     * @param string[] $tables Table names.
+     * @return int Dropped.
+     */
+    private static function drop_tables(array $tables) {
+        global $wpdb;
+        $done = 0;
+        foreach ($tables as $table) {
+            // Only this site's tables (its prefix), one listed name at a time.
+            if (strpos((string) $table, $wpdb->prefix) !== 0) {
+                continue;
+            }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- removing another plugin's leftover table: confirmed by the owner, while it is inactive (AGENTS.md).
+            if ($wpdb->query($wpdb->prepare('DROP TABLE IF EXISTS %i', (string) $table)) !== false) {
+                $done++;
+            }
+        }
+        return $done;
+    }
+
+    /**
+     * Delete listed options (transients by their option names).
+     *
+     * @param string[] $names Option names.
+     * @return int Deleted.
+     */
+    private static function delete_options(array $names) {
+        $done = 0;
+        foreach ($names as $name) {
+            if (delete_option((string) $name)) {
+                $done++;
+            }
+        }
+        return $done;
+    }
+
+    /**
+     * Unschedule listed cron hooks.
+     *
+     * @param string[] $hooks Hooks.
+     * @return int Unscheduled.
+     */
+    private static function unschedule_hooks(array $hooks) {
+        $done = 0;
+        foreach ($hooks as $hook) {
+            if (wp_unschedule_hook((string) $hook) !== false) {
+                $done++;
+            }
+        }
+        return $done;
+    }
+
+    /**
+     * Delete listed meta keys from every user or post.
+     *
+     * @param string   $type user or post.
+     * @param string[] $keys Meta keys.
+     * @return int Keys deleted.
+     */
+    private static function delete_meta_keys($type, array $keys) {
+        $done = 0;
+        foreach ($keys as $meta_key) {
+            if (delete_metadata($type, 0, (string) $meta_key, '', true)) {
+                $done++;
+            }
+        }
+        return $done;
+    }
+
+    /**
+     * Remove listed user roles that exist.
+     *
+     * @param string[] $roles Role names.
+     * @return int Removed.
+     */
+    private static function remove_roles(array $roles) {
+        $done = 0;
+        foreach ($roles as $role) {
+            if (get_role((string) $role)) {
+                remove_role((string) $role);
+                $done++;
+            }
+        }
+        return $done;
+    }
+
+    /**
+     * Delete listed files and folders in wp-content, never outside it.
+     *
+     * @param string[] $files Paths relative to wp-content.
+     * @return int Gone afterwards.
+     */
+    private static function remove_files(array $files) {
+        $base = wp_normalize_path(trailingslashit(WP_CONTENT_DIR));
+        $done = 0;
+        foreach ($files as $relative) {
+            $relative = ltrim(wp_normalize_path((string) $relative), '/');
+            if ($relative === '' || strpos($relative, '..') !== false) {
+                continue;
+            }
+            $path = untrailingslashit($base . $relative);
+            if (is_link($path) || is_file($path)) {
+                wp_delete_file($path);
+            } elseif (is_dir($path)) {
+                self::remove_dir($path);
+            }
+            clearstatcache();
+            if (!file_exists($path)) {
+                $done++;
+            }
+        }
+        return $done;
+    }
+
+    /**
+     * Delete a folder and everything in it, without following links.
+     *
+     * @param string $dir Folder.
+     *
+     * A folder that cannot be removed stays, and the caller does not count
+     * it as removed; its warning is not an error here.
+     * @SuppressWarnings("PHPMD.ErrorControlOperator")
+     */
+    private static function remove_dir($dir) {
+        $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($items as $item) {
+            $path = $item->getPathname();
+            if ($item->isLink() || !$item->isDir()) {
+                wp_delete_file($path);
+            } else {
+                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- an emptied folder of the leftovers list.
+                @rmdir($path);
+            }
+        }
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- the emptied leftover folder itself.
+        @rmdir($dir);
+    }
+
+    /**
+     * Take the run lock.
+     *
+     * @return bool Whether this request has it.
+     */
+    private static function lock() {
+        if (add_option(self::LOCK_OPTION, time(), '', false)) {
+            return true;
+        }
+        $since = (int) get_option(self::LOCK_OPTION, 0);
+        if ($since > time() - self::LOCK_TIME) {
+            return false;
+        }
+        // Left behind by a run that died: take it over.
+        delete_option(self::LOCK_OPTION);
+        return add_option(self::LOCK_OPTION, time(), '', false);
+    }
+
+    /**
+     * Give the run lock back.
+     */
+    private static function unlock() {
+        delete_option(self::LOCK_OPTION);
+    }
+
+    /**
+     * Forget the job, the lock and the plugins found (uninstall; the
+     * imported days go with the tables).
+     */
+    public static function forget() {
+        wp_clear_scheduled_hook(self::HOOK);
+        delete_option(self::STATE_OPTION);
+        delete_option(self::LOCK_OPTION);
+        delete_transient(self::CACHE);
+        delete_option(SEOProAnalytics_Rollup::IMPORTED_OPTION);
+        delete_option(SEOProAnalytics_Rollup::IMPORTED_OPTION . '_demo');
+        // Our copy of Jetpack Stats' daily counts (SEOProAnalytics_Migrate_Jetpack::SERIES_OPTION).
+        delete_option('seoproanalytics_migrate_jetpack');
+    }
+}

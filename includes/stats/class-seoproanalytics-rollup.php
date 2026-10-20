@@ -1,0 +1,746 @@
+<?php
+/**
+ * Daily summaries and retention.
+ *
+ * An hour after each site-local day ends, and once every hit received
+ * before then is processed, the minute job summarises the day into the
+ * daily table: one row for the site and one per value of each dimension,
+ * with the numbers the report engine would work out from the fact tables.
+ * Long ranges then read a few rows per day instead of every visit. A day
+ * can be rebuilt (its rows are replaced in one transaction); the last
+ * summarised day is rebuilt once more with the next, for engagement that
+ * arrived late. Then, once a day, rows older than their retention are
+ * deleted in batches, never from a day that is not summarised.
+ * Design: docs/architecture.md → Processing and Storage → Retention.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ *
+ * @package SEOProAnalytics
+ * @since 0.2.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class SEOProAnalytics_Rollup {
+
+    /** Progress (autoload off): through (last summarised day), pruned (day of the last full prune), kept_from (oldest time kept). */
+    const STATE_OPTION = SEOProAnalytics_Collection::ROLLUP_OPTION;
+
+    /** Days imported from other statistics plugins (autoload off): see imported(). */
+    const IMPORTED_OPTION = 'seoproanalytics_imported';
+
+    /**
+     * Dimension codes in the daily table, for SEOProAnalytics_Query::DIMENSIONS.
+     * Stored in every row: never change or reuse one. 0 is the site.
+     * Dimensions without a code (not found, site search, content) are read
+     * from the fact tables only.
+     */
+    const DIMS = array(
+        'channel'      => 1,
+        'source'       => 2,
+        'utm_source'   => 3,
+        'utm_medium'   => 4,
+        'utm_campaign' => 5,
+        'utm_term'     => 6,
+        'utm_content'  => 7,
+        'country'      => 8,
+        'device'       => 9,
+        'browser'      => 10,
+        'os'           => 11,
+        'language'     => 12,
+        'entry'        => 13,
+        'exit'         => 14,
+        'page'         => 15,
+        'event'        => 16,
+        'login'        => 17,
+    );
+
+    /**
+     * Daily code of search landings: visits from organic search by entry
+     * page (val: its path id), for SEOProAnalytics_Content. Not a report
+     * dimension, so it is not in DIMS; never change or reuse it either.
+     */
+    const SEARCH_LANDING = 18;
+
+    /** Seconds per run. */
+    const BUDGET = 20;
+
+    /** Rows deleted per query. */
+    const BATCH = 5000;
+
+    /** Seconds after a day ends before it is summarised: engagement of its last pages arrives late. */
+    const GRACE = 3600;
+
+    /** The day after, for DateTimeImmutable::modify(). */
+    const NEXT_DAY = '+1 day';
+
+    /**
+     * Default retention in months (0 keeps forever): visits with their
+     * pageviews; events; clicks and form submits; search data by page and
+     * query (SEOProAnalytics_Search_Import prunes it; its totals are kept).
+     */
+    const RETENTION = array(
+        'visits' => 75,
+        'events' => 120,
+        'clicks' => 3,
+        'search' => 25,
+        'crawl'  => 13,
+    );
+
+    /**
+     * Summarise the finished days that are due, then prune once a day.
+     *
+     * @return array{days:int,deleted:int} This run's work.
+     */
+    public static function run() {
+        $start = microtime(true);
+        $done  = array('days' => 0, 'deleted' => 0);
+        if (!SEOProAnalytics_Schema::is_current()) {
+            return $done;
+        }
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-query.php';
+
+        $done['days'] = self::catch_up($start);
+        if (self::due() === null) {
+            self::refill($start);
+        }
+        $state = self::state();
+        if ((!isset($state['pruned']) || $state['pruned'] !== wp_date('Y-m-d')) && self::due() === null) {
+            $done['deleted'] = self::prune($start)['deleted'];
+        }
+        return $done;
+    }
+
+    /**
+     * Summarise each due day, oldest first, within the budget.
+     *
+     * @param float $start microtime(true) when the run began.
+     * @return int Days summarised.
+     */
+    public static function catch_up($start) {
+        $day = self::due();
+        if ($day === null) {
+            return 0;
+        }
+        $state = self::state();
+        $count = 0;
+        if (empty($state['through']) && !isset($state['landings'])) {
+            // The first day summarised has its search landings: nothing to refill.
+            $state['landings'] = $day->format('Y-m-d');
+        }
+        if (!empty($state['through']) && SEOProAnalytics_Feature::more_time($start, self::BUDGET)) {
+            // Again, with engagement that arrived after it was summarised.
+            self::summarise(new DateTimeImmutable((string) $state['through'], wp_timezone()));
+        }
+        while ($day !== null && SEOProAnalytics_Feature::more_time($start, self::BUDGET)) {
+            if (!self::summarise($day)) {
+                break;
+            }
+            $state['through'] = $day->format('Y-m-d');
+            update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+            $count++;
+            $day = self::due();
+        }
+        return $count;
+    }
+
+    /**
+     * The next day to summarise, if it is due: finished, an hour past, and
+     * every hit received by then processed. Null when none is.
+     *
+     * @return DateTimeImmutable|null Its site-local midnight.
+     */
+    public static function due() {
+        $tz    = wp_timezone();
+        $state = self::state();
+        if (!empty($state['through'])) {
+            $day = (new DateTimeImmutable((string) $state['through'], $tz))->modify(self::NEXT_DAY);
+        } else {
+            $first = self::first_visit();
+            if (!$first) {
+                return null;
+            }
+            $day = (new DateTimeImmutable('@' . $first))->setTimezone($tz)->setTime(0, 0);
+        }
+        $today = new DateTimeImmutable('today', $tz);
+        if ($day >= $today || $day->modify(self::NEXT_DAY)->getTimestamp() + self::GRACE > self::clear()) {
+            return null;
+        }
+        return $day;
+    }
+
+    /**
+     * Time before which every received hit is processed: now when nothing
+     * waits, else when the processor took the last file it finished.
+     *
+     * @return int Unix time.
+     */
+    public static function clear() {
+        if (SEOProAnalytics_Schema::set() === 'demo') {
+            return time(); // Demo visits go straight to the tables, with no buffer.
+        }
+        $dir = SEOProAnalytics_Collection::dir();
+        clearstatcache();
+        if (!glob($dir . '/processing-*.php')) {
+            $buffer = $dir . '/buffer.php';
+            if (!is_file($buffer) || filesize($buffer) === 0) {
+                return time();
+            }
+        }
+        $state = get_option(SEOProAnalytics_Collection::PROCESS_OPTION, array());
+        return is_array($state) && isset($state['clear']) ? (int) $state['clear'] : 0;
+    }
+
+    /**
+     * Replace one day's summaries with the day's visits, pageviews and
+     * events (by visit start, as the report engine counts them).
+     *
+     * @param DateTimeImmutable $day Site-local midnight.
+     * @return bool Whether the day was written (false: a query failed, or its visits are pruned).
+     */
+    public static function summarise(DateTimeImmutable $day) {
+        global $wpdb;
+        $from = $day->getTimestamp();
+        $to   = $day->modify(self::NEXT_DAY)->getTimestamp();
+        $date = $day->format('Y-m-d');
+        if ($from < self::kept_from()) {
+            return false;
+        }
+        $d    = SEOProAnalytics_Schema::table('daily');
+        $s    = SEOProAnalytics_Schema::table('sessions');
+        $cols = SEOProAnalytics_Query::VISIT_METRICS;
+
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables, one day by index `started`; $cols and $val are fixed SQL.
+        $wpdb->query('START TRANSACTION');
+        // Only the site's own rows: a day imported from another plugin
+        // (import_id, SEOProAnalytics_Migrate) stays as imported.
+        $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND import_id = 0', $d, $date)) !== false;
+        // The site. HAVING: no row for a day without visits.
+        $site = $ok ? $wpdb->query($wpdb->prepare("INSERT INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT %s, 0, 0, $cols FROM %i s WHERE s.started >= %d AND s.started < %d HAVING visits > 0", $d, $date, $s, $from, $to)) : false;
+        $ok   = $site !== false;
+
+        if ($ok && $site > 0) {
+            $ok = self::insert_dimensions($date, $from, $to) && self::insert_landings($date, $from, $to);
+        }
+        if ($ok) {
+            $wpdb->query('COMMIT');
+        } else {
+            $wpdb->query('ROLLBACK');
+        }
+        // phpcs:enable
+        return $ok;
+    }
+
+    /**
+     * Add one day's rows of each summarised dimension (DIMS), in
+     * SEOProAnalytics_Query::DIMENSIONS order, stopping at the first failed
+     * query.
+     *
+     * @param string $date Y-m-d.
+     * @param int    $from Its site-local midnight.
+     * @param int    $to   The next one.
+     * @return bool Whether every query worked.
+     */
+    private static function insert_dimensions($date, $from, $to) {
+        foreach (SEOProAnalytics_Query::DIMENSIONS as $name => $dimension) {
+            if (isset(self::DIMS[$name]) && self::insert_dimension(self::DIMS[$name], $dimension, $date, $from, $to) === false) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Add one day's rows of one dimension: a visit column (by visit
+     * start), pages (pageviews of those visits) or events.
+     *
+     * @param int                                   $dim       DIMS value.
+     * @param array{0:string,1:string,2:string|int} $dimension SEOProAnalytics_Query::DIMENSIONS entry: level, column, kind.
+     * @param string                                $date      Y-m-d.
+     * @param int                                   $from      Its site-local midnight.
+     * @param int                                   $to        The next one.
+     * @return int|bool Rows added, or false when the query failed.
+     */
+    private static function insert_dimension($dim, array $dimension, $date, $from, $to) {
+        global $wpdb;
+        list($level, $column, $kind) = $dimension;
+        $d    = SEOProAnalytics_Schema::table('daily');
+        $s    = SEOProAnalytics_Schema::table('sessions');
+        $cols = SEOProAnalytics_Query::VISIT_METRICS;
+
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables, one day by index `started`; $cols and $val are fixed SQL.
+        if ($level === 'session') {
+            list($val, $val_args) = self::value_sql($column, $kind);
+            return $wpdb->query($wpdb->prepare("INSERT INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT %s, %d, $val AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d GROUP BY v", array_merge(array($d, $date, $dim), $val_args, array($s, $from, $to))));
+        }
+        if ($level === 'page') {
+            return $wpdb->query($wpdb->prepare('INSERT INTO %i (day, dim, val, visitors, visits, pageviews, engaged_ms, scroll) SELECT %s, %d, p.path_id, COUNT(DISTINCT s.day, s.visitor), COUNT(DISTINCT p.session_id), COUNT(*), COALESCE(SUM(p.engaged_ms), 0), COALESCE(SUM(p.scroll), 0) FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d GROUP BY p.path_id', $d, $date, $dim, $s, SEOProAnalytics_Schema::table('pageviews'), $from, $to + DAY_IN_SECONDS, $from, $to));
+        }
+        return $wpdb->query($wpdb->prepare('INSERT INTO %i (day, dim, val, visitors, visits, events) SELECT %s, %d, e.name_id, COUNT(DISTINCT s.day, s.visitor), COUNT(DISTINCT e.session_id), COUNT(*) FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d GROUP BY e.name_id', $d, $date, $dim, $s, SEOProAnalytics_Schema::table('events'), $from, $to + DAY_IN_SECONDS, $from, $to));
+        // phpcs:enable
+    }
+
+    /**
+     * Add one day's search landings (SEARCH_LANDING) to the daily table:
+     * visits from organic search by entry page, with the visit sums.
+     *
+     * @param string $date Y-m-d.
+     * @param int    $from Its site-local midnight.
+     * @param int    $to   The next one.
+     * @return bool Whether the query worked.
+     */
+    private static function insert_landings($date, $from, $to) {
+        global $wpdb;
+        $cols = SEOProAnalytics_Query::VISIT_METRICS;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables, one day by index `started`; $cols is fixed SQL.
+        return $wpdb->query($wpdb->prepare("INSERT INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT %s, %d, s.entry_id AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d AND s.channel = %d GROUP BY v", SEOProAnalytics_Schema::table('daily'), $date, self::SEARCH_LANDING, SEOProAnalytics_Schema::table('sessions'), $from, $to, SEOProAnalytics_Query::CHANNELS['organic_search'])) !== false;
+    }
+
+    /**
+     * Add search landings to days summarised before they existed, newest
+     * first, down to the oldest day with search data whose visits are
+     * kept, within the budget. Progress: `landings` in the state, the
+     * oldest day that has them.
+     *
+     * @param float $start microtime(true) when the run began.
+     * @return bool Whether every such day has them.
+     */
+    public static function refill($start) {
+        global $wpdb;
+        $state = self::state();
+        if (empty($state['through'])) {
+            return true;
+        }
+        $tz = wp_timezone();
+        if (!isset($state['landings'])) {
+            // Days summarised from now on have them.
+            $state['landings'] = (new DateTimeImmutable((string) $state['through'], $tz))->modify(self::NEXT_DAY)->format('Y-m-d');
+            update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+        }
+        $floor = self::landings_floor();
+        $day   = new DateTimeImmutable((string) $state['landings'], $tz);
+        $d     = SEOProAnalytics_Schema::table('daily');
+        while ($floor !== '' && $day->modify('-1 day')->format('Y-m-d') >= $floor) {
+            if (!SEOProAnalytics_Feature::more_time($start, self::BUDGET)) {
+                return false;
+            }
+            $day  = $day->modify('-1 day');
+            $date = $day->format('Y-m-d');
+            // phpcs:disable WordPress.DB.DirectDatabaseQuery -- our own table by its primary key (day, dim).
+            $wpdb->query('START TRANSACTION');
+            $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND dim = %d AND import_id = 0', $d, $date, self::SEARCH_LANDING)) !== false
+                && self::insert_landings($date, $day->getTimestamp(), $day->modify(self::NEXT_DAY)->getTimestamp());
+            if (!$ok) {
+                $wpdb->query('ROLLBACK');
+                return false;
+            }
+            $wpdb->query('COMMIT');
+            // phpcs:enable
+            $state['landings'] = $date;
+            update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+        }
+        return true;
+    }
+
+    /**
+     * The oldest day search landings are needed for: the latest of the
+     * first day with search data, the first visit and the oldest visit
+     * kept. '' without search data. Older days never get them, so they
+     * are not missing either.
+     *
+     * @return string Y-m-d, or ''.
+     */
+    public static function landings_floor() {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; MIN() of the primary key's (engine, day) prefix.
+        $search = (string) $wpdb->get_var($wpdb->prepare('SELECT MIN(day) FROM %i WHERE engine = %d', SEOProAnalytics_Schema::table('gsc_totals'), SEOProAnalytics_Schema::ENGINE_GOOGLE));
+        $first  = max(self::first_visit(), self::kept_from());
+        $day    = $first ? wp_date('Y-m-d', $first) : false;
+        if ($search === '' || !is_string($day)) {
+            return '';
+        }
+        return max($search, $day);
+    }
+
+    /**
+     * The oldest day with search landings in the daily table, or '' before
+     * the first summary. Older days have none (before the refill reaches
+     * them, or without search data).
+     *
+     * @return string Y-m-d, or ''.
+     */
+    public static function landings_from() {
+        $state = self::state();
+        return !empty($state['through']) && isset($state['landings']) ? (string) $state['landings'] : '';
+    }
+
+    /**
+     * Delete rows past their retention, in batches, within the budget.
+     * Nothing newer than the last summarised day goes, whatever the setting.
+     *
+     * @param float $start microtime(true) when the run began.
+     * @return array{deleted:int,done:bool} Rows deleted; whether every old row is gone.
+     */
+    public static function prune($start) {
+        global $wpdb;
+        $state = self::state();
+        $deleted = 0;
+        $jobs    = self::prune_jobs();
+        if (isset($jobs['crawl'])) {
+            $crawl = self::prune_crawl($jobs['crawl'], $start);
+            $deleted += $crawl['deleted'];
+            if (!$crawl['done']) {
+                return array('deleted' => $deleted, 'done' => false);
+            }
+            $state = self::state();
+        }
+        if (isset($jobs['visits'])) {
+            // Before deleting: a day whose visits may be gone is never summarised again.
+            $state['kept_from'] = max(self::kept_from(), $jobs['visits']);
+            update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+        }
+        foreach (self::prune_targets($jobs) as $target) {
+            list($table, $column, $before, $owner) = $target;
+            do {
+                if (!SEOProAnalytics_Feature::more_time($start, self::BUDGET)) {
+                    return array('deleted' => $deleted, 'done' => false);
+                }
+                if ($owner) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by index `ts`, in batches.
+                    $rows = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE ts < %d AND owner = %d LIMIT %d', $table, $before, $owner, self::BATCH));
+                } else {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its time index, in batches.
+                    $rows = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE %i < %d LIMIT %d', $table, $column, $before, self::BATCH));
+                }
+                $deleted += (int) $rows;
+            } while ($rows === self::BATCH);
+        }
+        $state           = self::state();
+        $state['pruned'] = wp_date('Y-m-d');
+        update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+        return array('deleted' => $deleted, 'done' => true);
+    }
+
+    /**
+     * Rows a prune would delete now, by table, without deleting them.
+     *
+     * @return array<string,int> Table name (without prefix; props by owner) => rows.
+     */
+    public static function prune_counts() {
+        global $wpdb;
+        $out = array();
+        $jobs = self::prune_jobs();
+        if (isset($jobs['crawl'])) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- prepared indexed crawl-history selection; WP-CLI only.
+            $out['imports (crawl)'] = (int) $wpdb->get_var(self::crawl_history_sql($jobs['crawl'], true));
+        }
+        foreach (self::prune_targets($jobs) as $target) {
+            list($table, $column, $before, $owner) = $target;
+            $name = substr($table, strlen(SEOProAnalytics_Schema::table('')));
+            if ($owner) {
+                $name .= $owner === SEOProAnalytics_Schema::OWNER_PAGEVIEW ? ' (pageviews)' : ' (events)';
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by index `ts`; WP-CLI only.
+                $out[$name] = (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i WHERE ts < %d AND owner = %d', $table, $before, $owner));
+            } else {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its time index; WP-CLI only.
+                $out[$name] = (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i WHERE %i < %d', $table, $column, $before));
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Cut-off time per kind of data: site-local midnight, the retention
+     * back from today, but never after the last summarised day.
+     *
+     * @return array<string,int> visits, events and clicks (absent: kept forever) => Unix time.
+     */
+    private static function prune_jobs() {
+        $state = self::state();
+        $tz    = wp_timezone();
+        $after = empty($state['through']) ? 0 : (new DateTimeImmutable((string) $state['through'], $tz))->modify(self::NEXT_DAY)->getTimestamp();
+        $today = new DateTimeImmutable('today', $tz);
+        $jobs  = array();
+        foreach (self::retention() as $kind => $months) {
+            if ($months > 0 && ($after || $kind === 'crawl')) {
+                $before = $today->modify("-$months months")->getTimestamp();
+                $jobs[$kind] = $kind === 'crawl' ? $before : min($after, $before);
+            }
+        }
+        return $jobs;
+    }
+
+    /**
+     * Crawl history only: keep running jobs, the newest import and every
+     * import still referenced by either latest-state table (links-only
+     * imports can leave pages belonging to an older import).
+     *
+     * @param int  $before Cutoff timestamp.
+     * @param bool $count Count instead of selecting a batch.
+     * @return string Prepared SQL.
+     */
+    private static function crawl_history_sql($before, $count = false) {
+        global $wpdb;
+        $table = SEOProAnalytics_Schema::table('imports');
+        $newest = self::newest_crawl();
+        $select = $count ? 'COUNT(*)' : 'i.id';
+        $limit = $count ? '' : ' LIMIT ' . self::BATCH;
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed select and integer limit; indexed source_status and import_id lookups.
+        return $wpdb->prepare("SELECT $select FROM %i i WHERE i.source = %s AND i.status IN (2, 3, 4) AND i.started < %d AND i.id < %d AND NOT EXISTS (SELECT 1 FROM %i p WHERE p.import_id = i.id) AND NOT EXISTS (SELECT 1 FROM %i l WHERE l.import_id = i.id)$limit", $table, 'crawl', (int) $before, $newest, SEOProAnalytics_Schema::table('crawl_pages'), SEOProAnalytics_Schema::table('crawl_links'));
+    }
+
+    /**
+     * Delete crawl import history in budgeted batches, not as a time-keyed
+     * fact table. Totals go with the imports row; served changes stay.
+     *
+     * @param int   $before Cutoff timestamp.
+     * @param float $start Run start.
+     * @return array{deleted:int,done:bool}
+     */
+    private static function prune_crawl($before, $start) {
+        $deleted = 0;
+        $state = self::state();
+        $cursor = isset($state['crawl_prune']) && is_array($state['crawl_prune']) && $state['crawl_prune']['before'] === $before ? $state['crawl_prune'] : array('before' => $before, 'newest' => self::newest_crawl(), 'status' => 2, 'after' => 0);
+        while (SEOProAnalytics_Feature::more_time($start, self::BUDGET)) {
+            if ($cursor['status'] > 4) {
+                unset($state['crawl_prune']);
+                update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+                return array('deleted' => $deleted, 'done' => true);
+            }
+            $gone = self::crawl_batch($cursor);
+            if ($gone === false) {
+                return array('deleted' => $deleted, 'done' => false);
+            }
+            $deleted += $gone;
+            $state['crawl_prune'] = $cursor;
+            update_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), $state, false);
+        }
+        return array('deleted' => $deleted, 'done' => false);
+    }
+
+    /** Newest crawl id using four indexed single-row reads, never scanning history. @return int */
+    private static function newest_crawl() {
+        global $wpdb;
+        $newest = 0;
+        foreach (array(1, 2, 3, 4) as $status) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- source_status and implicit primary key suffix.
+            $newest = max($newest, (int) $wpdb->get_var($wpdb->prepare('SELECT id FROM %i WHERE source = %s AND status = %d ORDER BY id DESC LIMIT 1', SEOProAnalytics_Schema::table('imports'), 'crawl', $status)));
+        }
+        return $newest;
+    }
+
+    /**
+     * Inspect at most BATCH imports, even when all are recent or referenced.
+     * The persisted id cursor avoids rescanning protected rows on every run.
+     *
+     * @param array<string,int> $cursor Prune progress, updated on success.
+     * @return int|false Rows deleted, or database error.
+     */
+    private static function crawl_batch(array &$cursor) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- bounded source_status/id range; filter the cutoff after reading, so LIMIT bounds examined imports too.
+        $rows = $wpdb->get_results($wpdb->prepare('SELECT id, started FROM %i WHERE source = %s AND status = %d AND id > %d AND id < %d ORDER BY id LIMIT %d', SEOProAnalytics_Schema::table('imports'), 'crawl', $cursor['status'], $cursor['after'], $cursor['newest'], self::BATCH), ARRAY_A);
+        if ($wpdb->last_error !== '') {
+            return false;
+        }
+        if (!$rows) {
+            ++$cursor['status'];
+            $cursor['after'] = 0;
+            return 0;
+        }
+        $ids = array();
+        $after = $cursor['after'];
+        foreach ($rows as $row) {
+            $after = (int) $row['id'];
+            if ((int) $row['started'] < $cursor['before']) {
+                $ids[] = (int) $row['id'];
+            }
+        }
+        $gone = self::delete_crawl_history($ids);
+        if ($gone !== false) {
+            $cursor['after'] = $after;
+        }
+        return $gone;
+    }
+
+    /** Delete candidate imports only if neither crawl table still uses them. @param int[] $ids Candidate ids. @return int|false */
+    private static function delete_crawl_history(array $ids) {
+        global $wpdb;
+        if (!$ids) {
+            return 0;
+        }
+        $holders = implode(', ', array_fill(0, count($ids), '%d'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- bounded primary-key batch, correlated references use import_id indexes; only placeholders interpolated.
+        return $wpdb->query($wpdb->prepare("DELETE FROM %i WHERE id IN ($holders) AND NOT EXISTS (SELECT 1 FROM %i p WHERE p.import_id = %i.id) AND NOT EXISTS (SELECT 1 FROM %i l WHERE l.import_id = %i.id)", array_merge(array(SEOProAnalytics_Schema::table('imports')), $ids, array(SEOProAnalytics_Schema::table('crawl_pages'), SEOProAnalytics_Schema::table('imports'), SEOProAnalytics_Schema::table('crawl_links'), SEOProAnalytics_Schema::table('imports')))));
+    }
+
+    /**
+     * Tables to prune: [table, time column, before, props owner or 0].
+     *
+     * @param array<string,int> $jobs From prune_jobs().
+     * @return array<int,array{0:string,1:string,2:int,3:int}>
+     */
+    private static function prune_targets(array $jobs) {
+        $out = array();
+        if (isset($jobs['visits'])) {
+            $out[] = array(SEOProAnalytics_Schema::table('props'), 'ts', $jobs['visits'], SEOProAnalytics_Schema::OWNER_PAGEVIEW);
+            $out[] = array(SEOProAnalytics_Schema::table('pageviews'), 'ts', $jobs['visits'], 0);
+            // A/B test variants shown go with their pageviews.
+            $out[] = array(SEOProAnalytics_Schema::table('ab_exposures'), 'ts', $jobs['visits'], 0);
+            $out[] = array(SEOProAnalytics_Schema::table('sessions'), 'started', $jobs['visits'], 0);
+        }
+        if (isset($jobs['events'])) {
+            $out[] = array(SEOProAnalytics_Schema::table('props'), 'ts', $jobs['events'], SEOProAnalytics_Schema::OWNER_EVENT);
+            $out[] = array(SEOProAnalytics_Schema::table('events'), 'ts', $jobs['events'], 0);
+        }
+        // Clicks go with their visits at the latest.
+        $clicks = max(isset($jobs['clicks']) ? $jobs['clicks'] : 0, isset($jobs['visits']) ? $jobs['visits'] : 0);
+        if ($clicks) {
+            $out[] = array(SEOProAnalytics_Schema::table('clicks'), 'ts', $clicks, 0);
+        }
+        return $out;
+    }
+
+    /**
+     * Retention in months per kind of data.
+     *
+     * @return array{visits:int,events:int,clicks:int,search:int,crawl:int}
+     */
+    public static function retention() {
+        /**
+         * Filters how many months visits (with their pageviews and
+         * properties), events, clicks and form submits, and search data
+         * by page and query are kept; 0 keeps them forever. Clicks never
+         * outlast their visits. Daily summaries and search totals are
+         * always kept.
+         *
+         * @param array{visits:int,events:int,clicks:int,search:int,crawl:int} $months Months by kind, from Settings → Data (crawl import history too).
+         */
+        $months = apply_filters('seoproanalytics_retention', SEOProAnalytics_Statistics::retention());
+        $out    = self::RETENTION;
+        foreach ($out as $kind => $default) {
+            $out[$kind] = is_array($months) && isset($months[$kind]) && is_numeric($months[$kind]) && (int) $months[$kind] >= 0 ? (int) $months[$kind] : $default;
+        }
+        return $out;
+    }
+
+    /**
+     * The daily value expression for a visit column (alias s): the column,
+     * or for a country code its two letters as a number.
+     *
+     * @param string     $column Column of the visits table.
+     * @param int|string $kind   Dictionary kind, enum or text.
+     * @return array{0:string,1:array<int,string>} SQL with %i placeholders, and their arguments.
+     */
+    public static function value_sql($column, $kind) {
+        if ($kind === 'text') {
+            return array('(ASCII(s.%i) * 256 + ASCII(SUBSTRING(s.%i, 2, 1)))', array($column, $column));
+        }
+        return array('s.%i', array($column));
+    }
+
+    /**
+     * A country code as its daily value (see value_sql()); -1 for a value
+     * that is no code, which matches nothing.
+     *
+     * @param string $code Two letters, or '' for unknown.
+     * @return int
+     */
+    public static function country_value($code) {
+        $code = strtoupper($code);
+        if ($code === '') {
+            return 0;
+        }
+        return strlen($code) === 2 ? ord($code[0]) * 256 + ord($code[1]) : -1;
+    }
+
+    /**
+     * A country's daily value back as its code.
+     *
+     * @param int $value From country_value().
+     * @return string
+     */
+    public static function country_code($value) {
+        $value = (int) $value;
+        return $value > 0 ? chr($value >> 8) . chr($value & 255) : '';
+    }
+
+    /**
+     * The last summarised day (Y-m-d), or '' before the first.
+     *
+     * @return string
+     */
+    public static function through() {
+        $state = self::state();
+        return isset($state['through']) ? (string) $state['through'] : '';
+    }
+
+    /**
+     * The last day the daily table answers for: the last summarised day,
+     * or before the first summary the last day imported from another
+     * statistics plugin (SEOProAnalytics_Migrate; every imported day comes
+     * before the site's own first day). '' when neither.
+     *
+     * @return string Y-m-d, or ''.
+     */
+    public static function summary_through() {
+        $through = self::through();
+        if ($through !== '') {
+            return $through;
+        }
+        $imported = self::imported();
+        return $imported['through'];
+    }
+
+    /**
+     * Days imported from other statistics plugins (written by
+     * SEOProAnalytics_Migrate when an import finishes or is undone): through,
+     * the last such day ('' for none), and at, when they last changed
+     * (report caches start again then).
+     *
+     * @return array{through:string,at:int}
+     */
+    public static function imported() {
+        $value = get_option(SEOProAnalytics_Schema::option(self::IMPORTED_OPTION), array());
+        return array(
+            'through' => is_array($value) && isset($value['through']) ? (string) $value['through'] : '',
+            'at'      => is_array($value) && isset($value['at']) ? (int) $value['at'] : 0,
+        );
+    }
+
+    /**
+     * Stored progress.
+     *
+     * @return array<string,mixed>
+     */
+    public static function state() {
+        $state = get_option(SEOProAnalytics_Schema::option(self::STATE_OPTION), array());
+        return is_array($state) ? $state : array();
+    }
+
+    /**
+     * Oldest visit start kept by retention (0: nothing pruned yet).
+     *
+     * @return int
+     */
+    private static function kept_from() {
+        $state = self::state();
+        return isset($state['kept_from']) ? (int) $state['kept_from'] : 0;
+    }
+
+    /**
+     * Start of the first visit stored, or 0.
+     *
+     * @return int
+     */
+    private static function first_visit() {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; MIN() on index `started` reads one entry.
+        return (int) $wpdb->get_var($wpdb->prepare('SELECT MIN(started) FROM %i', SEOProAnalytics_Schema::table('sessions')));
+    }
+}

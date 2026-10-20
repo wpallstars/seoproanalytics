@@ -1,0 +1,11 @@
+{
+  "name": "@seoproanalytics/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API types, ranges, filters, view state and formatting for every SEO Pro Analytics app. No framework.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": false
+}

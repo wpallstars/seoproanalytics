@@ -1,0 +1,244 @@
+{
+  "schema": "aidevops.repo-metrics.v1",
+  "schema_version": 1,
+  "generated_at": "2026-10-20T03:30:06Z",
+  "tool": {
+    "name": "aidevops repo-metrics",
+    "version": "1.0.0"
+  },
+  "repo": {
+    "name": "seoproanalytics",
+    "slug": "wpallstars/seoproanalytics"
+  },
+  "summary": {
+    "source_files": 328,
+    "code": 132174,
+    "comments": 37850,
+    "blanks": 9609,
+    "languages": 11,
+    "dependencies": 1464
+  },
+  "languages": [
+    {
+      "name": "PHP",
+      "files": 137,
+      "code": 57055,
+      "comments": 32828,
+      "blanks": 4979,
+      "percentage": 43.17,
+      "color": "#4F5D95"
+    },
+    {
+      "name": "JSON",
+      "files": 9,
+      "code": 21523,
+      "comments": 0,
+      "blanks": 0,
+      "percentage": 16.28,
+      "color": "#292929"
+    },
+    {
+      "name": "TSX",
+      "files": 61,
+      "code": 14296,
+      "comments": 1515,
+      "blanks": 789,
+      "percentage": 10.82,
+      "color": "#3178c6"
+    },
+    {
+      "name": "YAML",
+      "files": 13,
+      "code": 10732,
+      "comments": 103,
+      "blanks": 332,
+      "percentage": 8.12,
+      "color": "#cb171e"
+    },
+    {
+      "name": "Markdown",
+      "files": 23,
+      "code": 7860,
+      "comments": 0,
+      "blanks": 1272,
+      "percentage": 5.95,
+      "color": "#083fa1"
+    },
+    {
+      "name": "Shell",
+      "files": 25,
+      "code": 7195,
+      "comments": 1332,
+      "blanks": 584,
+      "percentage": 5.44,
+      "color": "#89e051"
+    },
+    {
+      "name": "TypeScript",
+      "files": 34,
+      "code": 5658,
+      "comments": 1443,
+      "blanks": 654,
+      "percentage": 4.28,
+      "color": "#3178c6"
+    },
+    {
+      "name": "CSS",
+      "files": 10,
+      "code": 3840,
+      "comments": 293,
+      "blanks": 778,
+      "percentage": 2.91,
+      "color": "#563d7c"
+    },
+    {
+      "name": "JavaScript",
+      "files": 8,
+      "code": 2386,
+      "comments": 286,
+      "blanks": 205,
+      "percentage": 1.81,
+      "color": "#f1e05a"
+    },
+    {
+      "name": "SVG",
+      "files": 6,
+      "code": 1611,
+      "comments": 43,
+      "blanks": 12,
+      "percentage": 1.22,
+      "color": "#6e7781"
+    },
+    {
+      "name": "TOML",
+      "files": 2,
+      "code": 18,
+      "comments": 7,
+      "blanks": 4,
+      "percentage": 0.01,
+      "color": "#9c4221"
+    }
+  ],
+  "dependencies": {
+    "direct": 20,
+    "runtime": 4,
+    "dev": 16,
+    "locked": 1464,
+    "total": 1464,
+    "ecosystems": [
+      "composer",
+      "npm"
+    ],
+    "manifests": [
+      {
+        "path": "composer.json",
+        "ecosystem": "composer",
+        "direct": 7,
+        "runtime": 0,
+        "dev": 7,
+        "locked": 14,
+        "dependencies": [
+          "automattic/vipwpcs",
+          "dealerdirect/phpcodesniffer-composer-installer",
+          "phpcompatibility/phpcompatibility-wp",
+          "phpstan/extension-installer",
+          "phpstan/phpstan",
+          "szepeviktor/phpstan-wordpress",
+          "wp-coding-standards/wpcs"
+        ],
+        "dev_dependencies": [
+          "automattic/vipwpcs",
+          "dealerdirect/phpcodesniffer-composer-installer",
+          "phpcompatibility/phpcompatibility-wp",
+          "phpstan/extension-installer",
+          "phpstan/phpstan",
+          "szepeviktor/phpstan-wordpress",
+          "wp-coding-standards/wpcs"
+        ]
+      },
+      {
+        "path": "package.json",
+        "ecosystem": "npm",
+        "direct": 11,
+        "runtime": 2,
+        "dev": 9,
+        "locked": 1450,
+        "dependencies": [
+          "@tanstack/react-query",
+          "@types/react",
+          "@wordpress/api-fetch",
+          "@wordpress/components",
+          "@wordpress/element",
+          "@wordpress/i18n",
+          "@wordpress/scripts",
+          "@wordpress/url",
+          "esbuild",
+          "typescript",
+          "uplot"
+        ],
+        "dev_dependencies": [
+          "@types/react",
+          "@wordpress/api-fetch",
+          "@wordpress/components",
+          "@wordpress/element",
+          "@wordpress/i18n",
+          "@wordpress/scripts",
+          "@wordpress/url",
+          "esbuild",
+          "typescript"
+        ]
+      },
+      {
+        "path": "packages/charts/package.json",
+        "ecosystem": "npm",
+        "direct": 1,
+        "runtime": 1,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [
+          "uplot"
+        ],
+        "dev_dependencies": []
+      },
+      {
+        "path": "packages/core/package.json",
+        "ecosystem": "npm",
+        "direct": 0,
+        "runtime": 0,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [],
+        "dev_dependencies": []
+      },
+      {
+        "path": "packages/tracker/package.json",
+        "ecosystem": "npm",
+        "direct": 0,
+        "runtime": 0,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [],
+        "dev_dependencies": []
+      },
+      {
+        "path": "packages/wp-admin/package.json",
+        "ecosystem": "npm",
+        "direct": 3,
+        "runtime": 3,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [
+          "@seoproanalytics/charts",
+          "@seoproanalytics/core",
+          "@tanstack/react-query"
+        ],
+        "dev_dependencies": []
+      }
+    ]
+  },
+  "refresh": {
+    "default_policy": "weekly scheduled refresh plus manual runs; skip generated outputs younger than 24h in managed workflows",
+    "cost_profile": "fast local git/unignored-file scan; no network by default",
+    "top_languages": 6
+  }
+}

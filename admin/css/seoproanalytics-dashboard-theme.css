@@ -1,0 +1,317 @@
+/**
+ * Statistics app and WordPress component colours, separate from starter core.
+ * Loaded only on Statistics, after the shared header theme.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ */
+
+html.seoproan-dark body {
+	--wp-components-color-background: var(--seoproan-ui-surface);
+	--wp-components-color-foreground: var(--seoproan-ui-text);
+	--wp-components-color-foreground-inverted: var(--seoproan-ui-surface);
+	--wp-components-color-gray-100: var(--seoproan-ui-raised);
+	--wp-components-color-gray-200: var(--seoproan-ui-border);
+	--wp-components-color-gray-300: var(--seoproan-ui-border);
+	--wp-components-color-gray-400: #646970;
+	--wp-components-color-gray-600: var(--seoproan-ui-field-border);
+	--wp-components-color-gray-700: var(--seoproan-ui-subtle);
+	--wp-components-color-gray-800: var(--seoproan-ui-muted);
+	--wpds-color-foreground-interactive-brand: var(--seoproan-ui-accent);
+	--wpds-color-foreground-interactive-brand-active: var(--seoproan-ui-text);
+	--wpds-color-stroke-focus: var(--seoproan-ui-accent);
+}
+
+@supports (color: oklch(from red max(l, 0.75) min(c, 0.15) h)) {
+
+	html.seoproan-dark body {
+		--wp-components-color-accent: var(--seoproan-ui-primary);
+		--wp-components-color-accent-darker-10: var(--seoproan-ui-primary-hover);
+		--wp-components-color-accent-darker-20: oklch(from var(--seoproan-ui-primary) calc(l - 0.12) c h);
+	}
+}
+
+html:not(.seoproan-dark) body {
+	--wpds-color-stroke-focus: var(--wp-admin-theme-color, #2271b1);
+}
+
+@supports (color: color(from red xyz-d65 calc(x * min(1, 0.15 / y)) min(y, 0.15) z)) {
+
+	html:not(.seoproan-dark) body {
+		--wpds-color-stroke-focus: var(--seoproan-scheme-fill);
+		--seoproan-scheme-fill: color(from var(--wp-admin-theme-color, #2271b1) xyz-d65 calc(x * min(1, 0.15 / y)) min(y, 0.15) calc(z * min(1, 0.15 / y)));
+		--seoproan-scheme-fill-10: color(from var(--wp-admin-theme-color-darker-10, #135e96) xyz-d65 calc(x * min(1, 0.12 / y)) min(y, 0.12) calc(z * min(1, 0.12 / y)));
+		--seoproan-scheme-fill-20: color(from var(--wp-admin-theme-color-darker-20, #0a4b78) xyz-d65 calc(x * min(1, 0.096 / y)) min(y, 0.096) calc(z * min(1, 0.096 / y)));
+	}
+
+	html:not(.seoproan-dark) body > * {
+		--wp-admin-theme-color: var(--seoproan-scheme-fill);
+		--wp-admin-theme-color-darker-10: var(--seoproan-scheme-fill-10);
+		--wp-admin-theme-color-darker-20: var(--seoproan-scheme-fill-20);
+	}
+}
+
+:where(html:not(.seoproan-dark) body:is(.admin-color-light, .admin-color-blue, .admin-color-midnight, .admin-color-sunrise, .admin-color-ectoplasm, .admin-color-ocean, .admin-color-coffee) :is(#wpbody, .components-modal__frame)) a:is(:hover, :active, :focus) {
+	color: #005e8e;
+}
+
+html.seoproan-dark .seoproan-app-shell {
+	--seoproan-divider: var(--seoproan-ui-divider);
+	--seoproan-hover: var(--seoproan-ui-raised);
+}
+
+html.seoproan-dark .seoproan-app,
+html.seoproan-dark .seoproan-modal {
+	--seoproan-accent: var(--seoproan-ui-accent);
+	--seoproan-text: var(--seoproan-ui-text);
+	--seoproan-muted: var(--seoproan-ui-muted);
+	--seoproan-subtle: var(--seoproan-ui-subtle);
+	--seoproan-border: var(--seoproan-ui-border);
+	--seoproan-hover: var(--seoproan-ui-raised);
+	--seoproan-divider: var(--seoproan-ui-divider);
+	--seoproan-background: var(--seoproan-ui-surface);
+	--seoproan-field-border: var(--seoproan-ui-field-border);
+	--seoproan-good: var(--seoproan-ui-good);
+	--seoproan-bad: var(--seoproan-ui-bad);
+	--seoproan-grid: rgb(255 255 255 / 10%);
+	--seoproan-compare: #8c8f94;
+	--seoproan-map-empty: var(--seoproan-ui-raised);
+	--seoproan-tip-bg: var(--seoproan-ui-raised);
+	--seoproan-tip-text: var(--seoproan-ui-text);
+	--seoproan-tip-muted: var(--seoproan-ui-muted);
+	--seoproan-tip-ring: 0 0 0 1px #50575e, 0 4px 12px rgb(0 0 0 / 45%);
+	--seoproan-mark-content: #7b90ff;
+	--seoproan-mark-seo: #b48ef0;
+	--seoproan-mark-product: #4ab866;
+	--seoproan-mark-site: #dba617;
+	--seoproan-mark-search: #f086ae;
+	--seoproan-mark-note: #dcdcde;
+
+	color: var(--seoproan-ui-text);
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+
+	html.seoproan-dark .seoproan-app,
+	html.seoproan-dark .seoproan-modal {
+		--seoproan-accent-soft: color-mix(in srgb, var(--seoproan-ui-accent) 16%, transparent);
+	}
+}
+
+:where(html.seoproan-dark .components-modal__frame) :is(h1, h2, h3, h4, h5, h6) {
+	color: var(--seoproan-ui-text);
+}
+
+:where(html.seoproan-dark .components-modal__frame) a {
+	color: var(--seoproan-ui-accent);
+}
+
+:where(html.seoproan-dark .components-modal__frame) a:is(:hover, :active, :focus) {
+	color: var(--seoproan-ui-text);
+}
+
+:where(html.seoproan-dark .components-modal__frame) :is(input:not([type="checkbox"], [type="radio"], [type="submit"], [type="button"], [type="reset"], [type="file"], [type="color"], [type="range"]), textarea, select) {
+	color: var(--seoproan-ui-text);
+	background-color: var(--seoproan-ui-canvas);
+	border-color: var(--seoproan-ui-field-border);
+}
+
+/* The component draws its own arrow, unlike classic WordPress selects. */
+:where(html.seoproan-dark #wpbody) select.components-select-control__input {
+	background-image: none;
+}
+
+html.seoproan-dark #sps-notices-wrap {
+	color: var(--seoproan-ui-text);
+	background: var(--seoproan-ui-canvas);
+	border-color: var(--seoproan-ui-border);
+}
+
+html.seoproan-dark .components-modal__frame .widefat {
+	color: var(--seoproan-ui-text);
+	background: var(--seoproan-ui-surface);
+	border-color: var(--seoproan-ui-border);
+}
+
+html.seoproan-dark .components-modal__frame .widefat :is(td, th) {
+	color: var(--seoproan-ui-text);
+	border-color: var(--seoproan-ui-border);
+}
+
+html.seoproan-dark .components-modal__frame .widefat :is(ol, ul, p) {
+	color: inherit;
+}
+
+html.seoproan-dark .components-modal__frame :is(.striped > tbody > :nth-child(odd), ul.striped > :nth-child(odd), .alternate) {
+	background-color: rgb(255 255 255 / 4%);
+}
+
+html.seoproan-dark :is(.components-card, .components-modal__frame, .components-modal__header, .components-popover__content, .components-dropdown-menu__menu, .components-panel, .components-panel__body) {
+	color: var(--seoproan-ui-text);
+	background-color: var(--seoproan-ui-surface);
+	border-color: var(--seoproan-ui-border);
+}
+
+html.seoproan-dark .components-card {
+	box-shadow: 0 0 0 1px var(--seoproan-ui-border);
+}
+
+html.seoproan-dark :is(.components-card__header, .components-card__footer, .components-card__divider, .components-modal__header) {
+	border-color: var(--seoproan-ui-border);
+}
+
+html.seoproan-dark .components-popover__content {
+	box-shadow: 0 0 0 1px var(--seoproan-ui-border), 0 6px 18px rgb(0 0 0 / 45%);
+}
+
+html.seoproan-dark .components-modal__screen-overlay {
+	background-color: rgb(0 0 0 / 60%);
+}
+
+html.seoproan-dark .components-button:is(.is-secondary, .is-tertiary, .is-link):not(:disabled, [aria-disabled="true"]) {
+	color: var(--seoproan-ui-accent);
+}
+
+html.seoproan-dark .components-button.is-secondary:not(:disabled, [aria-disabled="true"]) {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--seoproan-ui-accent);
+}
+
+html.seoproan-dark .components-button:is(.is-secondary, .is-tertiary):hover:not(:disabled, [aria-disabled="true"]) {
+	color: var(--seoproan-ui-text);
+	background: var(--seoproan-ui-raised);
+}
+
+html.seoproan-dark .components-button:not(.is-primary, .is-secondary, .is-tertiary, .is-pressed, .is-destructive):is(:hover, [aria-expanded="true"]):not(:disabled, [aria-disabled="true"]) {
+	color: var(--seoproan-ui-accent);
+}
+
+html.seoproan-dark .components-button.is-pressed:not(:disabled, [aria-disabled="true"]) {
+	color: var(--seoproan-ui-surface);
+}
+
+html.seoproan-dark .components-button.is-destructive:not(.is-primary, :disabled, [aria-disabled="true"]) {
+	color: var(--seoproan-ui-bad);
+}
+
+html.seoproan-dark .components-button.is-destructive.is-secondary:not(:disabled, [aria-disabled="true"]) {
+	box-shadow: inset 0 0 0 1px var(--seoproan-ui-bad);
+}
+
+html.seoproan-dark .components-button.is-destructive:not(.is-primary):hover:not(:disabled, [aria-disabled="true"]) {
+	color: var(--seoproan-ui-text);
+}
+
+:where(html.seoproan-dark) .components-button {
+	color: inherit;
+}
+
+html.seoproan-dark .components-button:is(:disabled, [aria-disabled="true"]):not(.is-primary) {
+	color: var(--seoproan-ui-subtle);
+}
+
+html.seoproan-dark :is(.components-input-control__container, .components-text-control__input, .components-textarea-control__input, .components-select-control__input, .components-form-token-field__input-container) {
+	color: var(--seoproan-ui-text);
+	background-color: var(--seoproan-ui-canvas);
+}
+
+html.seoproan-dark .components-input-control__container :is(input, select),
+html.seoproan-dark .components-form-token-field__input {
+	color: var(--seoproan-ui-text);
+	background: transparent;
+}
+
+html.seoproan-dark .components-input-control__backdrop {
+	border-color: var(--seoproan-ui-field-border) !important;
+}
+
+html.seoproan-dark :is(.components-text-control__input, .components-textarea-control__input) {
+	border-color: var(--seoproan-ui-field-border);
+}
+
+html.seoproan-dark :is(.components-input-control__suffix, .components-select-control__arrow-wrapper, .components-input-control__prefix, .components-base-control__help, .components-checkbox-control__help, .components-form-token-field__help) {
+	color: var(--seoproan-ui-muted);
+}
+
+html.seoproan-dark .components-checkbox-control__input[type="checkbox"]:not(:checked, :indeterminate) {
+	background: var(--seoproan-ui-canvas);
+	border-color: var(--seoproan-ui-field-border);
+}
+
+html.seoproan-dark .components-form-toggle:not(.is-checked) .components-form-toggle__track {
+	background: var(--seoproan-ui-canvas);
+	border-color: var(--seoproan-ui-field-border);
+}
+
+html.seoproan-dark .components-form-toggle:not(.is-checked) .components-form-toggle__thumb {
+	background: var(--seoproan-ui-muted);
+	border-color: var(--seoproan-ui-muted);
+}
+
+html.seoproan-dark .components-form-token-field__token-text,
+html.seoproan-dark .components-form-token-field__remove-token.components-button {
+	color: var(--seoproan-ui-text);
+	background: var(--seoproan-ui-raised);
+}
+
+html.seoproan-dark .components-toggle-group-control {
+	background: var(--seoproan-ui-canvas);
+	border-color: var(--seoproan-ui-field-border);
+}
+
+html.seoproan-dark .components-tab-panel__tabs-item,
+html.seoproan-dark .components-tab-panel__tabs .components-button {
+	color: var(--seoproan-ui-muted);
+}
+
+html.seoproan-dark .components-tab-panel__tabs-item:is(.is-active, :hover) {
+	color: var(--seoproan-ui-text);
+}
+
+html.seoproan-dark :is(.components-menu-item__button, .components-menu-group__label) {
+	color: var(--seoproan-ui-text);
+}
+
+html.seoproan-dark .components-menu-item__button:hover:not(:disabled) {
+	color: var(--seoproan-ui-accent);
+	background: var(--seoproan-ui-raised);
+}
+
+html.seoproan-dark .components-menu-group + .components-menu-group {
+	border-color: var(--seoproan-ui-border);
+}
+
+html.seoproan-dark .components-notice {
+	color: var(--seoproan-ui-text);
+	background-color: var(--seoproan-ui-raised);
+}
+
+html.seoproan-dark .components-notice.is-success {
+	background-color: rgb(0 163 42 / 16%);
+}
+
+html.seoproan-dark .components-notice.is-warning {
+	background-color: rgb(219 166 23 / 14%);
+}
+
+html.seoproan-dark .components-notice.is-error {
+	background-color: rgb(214 54 56 / 18%);
+}
+
+html.seoproan-dark .components-notice__dismiss {
+	color: var(--seoproan-ui-muted);
+}
+
+html.seoproan-dark .components-spinner {
+	background: var(--seoproan-ui-field-border);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+
+	.seoproan-app-nav,
+	.seoproan-app-card,
+	.components-card {
+		transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+	}
+}

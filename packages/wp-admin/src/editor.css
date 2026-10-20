@@ -1,0 +1,75 @@
+/*
+ * Search queries in the editor: the block editor's document panel and the
+ * classic editor's meta box. WordPress's own type and colours (DESIGN.md).
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
+ */
+
+@import url("./common.css");
+
+.seoproan-editor {
+	--seoproan-accent: var(--wp-admin-theme-color, #2271b1);
+	--seoproan-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1); /* stylelint-disable-line custom-property-pattern -- WordPress names this variable. */
+	--seoproan-muted: #50575e;
+	--seoproan-bad: #b32d2e;
+
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.seoproan-editor p {
+	margin: 0 0 12px;
+}
+
+.seoproan-editor__summary,
+.seoproan-editor__note {
+	color: #1d2327;
+}
+
+.seoproan-editor__part + .seoproan-editor__part {
+	margin-top: 16px;
+}
+
+.seoproan-editor__heading {
+	margin: 0 0 8px;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.4;
+	text-transform: uppercase;
+	color: #1e1e1e;
+}
+
+.seoproan-editor__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.seoproan-editor__list li {
+	display: grid;
+	gap: 2px;
+	margin: 0 0 10px;
+}
+
+.seoproan-editor__query {
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.seoproan-editor__meta {
+	color: #757575;
+	font-size: 12px;
+}
+
+.seoproan-editor__more {
+	margin-top: 12px;
+}
+
+.seoproan-editor__loading {
+	display: block;
+	width: 100%;
+	height: 4em;
+}

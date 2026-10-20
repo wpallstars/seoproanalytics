@@ -1,0 +1,139 @@
+# Styling standards
+
+Styling rules every plugin made from the wpallstars starter plugin follows,
+for its admin screens and its front end. This file is the same in each of
+them (names as placeholders: `STANDARDS.md` lists them, and the plugin's
+`AGENTS.md` gives its values). The other rules: `STANDARDS.md`.
+
+## Admin screens: spacing and forms
+
+React forms and modals in wp-admin use WordPress components, and the
+container owns the spacing, not the controls. Scope these rules to the
+plugin's form classes (`.{css}-form`, `.{css}-fieldset`, `.{css}-form__row`,
+`.{css}-form__actions`), never to all admin forms.
+
+- Remove controls' outer margins: `__nextHasNoMarginBottom` on
+  `TextControl`, `SelectControl`, `TextareaControl`, `CheckboxControl` and
+  `ToggleControl`, and `__next40pxDefaultSize` on inputs, selects and
+  adjacent buttons, where the component version supports those props. On
+  older versions, use scoped CSS for the same spacing and height; do not
+  pass unsupported props to DOM elements.
+- Forms and groups use `display: grid; gap: 16px`. Related buttons have an
+  8px gap; help text sits 4px below its field. Use WordPress's 4px spacing
+  scale: 4, 8, 12, 16 and 24px. Reset `margin: 0` on paragraphs, headings
+  and lists inside these containers; never mix browser margins with `gap`.
+- Group fields with `<fieldset>` and `<legend>`, not headings with ad-hoc
+  margins; the legend is `float: left; width: 100%` so it joins the grid.
+  Separate groups with a `1px solid #dcdcde` top border.
+- Short fields sit side by side in a row with
+  `grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))` and
+  `align-items: start`: labels line up and fields wrap on narrow screens.
+- A notice with content and actions has a content grid with `gap: 8px`.
+  Show a read-only URL in a full-width monospace input, with **Copy** and
+  **Open in a new window** buttons together on one wrapping row.
+- A disabled control always explains why in help text below it, or, for a
+  button that supports it, with `accessibleWhenDisabled` and a `title`.
+  Validate required fields on submit and show a message instead of silently
+  disabling the submit button.
+- Modals use the plugin's `.{css}-modal` class: a fixed width at WordPress's
+  small breakpoint (600px) and above, a full-width sheet below. End with
+  right-aligned **Cancel** (tertiary) and the primary action.
+
+## Admin colour mode
+
+Own screens use the header's Light / Dark / System menu (keyboard arrows,
+Home, End and Escape, radio menu items, visible focus and screen-reader
+announcements). Light keeps WordPress's colours. Dark styles load only on
+own screens, and every override sits behind `html.{css}-dark`.
+
+The shared admin palette uses canvas `#101517`, surface `#1d2327`, raised
+surface `#2c3338`, borders `#3c434a`, text `#f0f0f1`, muted `#c3c4c7` and
+field borders `#8c8f94`. Define these as `--{css}-ui-*` tokens; derive the
+header, tabs, cards and classic WordPress elements from them. Read the admin
+colour scheme's accent on body, keep it for fills, and lighten accent text
+for dark surfaces. Keep the existing wrapping header layout and logical
+menu alignment; do not add mode transitions that change Light's behaviour.
+The admin choice is independent of the front-end theme's switcher.
+
+## Classes a plugin may use
+
+The core stylesheets (`admin/css/`) are a library with a public list of
+classes: `scripts/core-public-classes.txt`. A plugin's own screens, tabs and
+feature output use them in markup so they look like the settings screen:
+
+- Page shell: `{css}-wrap`, `{css}-main`, `{css}-nav`, `{css}-nav__group`
+  and `{css}-nav__tab`. Print them with
+  `{Prefix}_Admin_Manager::render_header()` and
+  `{Prefix}_Admin_Page::sections_nav()` rather than copying the markup.
+- Settings components: `{css}-cards`, `{css}-card`, `{css}-section` (with
+  `__intro`, `__title`, `__desc`), `{css}-badge` (with `--success`),
+  `{css}-field` (with `__label`, `__control`) and `{css}-setting` (with
+  `__header`, `__text`, `__title`, `__desc`).
+- Feature output at the top of a setting's options panel:
+  `{css}-panel-note` and `{css}-panel-note--warning`.
+- Colour mode: `{css}-dark`, set on `<html>`. Use it only as an ancestor:
+  `html.{css}-dark .{css}-app-card { … }`.
+
+Rules:
+
+- Never restyle a core class, public or not: no plugin CSS rule whose
+  selector ends on one (`.{css}-badge { … }`, `.{css}-card:hover`). A starter
+  sync can change core's rules under it.
+- The plugin's own components take their own names, under a sub-prefix:
+  `{css}-<screen>-*` (`{css}-stats-badge`) or `{css}-app-*` for a React app.
+- Every other class in the core stylesheets is internal (the header, search,
+  sub-navigation, switches and so on): leave it alone; a sync may change or
+  remove it without notice.
+- Changing or removing a public class is a changelog item that plugins must
+  act on: say which class, and what to use instead.
+
+Release preflight (Core class names) reads the list: it warns on internal
+classes in plugin markup and on plugin CSS that restyles any core class, and
+its hint names the class.
+
+## Front-end styling and dark mode
+
+Block, shortcode and other front-end styles must work with the Kadence Pro
+dark mode switcher (and themes that switch palettes the same way).
+
+- How it switches: Kadence adds `color-switch-dark` or `color-switch-light`
+  to `<body>`. The dark class sets `color-scheme: dark` and redefines
+  `--global-palette1`…`15` and `--wp--preset--color--theme-palette-N` **on
+  `<body>`**; `<html>` stays `color-scheme: light`. Palette 3 is the
+  strongest text and palette 9 the page background in light mode; dark mode
+  swaps them.
+- Use `currentColor`, `inherit`, translucent neutrals (for example
+  `rgba(127, 127, 127, 0.12)`) or palette variables, never fixed light or
+  dark colours for text, backgrounds or borders.
+- Do not follow the site with `@media (prefers-color-scheme)`: it tracks the
+  visitor's system, not the switcher. Do not define custom properties on
+  `:root` from palette variables: they resolve above `<body>` and keep the
+  light values. Read palette variables where they are used, or define
+  derived ones on the block.
+- Palette pairs are not guaranteed to contrast in both modes: Kadence dark
+  mode sets button text to palette 9 (dark) on palette 1. Front-end buttons
+  that take the theme's colours check the text against the background, for
+  normal and hover separately, and keep the theme's text only where it
+  reaches 4.5:1. Otherwise they use the first of the theme's background,
+  its strongest text colour, white or black that does, and recheck when the
+  `<body>` or `<html>` classes change.
+- Preset references (`var:preset|color|theme-palette3`) become CSS variables
+  with kebab-cased slugs, as core does: `--wp--preset--color--theme-palette-3`.
+  Use `_wp_to_kebab_case()` in PHP and the same rule in editor JS (a hyphen
+  between letters and digits, lower case).
+- Embedded pages (iframes) do not follow the switcher: they see the
+  visitor's system setting, and the browser paints their own background
+  behind them, so they stay readable in both modes. Do not make iframes
+  transparent or tint them.
+- Test: view the page with the Kadence theme in light and dark mode
+  (`STANDARDS.md` → Testing, step 5). Without Kadence Pro, simulate the
+  switcher: print a
+  `body.color-switch-dark { color-scheme: dark; --global-palette1: …; }`
+  rule with a dark palette (palette 3 light, palette 9 dark, and the
+  matching `--wp--preset--color--theme-palette-N: var(--global-paletteN)`
+  lines), then swap the body class between `color-switch-light` and
+  `color-switch-dark`. Check text, backgrounds, borders and palette colours
+  chosen in block settings in both.
+
+<!-- seoproan-own:start -->
+<!-- seoproan-own:end -->

@@ -1,0 +1,884 @@
+/**
+ * Reading the API through WordPress's apiFetch (logged-in cookie and
+ * nonce) and TanStack Query (cache, deduplication, refresh).
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+import { createContext, useContext } from 'react';
+import apiFetch from '@wordpress/api-fetch';
+import { addQueryArgs } from '@wordpress/url';
+import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
+import {
+	apiArgs,
+	singleEngine,
+	BACKLINK_METRICS,
+	type AbTestAnswer,
+	type AbTestsAnswer,
+	type AuditAnswer,
+	type AuditFinding,
+	type BacklinkClass,
+	type BacklinkClassifyScope,
+	type BacklinkTriage,
+	type BacklinkKind,
+	type BacklinkDecision,
+	type BacklinkReviewAnswer,
+	type BacklinksAnswer,
+	type BreakdownAnswer,
+	type BusinessProfilesAnswer,
+	type ChangesAnswer,
+	type ChartData,
+	type ClickKind,
+	type ClicksAnswer,
+	type ContentAnswer,
+	type ContentSort,
+	type Dimension,
+	type Experiment,
+	type ExperimentInput,
+	type ExperimentResult,
+	type ExperimentsAnswer,
+	type Funnel,
+	type FunnelsAnswer,
+	type Goal,
+	type GoalStep,
+	type GoalsAnswer,
+	type Grain,
+	type IndexationAnswer,
+	type IndexationKind,
+	type InspectionsAnswer,
+	type InspectionVerdict,
+	type CrawlAnswer,
+	type CrawlFinding,
+	type CrawlIssue,
+	type CrawlIssuesAnswer,
+	type CrawlKind,
+	type CrawlStatus,
+	type LinksAnswer,
+	type LinksKind,
+	type Marker,
+	type MarkersAnswer,
+	type OpportunitiesAnswer,
+	type OpportunityKind,
+	type OwnerKind,
+	type OwnersAnswer,
+	type OwnersSetAnswer,
+	type PropertiesAnswer,
+	type QueueAction,
+	type QueueAnswer,
+	type QueueFilter,
+	type QueueItem,
+	type RealtimeAnswer,
+	type SearchAnswer,
+	type SearchKind,
+	type SortOrder,
+	type StatsAnswer,
+	type TargetFilter,
+	type TargetsAnswer,
+	type TargetsImportAnswer,
+	type TargetsQueriesAnswer,
+	type TargetSuggestionsAnswer,
+	type TimeseriesAnswer,
+	type ViewState,
+} from '@seoproanalytics/core';
+import { boot, type DataSet, type DemoStatus } from './boot';
+import { useDataSet } from './data';
+
+const NAMESPACE = '/seoproanalytics/v1';
+
+type Args = Record<string, string | string[] | number>;
+
+/** Public-shell transport. Never sends WordPress cookies or an admin nonce. */
+export const shareAccess = { token: '', root: '', unlock: '', section: 'overview', hidden: [] as string[] };
+
+/**
+ * The shared report's section a subtree reads (each request names it), so
+ * printing can show several sections at once. Null outside shared reports.
+ */
+export const ShareSection = createContext<string | null>(null);
+
+/** Report arguments' key for the shared section: part of the cache key, never sent as an argument. */
+const SECTION_ARG = '__section';
+
+export function get<T>(route: string, args: Args = {}): Promise<T> {
+    if (shareAccess.token) {
+        const { [SECTION_ARG]: section, ...rest } = args;
+        return shareFetch<T>(`${typeof section === 'string' && section ? section : shareAccess.section}/${route}`, 'GET', rest);
+    }
+	return apiFetch<T>({ path: addQueryArgs(`${NAMESPACE}/${route}`, args) });
+}
+
+export async function shareFetch<T>(route: string, method: 'GET' | 'POST', args: Record<string, unknown> = {}): Promise<T> {
+    const tail = route ? '/' + route : '';
+    let url = `${shareAccess.root}share/${shareAccess.token}${tail}`;
+    if (method === 'GET') {
+        url = addQueryArgs(url, args);
+    }
+    const response = await fetch(url, {
+        method,
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        headers: { 'Content-Type': 'application/json', 'X-Seoproanalytics-Unlock': shareAccess.unlock },
+        ...(method === 'POST' ? { body: JSON.stringify(args) } : {}),
+    });
+    const answer: unknown = await response.json();
+    if (!response.ok) {
+        throw answer;
+    }
+    return answer as T;
+}
+
+/**
+ * A table's paging scope: one string that changes when anything that picks
+ * its rows changes, so paging goes back to the first rows. Parts are
+ * arrays, strings and apiArgs() objects, whose keys are always added in
+ * the same order, so equal choices give equal strings. Compared only with
+ * the previous scope, never stored or used as an object key.
+ */
+export function scopeKey(...parts: unknown[]): string {
+	return JSON.stringify(parts); // nosemgrep: javascript.lang.correctness.no-stringify-keys.no-stringify-keys -- parts are built in a fixed key order (see above).
+}
+
+function send<T>(route: string, method: 'POST' | 'DELETE', data: Record<string, unknown> = {}): Promise<T> {
+	return apiFetch<T>({ path: `${NAMESPACE}/${route}`, method, data });
+}
+
+/** Where a report reads: the data set, and in a shared report its section. */
+interface ReportSource {
+	set: DataSet;
+	section: string | null;
+}
+
+/** Report arguments for a data set (live is the default, so it is left out) and a shared section. */
+function withData(args: Args, data: ReportSource): Args {
+	const out = data.set === 'demo' ? { ...args, data: data.set } : args;
+	return data.section ? { ...out, [SECTION_ARG]: data.section } : out;
+}
+
+export const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			// The server caches answers for five minutes; a minute here is plenty.
+			staleTime: 60 * 1000,
+			refetchOnWindowFocus: false,
+			retry: 1,
+		},
+	},
+});
+
+type Scope = Pick<ViewState, 'range' | 'from' | 'to' | 'filters' | 'compare'>;
+
+/** Reports wait while the chosen demo data is not made yet (they would fail). */
+function useReportData(): { data: ReportSource; enabled: boolean } {
+	const set = useDataSet();
+	const section = useContext(ShareSection);
+	const demo = useDemo();
+	return { data: { set, section }, enabled: set === 'live' || demo.data?.status === 'ready' };
+}
+
+export function useStats(scope: Scope) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['stats', args],
+		queryFn: () => get<StatsAnswer>('stats', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+export function useTimeseries(scope: Scope) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['timeseries', args],
+		queryFn: () => get<TimeseriesAnswer>('timeseries', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+export function useBreakdown(scope: Omit<Scope, 'compare'>, dimension: Dimension, limit = 10) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), dimension, limit }, data);
+	return useQuery({
+		queryKey: ['breakdown', args],
+		queryFn: () => get<BreakdownAnswer>('breakdown', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+export function useRealtime() {
+	const { data, enabled } = useReportData();
+	const args = withData({}, data);
+	return useQuery({
+		queryKey: ['realtime', args],
+		queryFn: () => get<RealtimeAnswer>('realtime', args),
+		refetchInterval: 30 * 1000,
+		staleTime: 0,
+		enabled,
+	});
+}
+
+export function useGoals(scope: Scope) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['goals', args],
+		queryFn: () => get<GoalsAnswer>('goals', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Business profiles and their visits; not in shared reports (the route is not shared). */
+export function useBusinessProfiles(scope: Omit<Scope, 'compare'>) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['business-profiles', args],
+		queryFn: () => get<BusinessProfilesAnswer>('business-profiles', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && !shareAccess.token,
+	});
+}
+
+export function useFunnels(scope: Scope) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['funnels', args],
+		queryFn: () => get<FunnelsAnswer>('funnels', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Property keys (key ''), or one key's values; optionally of one event only. */
+export function useProperties(scope: Omit<Scope, 'compare'>, key: string, event: string, limit = 50) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), limit, ...(key ? { key } : {}), ...(event ? { event } : {}) }, data);
+	return useQuery({
+		queryKey: ['properties', args],
+		queryFn: () => get<PropertiesAnswer>('properties', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Clicks and form submits: totals and rows of one kind; optionally on one page. */
+export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 50) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), kind, limit, ...(page ? { page } : {}) }, data);
+	return useQuery({
+		queryKey: ['clicks', args],
+		queryFn: () => get<ClicksAnswer>('clicks', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** A search report's scope: the engine too (Google when left out). */
+type SearchScope = Scope & Pick<ViewState, 'engine' | 'owner'>;
+
+/** The owner filter (Content, Plan, Targets, Experiments); never in shared reports. */
+function ownerArg(scope: Pick<ViewState, 'owner'>): Args {
+	return scope.owner && !shareAccess.token ? { owner: scope.owner } : {};
+}
+
+/**
+ * The engine argument: Google is the default, so it is left out. Combined
+ * (all) goes to Rankings, Opportunities and Content only (`combined`); the
+ * other reports read one engine, Google for Combined.
+ */
+function engineArg(scope: Pick<SearchScope, 'engine'>, combined = false): Args {
+	const engine = combined ? (scope.engine ?? 'google') : singleEngine(scope.engine);
+	return engine !== 'google' ? { engine } : {};
+}
+
+/** A sorted table's column and direction, as the API takes them. */
+export interface Sorted {
+	sort: string;
+	order: SortOrder;
+}
+
+/** Search (an engine's imported days): totals, points and rows of one kind in an order (the kind's default when left out); optionally one page's or one query's. */
+export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50, offset = 0, by?: Sorted) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), kind, limit, ...(offset ? { offset } : {}), ...(page ? { page } : {}), ...(query ? { query } : {}), ...(by ?? {}) }, data);
+	return useQuery({
+		queryKey: ['search', args],
+		queryFn: () => get<SearchAnswer>('search', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/**
+ * A chart's history: the same report over other days, for the trend
+ * line's lead-in (the days before the period its first averages cover).
+ */
+export interface ChartHistory {
+	/** The report and scope, for the cache key. */
+	key: readonly unknown[];
+	/** The report from `from` to `to` (YYYY-MM-DD, both included) at a grain, without a comparison. */
+	load: (from: string, to: string, grain: Grain) => Promise<ChartData<{ t: string }>>;
+}
+
+/** The Overview chart's history: the timeseries with the same filters. */
+export function useTimeseriesHistory(scope: Omit<Scope, 'compare'>): ChartHistory {
+	const { data } = useReportData();
+	const base = withData(apiArgs({ ...scope, range: 'custom' }), data);
+	return {
+		key: ['timeseries-history', base],
+		load: (from, to, grain) => get<TimeseriesAnswer>('timeseries', { ...base, from, to, grain }),
+	};
+}
+
+/** Rankings' chart history: the search points (one days row, the fewest) with the same engine, page and query. */
+export function useSearchHistory(scope: Omit<SearchScope, 'compare'>, page: string, query: string): ChartHistory {
+	const { data } = useReportData();
+	const base = withData({ ...apiArgs({ ...scope, range: 'custom' }), ...engineArg(scope, true), kind: 'days', limit: 1, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
+	return {
+		key: ['search-history', base],
+		load: (from, to, grain) => get<SearchAnswer>('search', { ...base, from, to, grain }),
+	};
+}
+
+/** Search opportunities of one kind (decay always against an earlier period: the previous one unless a year ago, by date or weekday, is chosen). */
+export function useOpportunities(scope: SearchScope, kind: OpportunityKind, limit = 10, offset = 0) {
+	const { data, enabled } = useReportData();
+	const compare = scope.compare === 'year' || scope.compare === 'year_weekday' ? scope.compare : 'prev';
+	const args: Args = withData({ ...apiArgs({ ...scope, compare }), ...engineArg(scope, true), kind, limit, offset }, data);
+	return useQuery({
+		queryKey: ['opportunities', args],
+		queryFn: () => get<OpportunitiesAnswer>('opportunities', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** The content audit: pages with findings ('' for all), in an order (most impressions first when left out); the comparison does not apply. */
+export function useAudit(scope: SearchScope, finding: AuditFinding | '', limit = 25, offset = 0, by?: Sorted) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), limit, offset, ...(finding ? { finding } : {}), ...(by ?? {}) }, data);
+	return useQuery({
+		queryKey: ['audit', args],
+		queryFn: () => get<AuditAnswer>('audit', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Internal links: orphan pages, converting pages with few links in, or missing links; conversions of a goal ('' for the first); the comparison does not apply. */
+export function useLinks(scope: SearchScope, kind: LinksKind, goal: string, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), kind, limit, offset, ...(goal ? { goal } : {}) }, data);
+	return useQuery({
+		queryKey: ['links', args],
+		queryFn: () => get<LinksAnswer>('links', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Indexation: published pages or sitemap addresses search has not shown in its newest days; the period and comparison do not apply. */
+export function useIndexation(scope: SearchScope, kind: IndexationKind, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	// The window is the engine's newest days, whatever the period: only the page filters count.
+	const args: Args = withData({ ...apiArgs({ range: '30d', filters: scope.filters }), ...engineArg(scope), kind, limit, offset }, data);
+	return useQuery({
+		queryKey: ['indexation', args],
+		queryFn: () => get<IndexationAnswer>('indexation', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Google's URL Inspection of the site's pages, newest first, with Search Console's sitemaps; only page filters apply (Google only). */
+export function useInspections(scope: SearchScope, verdict: InspectionVerdict | '', limit = 25, offset = 0, on = true) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ range: '30d', filters: scope.filters }), limit, offset, ...(verdict ? { verdict } : {}) }, data);
+	return useQuery({
+		queryKey: ['inspections', args],
+		queryFn: () => get<InspectionsAnswer>('inspections', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && on,
+	});
+}
+
+/** Bing's crawl issues, crawl stats, sitemaps, URL submission quota and links read; no period or filters. */
+export function useCrawlIssues(issue: CrawlIssue | 'errors' | '', limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ limit, offset, ...(issue ? { issue } : {}) }, data);
+	return useQuery({
+		queryKey: ['crawl-issues', args],
+		queryFn: () => get<CrawlIssuesAnswer>('crawl-issues', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** The imported crawl: pages with a problem, links that fail or redirect, or clicked destinations that fail (in the scope's range). Not in shared reports. */
+export function useCrawl(scope: SearchScope, kind: CrawlKind, status: CrawlStatus | '', finding: CrawlFinding | '', limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const range = kind === 'clicked' || finding === 'slow' ? apiArgs({ ...scope, compare: 'none', filters: [] }) : {};
+	const args: Args = withData({ ...range, ...engineArg(scope), kind, limit, offset, ...(status ? { status } : {}), ...(finding ? { finding } : {}) }, data);
+	return useQuery({
+		queryKey: ['crawl', args],
+		queryFn: () => get<CrawlAnswer>('crawl', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && !shareAccess.token,
+	});
+}
+
+/**
+ * Backlinks: live links, the sites linking, the site's pages linked to, links lost, reported pages,
+ * pages that need links or links' impact; the period counts new and lost links and the sites' visits;
+ * filters and comparison do not apply, and the engine only to needs and impact.
+ */
+export function useBacklinks(scope: SearchScope, kind: BacklinkKind, limit = 25, offset = 0, source = '', triage: BacklinkTriage = {}) {
+	const { data, enabled } = useReportData();
+	// Links and lost take every filter; sites linking and reported pages only the classes.
+	const filters = kind === 'links' || kind === 'lost' ? triageArgs(triage) : kind === 'domains' || kind === 'reported' ? present({ classes: triage.classes?.join(',') }) : {};
+	const engine = kind === 'needs' || kind === 'impact' ? engineArg(scope, true) : {};
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none', filters: [] }), kind, limit, offset, source, ...engine, ...filters }, data);
+	return useQuery({
+		queryKey: ['backlinks', args],
+		queryFn: () => get<BacklinksAnswer>('backlinks', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && !(triage.classes && triage.classes.length === 0),
+	});
+}
+
+/** The links lists' filters, search and sort as GET /backlinks arguments, in a fixed key order; empty ones left out. */
+export function triageArgs(triage: BacklinkTriage): Args {
+	return { ...listArgs(triage), ...searchArgs(triage), ...dateArgs(triage), ...rangeArgs(triage), ...sortArgs(triage) };
+}
+
+/** Each argument with a value, left out when empty or undefined. */
+function present(args: Record<string, string | number | null | undefined>): Args {
+	const out: Args = {};
+	for (const [key, value] of Object.entries(args)) {
+		if (value !== null && value !== undefined && value !== '') {
+			out[key] = value;
+		}
+	}
+	return out;
+}
+
+/** Classes and rel. An empty class list keeps no link: useBacklinks does not ask then. */
+function listArgs(triage: BacklinkTriage): Args {
+	return present({ classes: triage.classes?.join(','), rel: triage.rel?.join(',') });
+}
+
+/** The search, and where it looks, only with a search. */
+function searchArgs(triage: BacklinkTriage): Args {
+	const search = triage.search?.trim() ?? '';
+	return search ? present({ search, search_in: triage.search_in?.join(',') }) : {};
+}
+
+/** The date range, and the date it applies to, only with a day. */
+function dateArgs(triage: BacklinkTriage): Args {
+	if (!triage.date_from && !triage.date_to) {
+		return {};
+	}
+	return present({ date: triage.date ?? 'first_seen', date_from: triage.date_from, date_to: triage.date_to });
+}
+
+/** The DR and LD ranges' ends that are set. */
+function rangeArgs(triage: BacklinkTriage): Args {
+	const out: Args = {};
+	for (const metric of BACKLINK_METRICS) {
+		const [min, max] = triage.ranges?.[metric] ?? [null, null];
+		Object.assign(out, present({ [`${metric}_min`]: min, [`${metric}_max`]: max }));
+	}
+	return out;
+}
+
+/** The sort column, and its order, only with a column. */
+function sortArgs(triage: BacklinkTriage): Args {
+	return triage.sort ? present({ sort: triage.sort, order: triage.order }) : {};
+}
+
+/** What a classification changes: links by row id, referring pages by row id, or sites and pages on the class lists. */
+export type ClassifyTarget = { ids: number[] } | { pages: number[] } | { sites: string[] };
+
+/** Set, add or remove the owner's classes of links, referring pages or sites; the lists read them again. */
+export async function classifyBacklinks(target: ClassifyTarget, classes: BacklinkClass[], mode: 'set' | 'add' | 'remove', data: DataSet) {
+	const answer = await send<{ updated: number; classes: BacklinkClass[]; mode: string; scope: BacklinkClassifyScope }>('backlinks/classify', 'POST', { ...target, classes, mode, data });
+	await queryClient.invalidateQueries({ queryKey: ['backlinks'] });
+	return answer;
+}
+
+export function useBacklinkReview(scope: SearchScope, offset: number) {
+	const { data, enabled } = useReportData();
+	const args = withData({ ...apiArgs({ ...scope, compare: 'none', filters: [] }), limit: 25, offset }, data);
+	return useQuery({ queryKey: ['backlink-review', args], queryFn: () => get<BacklinkReviewAnswer>('backlinks/review', args), enabled: enabled && boot.canManage && !shareAccess.token });
+}
+
+export async function saveBacklinkDecision(decision: BacklinkDecision, data: DataSet) {
+	const answer = await send<BacklinkDecision>('backlinks/review', 'POST', { scope: decision.scope, target: decision.target, decision: decision.decision, data });
+	await queryClient.invalidateQueries({ queryKey: ['backlink-review'] });
+	return answer;
+}
+
+/** Check now: open the referring pages due (live data only, the owner's); the catch-up carries on in cron. */
+export async function checkBacklinks() {
+	const answer = await send<{ links_new: number; links_lost: number; more: boolean; waiting: number }>('backlinks/check', 'POST');
+	await queryClient.invalidateQueries({ queryKey: ['backlinks'] });
+	return answer;
+}
+
+export async function mergeDisavow(text: string, data: DataSet) {
+	const answer = await send<{ entries: number }>('backlinks/disavow/merge', 'POST', { text, data });
+	await queryClient.invalidateQueries({ queryKey: ['backlink-review'] });
+	return answer;
+}
+
+export async function downloadDisavow(data: DataSet) {
+	const response = await apiFetch({ path: addQueryArgs(`${NAMESPACE}/backlinks/disavow.txt`, { data }), parse: false });
+	const blob = await response.blob();
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = 'disavow.txt';
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Search targets: each with its position, clicks and the page that ranks; filters do not apply (targets are searches). */
+export function useTargets(scope: SearchScope, status: TargetFilter, limit = 50, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, filters: [] }), ...engineArg(scope), ...ownerArg(scope), status, limit, offset }, data);
+	return useQuery({
+		queryKey: ['targets', args],
+		queryFn: () => get<TargetsAnswer>('targets', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** After targets change: the list, the plan (its target items) and the owners' counts. */
+function refreshTargets(): void {
+	void queryClient.invalidateQueries({ queryKey: ['targets'] });
+	void queryClient.invalidateQueries({ queryKey: ['queue'] });
+	void queryClient.invalidateQueries({ queryKey: ['owners'] });
+}
+
+/** Import targets from text (CSV, tab-separated, JSON or the aidevops TOON table) (administrators). */
+export async function importTargets(data: DataSet, text: string, replace: boolean): Promise<TargetsImportAnswer> {
+	const done = await send<TargetsImportAnswer>('targets', 'POST', { text, replace, data });
+	refreshTargets();
+	return done;
+}
+
+/**
+ * Every target's search with its page and status, without figures, so
+ * search reports can mark the searches that are targets. Not in shared
+ * reports (their routes have no targets).
+ */
+export function useTargetQueries() {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({}, data);
+	return useQuery({
+		queryKey: ['targets', 'queries', args],
+		queryFn: () => get<TargetsQueriesAnswer>('targets/queries', args),
+		enabled: enabled && !shareAccess.token && !data.section,
+		staleTime: 5 * 60 * 1000,
+	});
+}
+
+/**
+ * Add searches from a search report as candidate targets, each with the
+ * page search shows for it (or none), leaving searches already listed as
+ * they are (administrators).
+ */
+export async function addSearchTargets(data: DataSet, rows: { query: string; page?: string }[]): Promise<TargetsImportAnswer> {
+	const targets = rows.map((row) => ({ query: row.query, page: row.page ?? '', status: 'candidate' }));
+	const done = await send<TargetsImportAnswer>('targets', 'POST', { targets, only_new: true, source: 'search', data });
+	refreshTargets();
+	return done;
+}
+
+/** The SEO plugin's focus keywords as target suggestions (administrators). */
+export function useTargetSuggestions(on: boolean, allKeywords: boolean) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ all_keywords: allKeywords ? 1 : 0 }, data);
+	return useQuery({
+		queryKey: ['targets', 'suggestions', args],
+		queryFn: () => get<TargetSuggestionsAnswer>('targets/suggestions', args),
+		enabled: enabled && on,
+	});
+}
+
+/** Import the new focus keyword suggestions, all or those given, as targeted (administrators). */
+export async function importTargetSuggestions(data: DataSet, queries: string[], allKeywords: boolean): Promise<TargetsImportAnswer> {
+	const done = await send<TargetsImportAnswer>('targets/suggestions', 'POST', { queries, all_keywords: allKeywords, data });
+	refreshTargets();
+	return done;
+}
+
+/** Delete targets by their searches, or every target (administrators). */
+export async function deleteTargets(data: DataSet, queries: string[], all = false): Promise<{ deleted: number; total: number }> {
+	const done = await send<{ deleted: number; total: number }>('targets', 'DELETE', { queries, all, data });
+	refreshTargets();
+	return done;
+}
+
+/** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first), in an order. */
+export function useContent(scope: SearchScope, by: Sorted & { sort: ContentSort }, goal: string, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), ...ownerArg(scope), sort: by.sort, order: by.order, limit, offset, ...(goal ? { goal } : {}) }, data);
+	return useQuery({
+		queryKey: ['content', args],
+		queryFn: () => get<ContentAnswer>('content', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/**
+ * The changes in the range for the chart's markers lane, oldest first;
+ * with a page, that page's and the site-wide ones.
+ */
+export function useMarkers(scope: Pick<Scope, 'range' | 'from' | 'to'>, page: string) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, filters: [] }), ...(page ? { page } : {}) }, data);
+	return useQuery({
+		queryKey: ['markers', args],
+		queryFn: () => get<MarkersAnswer>('markers', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** The change log in the range, newest first: optionally one page's, of some groups. */
+export function useChanges(scope: Pick<Scope, 'range' | 'from' | 'to'>, page: string, kinds: string, limit: number, offset: number) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData(
+		{ ...apiArgs({ ...scope, filters: [] }), limit, offset, ...(page ? { page } : {}), ...(kinds ? { kinds } : {}) },
+		data
+	);
+	return useQuery({
+		queryKey: ['changes', args],
+		queryFn: () => get<ChangesAnswer>('changes', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Experiments, due ones first (measured now, or as decided); optionally one owner's. */
+export function useExperiments(owner = '') {
+	const { data, enabled } = useReportData();
+	const args = withData(ownerArg({ owner }), data);
+	return useQuery({
+		queryKey: ['experiments', args],
+		queryFn: () => get<ExperimentsAnswer>('experiments', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** A/B tests over each one's life (not the period), running first; the view's filters apply. */
+export function useAbTests(filters: ViewState['filters']) {
+	const { data, enabled } = useReportData();
+	const args = withData(filters.length ? { filters: apiArgs({ range: '30d', filters }).filters! } : {}, data);
+	return useQuery({
+		queryKey: ['ab-tests', args],
+		queryFn: () => get<AbTestsAnswer>('ab-tests', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** One A/B test's variants side by side. */
+export function useAbTest(id: string, filters: ViewState['filters']) {
+	const { data, enabled } = useReportData();
+	const args = withData(filters.length ? { filters: apiArgs({ range: '30d', filters }).filters! } : {}, data);
+	return useQuery({
+		queryKey: ['ab-test', id, args],
+		queryFn: () => get<AbTestAnswer>(`ab-tests/${encodeURIComponent(id)}`, args),
+		// The last answer while filters change, never another test's.
+		placeholderData: (previous, last) => (last?.queryKey[1] === id ? previous : undefined),
+		enabled: enabled && id !== '',
+	});
+}
+
+/** After an experiment is added, decided or deleted: the list, the plan (its pages, done items' results), the owners' running counts, and the markers and change log (its start). */
+function refreshExperiments(): void {
+	void queryClient.invalidateQueries({ queryKey: ['experiments'] });
+	void queryClient.invalidateQueries({ queryKey: ['queue'] });
+	void queryClient.invalidateQueries({ queryKey: ['owners'] });
+	refreshChanges();
+}
+
+/** Record an experiment (administrators); its start shows on the timeline. */
+export async function addExperiment(data: DataSet, input: ExperimentInput): Promise<Experiment> {
+	const saved = await send<Experiment>('experiments', 'POST', { ...input, data });
+	refreshExperiments();
+	return saved;
+}
+
+/** Decide (with a result), change the note of, or cancel an experiment. */
+export async function updateExperiment(
+	data: DataSet,
+	id: number,
+	change: { action: 'decide' | 'note' | 'cancel'; result?: ExperimentResult; note?: string }
+): Promise<Experiment> {
+	const saved = await send<Experiment>(`experiments/${id}`, 'POST', { ...change, data });
+	refreshExperiments();
+	return saved;
+}
+
+export async function deleteExperiment(data: DataSet, id: number): Promise<void> {
+	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/experiments/${id}`, { data }), method: 'DELETE' });
+	refreshExperiments();
+}
+
+/** The decision queue's period and choices: page filters apply; the comparison does not. */
+function queueArgs(scope: SearchScope, goal: string): Args {
+	return { ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), ...(goal ? { goal } : {}) };
+}
+
+/** The decision queue: items in a state (open: new and accepted), best first. */
+export function useQueue(scope: SearchScope, status: QueueFilter, goal: string, limit = 50, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...queueArgs(scope, goal), ...ownerArg(scope), status, limit, offset }, data);
+	return useQuery({
+		queryKey: ['queue', args],
+		queryFn: () => get<QueueAnswer>('queue', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/**
+ * Who owns what: each person who can own with their pages, open Plan
+ * items, open targets and running experiments, and what nobody owns.
+ * Also says whether this person gives work to anyone or takes their own.
+ * Only for people who can edit posts; never in shared reports.
+ */
+export function useOwners(scope: SearchScope, goal = '', on = true) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...queueArgs(scope, goal) }, data);
+	return useQuery({
+		queryKey: ['owners', args],
+		queryFn: () => get<OwnersAnswer>('owners', args),
+		enabled: enabled && on && !shareAccess.token && !data.section,
+		placeholderData: keepPreviousData,
+		staleTime: 5 * 60 * 1000,
+		retry: false,
+	});
+}
+
+/** Set the owner of pages, targets, Plan items or experiments: a user id, me, none or default; then the lists are asked again. */
+export async function setOwners(data: DataSet, kind: OwnerKind, ids: string[], user: string): Promise<OwnersSetAnswer> {
+	const done = await send<OwnersSetAnswer>('owners', 'POST', { kind, ids, user, data });
+	for (const key of ['owners', 'queue', 'targets', 'experiments', 'content']) {
+		void queryClient.invalidateQueries({ queryKey: [key] });
+	}
+	return done;
+}
+
+/** Act on a queue item (administrators); done opens an experiment, so experiments and markers are asked again too. */
+export async function updateQueueItem(
+	data: DataSet,
+	scope: SearchScope,
+	goal: string,
+	key: string,
+	change: { action: QueueAction; effort?: number; note?: string }
+): Promise<QueueItem> {
+	const saved = await send<QueueItem>(`queue/${key}`, 'POST', { ...queueArgs(scope, goal), ...change, data });
+	void queryClient.invalidateQueries({ queryKey: ['queue'] });
+	// Open items per owner change with accepting, dismissing or restoring.
+	void queryClient.invalidateQueries({ queryKey: ['owners'] });
+	if (change.action === 'done') {
+		refreshExperiments();
+	}
+	return saved;
+}
+
+/** After a note is added or deleted, the markers and the change log are asked again. */
+function refreshChanges(): void {
+	void queryClient.invalidateQueries({ queryKey: ['markers'] });
+	void queryClient.invalidateQueries({ queryKey: ['changes'] });
+}
+
+/** Add a note to the timeline (administrators). time: "YYYY-MM-DD HH:MM" in the site's time zone. */
+export async function addNote(data: DataSet, note: { note: string; page: string; time: string }): Promise<Marker> {
+	const saved = await send<Marker>('annotations', 'POST', { ...note, data });
+	refreshChanges();
+	return saved;
+}
+
+export async function deleteNote(data: DataSet, id: number): Promise<void> {
+	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/annotations/${id}`, { data }), method: 'DELETE' });
+	refreshChanges();
+}
+
+/** Goals and funnels belong to the data set shown (demo data has its own). */
+function definitionPath(type: 'goals' | 'funnels', id?: string): string {
+	return id ? `${type}/${id}` : type;
+}
+
+/** After a change, reports that use definitions are asked again. */
+function refreshDefinitions(): void {
+	void queryClient.invalidateQueries({ queryKey: ['goals'] });
+	void queryClient.invalidateQueries({ queryKey: ['funnels'] });
+}
+
+/** Add a goal (no id) or change one. */
+export async function saveGoal(data: DataSet, goal: GoalStep, id?: string): Promise<Goal> {
+	const saved = await send<Goal>(definitionPath('goals', id), 'POST', { ...goal, data });
+	refreshDefinitions();
+	return saved;
+}
+
+/** Add a funnel (no id) or change one. */
+export async function saveFunnel(data: DataSet, funnel: Omit<Funnel, 'id'>, id?: string): Promise<Funnel> {
+	const saved = await send<Funnel>(definitionPath('funnels', id), 'POST', { ...funnel, data });
+	refreshDefinitions();
+	return saved;
+}
+
+export async function deleteDefinition(data: DataSet, type: 'goals' | 'funnels', id: string): Promise<void> {
+	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/${definitionPath(type, id)}`, { data }), method: 'DELETE' });
+	refreshDefinitions();
+}
+
+/** Whether demo data is made: from the page at first, then the API. */
+export function useDemo() {
+	return useQuery({
+		queryKey: ['demo'],
+		queryFn: () => get<DemoStatus>('demo'),
+		initialData: boot.demo,
+		staleTime: Infinity,
+	});
+}
+
+/** Make demo data, or carry on making it: one request does a slice of the work. */
+export function makeDemo(restart = false): Promise<DemoStatus> {
+	return send<DemoStatus>('demo', 'POST', restart ? { restart } : {});
+}
+
+export function removeDemo(): Promise<DemoStatus> {
+	return send<DemoStatus>('demo', 'DELETE');
+}
+
+/** Save the data set this person sees. */
+export function saveView(data: DataSet): Promise<{ data: DataSet }> {
+	return send<{ data: DataSet }>('view', 'POST', { data });
+}
+
+/** The message of an API error, or a general one. */
+export function errorMessage(error: unknown, fallback: string): string {
+	if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+		return error.message;
+	}
+	return fallback;
+}
