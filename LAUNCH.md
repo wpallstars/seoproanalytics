@@ -33,9 +33,9 @@ On since 20 October 2026, when the repository went public:
   workflow analyses pushes to `main` and pull requests with the
   organization's `SONAR_TOKEN`. It is not a required check, so its failure
   does not block a merge.
-- `SYNC_PAT`: set, so Repository metrics can commit `docs/metrics/` to the
-  protected `main`. Its first run skipped the commit because the metrics
-  were less than a day old.
+- `SYNC_PAT`: set. Repository metrics found it on its first run but
+  skipped the commit, as `docs/metrics/` was less than a day old; its first
+  commit to the protected `main` comes with a later run.
 
 Not yet:
 
