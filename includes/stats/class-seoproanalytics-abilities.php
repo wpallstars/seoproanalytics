@@ -1954,6 +1954,7 @@ final class SEOProAnalytics_Abilities {
      * @param array<string,mixed> $engine The engine property.
      */
     private static function register_experiments(array $data, array $engine) {
+        self::register_change_sets($engine);
         wp_register_ability('seoproanalytics/experiments', array(
             'label'               => __('Experiments', 'seoproanalytics'),
             'description'         => __('Changes made to pages and what they were meant to do, each measured over equal windows before and after against comparable unchanged pages: the effect, the usual spread of unchanged pages, the search engine updates and other changes of the time, and a suggested result (keep, revise, undo or inconclusive). Due ones first. With id, one experiment.', 'seoproanalytics'),
@@ -2104,6 +2105,7 @@ final class SEOProAnalytics_Abilities {
                         'enum'        => array_values(SEOProAnalytics_Experiments::RESULTS),
                         'description' => __('For decide: the result.', 'seoproanalytics'),
                     ),
+                    'restore'    => array('type' => 'boolean', 'description' => __('For decide undo: restore the linked change set on live data.', 'seoproanalytics')),
                     'note'       => array(
                         'type'        => 'string',
                         'maxLength'   => 2000,
@@ -2124,6 +2126,65 @@ final class SEOProAnalytics_Abilities {
                 ),
             ),
         ));
+    }
+
+    /** @param array<string,mixed> $engine Search engine property. */
+    private static function register_change_sets(array $engine) {
+        $base = array(
+            'category' => self::CATEGORY,
+            'output_schema' => array('type' => 'object'),
+            'meta' => array('show_in_rest' => true, 'annotations' => array('readonly' => false, 'destructive' => true, 'idempotent' => false)),
+            'permission_callback' => array('SEOProAnalytics_API', 'can_manage'),
+        );
+        wp_register_ability('seoproanalytics/change-sets', array(
+            'label' => __('Change sets', 'seoproanalytics'),
+            'description' => __('Read full backups of reviewed page changes on live data. With id, one set; otherwise newest 50, paged with before.', 'seoproanalytics'),
+            'input_schema' => array('type' => 'object', 'default' => array(), 'additionalProperties' => false, 'properties' => array('id' => array('type' => 'integer', 'minimum' => 1), 'before' => array('type' => 'integer', 'minimum' => 0))),
+            'execute_callback' => array(__CLASS__, 'change_sets'),
+            'permission_callback' => array('SEOProAnalytics_API', 'can_read'),
+            'meta' => array('show_in_rest' => true, 'annotations' => array('readonly' => true, 'destructive' => false, 'idempotent' => true)),
+        ) + $base);
+        wp_register_ability('seoproanalytics/change-set-apply', array(
+            'label' => __('Apply a reviewed change set', 'seoproanalytics'),
+            'description' => __('Preview with dry_run, or apply a reviewed plan to live pages. Plan: name and pages, each with post id and title, seo_title or seo_description pairs [now, new]. Stale or non-editable pages are skipped. Full old values are kept; read-back or address differences stop the run. Optional experiment starts at apply time.', 'seoproanalytics'),
+            'input_schema' => array('type' => 'object', 'additionalProperties' => false, 'required' => array('plan'), 'properties' => array(
+                'plan' => array('type' => 'object', 'additionalProperties' => true),
+                'dry_run' => array('type' => 'boolean'),
+                'experiment' => array('type' => 'string'),
+                'metric' => array('type' => 'string', 'enum' => array_values(SEOProAnalytics_Experiments::METRICS)),
+                'days' => array('type' => 'integer', 'enum' => SEOProAnalytics_Experiments::WINDOWS),
+                'engine' => $engine,
+                'direction' => array('type' => 'string', 'enum' => array_values(SEOProAnalytics_Experiments::DIRECTIONS)),
+                'threshold' => array('type' => 'number', 'minimum' => 0),
+                'hypothesis' => array('type' => 'string'),
+                'goal' => array('type' => 'string'),
+            )),
+            'execute_callback' => array(__CLASS__, 'change_set_apply'),
+        ) + $base);
+        wp_register_ability('seoproanalytics/change-set-undo', array(
+            'label' => __('Undo a change set', 'seoproanalytics'),
+            'description' => __('Restore live values still equal to what this set wrote, with edit_post permission per page. Later edits are reported and left untouched. Read-back verifies each restoration.', 'seoproanalytics'),
+            'input_schema' => array('type' => 'object', 'additionalProperties' => false, 'required' => array('id'), 'properties' => array('id' => array('type' => 'integer', 'minimum' => 1))),
+            'execute_callback' => array(__CLASS__, 'change_set_undo'),
+        ) + $base);
+    }
+
+    /** @param array<string,mixed>|null $input Input. @return array<string,mixed>|WP_Error */
+    public static function change_sets($input = null) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return !empty($input['id']) ? SEOProAnalytics_Change_Sets::get((int) $input['id']) : SEOProAnalytics_Change_Sets::list_sets((int) ($input['before'] ?? 0));
+    }
+
+    /** @param array<string,mixed>|null $input Input. @return array<string,mixed>|WP_Error */
+    public static function change_set_apply($input = null) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return SEOProAnalytics_Change_Sets::apply((array) ($input['plan'] ?? array()), $input ?? array());
+    }
+
+    /** @param array<string,mixed>|null $input Input. @return array<string,mixed>|WP_Error */
+    public static function change_set_undo($input = null) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        return SEOProAnalytics_Change_Sets::undo((int) ($input['id'] ?? 0));
     }
 
     /**

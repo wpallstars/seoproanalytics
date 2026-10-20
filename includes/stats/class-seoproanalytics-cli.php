@@ -3906,6 +3906,9 @@ final class SEOProAnalytics_CLI { // NOSONAR: WP-CLI discovers the public comman
      * [--porcelain]
      * : For add: print only the new experiment's id.
      *
+     * [--restore]
+     * : For decide undo: restore the linked change set on live data.
+     *
      * ## EXAMPLES
      *
      *     wp seoproanalytics experiments
@@ -4024,7 +4027,100 @@ final class SEOProAnalytics_CLI { // NOSONAR: WP-CLI discovers the public comman
             'action' => $action,
             'result' => isset($args[2]) ? (string) $args[2] : '',
             'note'   => isset($assoc['note']) ? (string) $assoc['note'] : '',
+            'restore' => isset($assoc['restore']),
         ));
+    }
+
+    /**
+     * Preview, apply and restore reviewed title and SEO field changes (live only).
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : list, show, apply or undo. Default list.
+     *
+     * [<file-or-id>]
+     * : JSON plan file for apply; set id for show or undo.
+     *
+     * [--dry-run]
+     * : Preview only, without any writes.
+     *
+     * [--yes]
+     * : Skip apply confirmation.
+     *
+     * [--experiment=<name>]
+     * : Start an experiment on the applied pages at apply time.
+     *
+     * [--metric=<metric>]
+     * : clicks, impressions, ctr, position, visits or conversions.
+     *
+     * [--days=<days>]
+     * : 7, 14, 28, 56 or 84.
+     *
+     * [--engine=<engine>]
+     * : google or bing.
+     *
+     * [--direction=<direction>]
+     * : up or down.
+     *
+     * [--threshold=<n>]
+     * : Minimum percent change, or places for position.
+     *
+     * [--hypothesis=<text>]
+     * : Experiment reasoning.
+     *
+     * [--goal=<id>]
+     * : Goal for conversions.
+     *
+     * [--before=<id>]
+     * : List sets older than this id, at most 50.
+     *
+     * [--format=<format>]
+     * : json or table (details are JSON).
+     *
+     * @subcommand change-sets
+     * @param string[] $args Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function change_sets($args, $assoc) {
+        require_once __DIR__ . '/class-seoproanalytics-change-sets.php';
+        $action = $args[0] ?? 'list';
+        $id = (int) ($args[1] ?? 0);
+        if ($action === 'apply') {
+            if (empty($args[1]) || !is_readable($args[1])) {
+                WP_CLI::error(__('Give a readable JSON plan file.', 'seoproanalytics'));
+            }
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local, explicitly named CLI input.
+            $plan = json_decode((string) file_get_contents($args[1]), true);
+            if (!is_array($plan)) {
+                WP_CLI::error(__('The plan must be a JSON object.', 'seoproanalytics'));
+            }
+            $answer = SEOProAnalytics_Change_Sets::preview($plan);
+            if (is_wp_error($answer)) {
+                WP_CLI::error($answer->get_error_message());
+            }
+            self::json_line($answer);
+            if (isset($assoc['dry-run'])) {
+                return;
+            }
+            WP_CLI::confirm(__('Apply this reviewed plan to live pages?', 'seoproanalytics'), $assoc);
+            $options = self::experiment_fields((string) ($assoc['experiment'] ?? ''), $assoc);
+            $options['experiment'] = $assoc['experiment'] ?? '';
+            $answer = SEOProAnalytics_Change_Sets::apply($plan, $options);
+        } elseif ($action === 'undo' && $id > 0) {
+            $answer = SEOProAnalytics_Change_Sets::undo($id);
+        } elseif ($action === 'show' && $id > 0) {
+            $answer = SEOProAnalytics_Change_Sets::get($id);
+        } elseif ($action === 'list') {
+            $answer = SEOProAnalytics_Change_Sets::list_sets((int) ($assoc['before'] ?? 0));
+        } else {
+            WP_CLI::error(__('Use list, show <id>, apply <file> or undo <id>.', 'seoproanalytics'));
+            return;
+        }
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        self::json_line($answer);
     }
 
     /**
