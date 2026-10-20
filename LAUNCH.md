@@ -31,9 +31,14 @@ On since 20 October 2026, when the repository went public:
 
 Not yet:
 
-- SonarCloud: import the project as `wpallstars_seoproanalytics` and set
-  `SONAR_TOKEN` (`DEVELOPMENT.md` → Services setup). Until then its job
-  skips.
+- SonarCloud: the organization's `SONAR_TOKEN` reaches this repository,
+  but the project key `wpallstars_seoproanalytics` is still bound to the
+  earlier repository, so pull request scans fail ("Could not find the
+  pullrequest"). In SonarCloud, give that project a new key first, so its
+  analyses stay private with the earlier repository, then import this
+  repository as `wpallstars_seoproanalytics` (`DEVELOPMENT.md` → Services
+  setup). SonarCloud is not a required check, so its failure does not
+  block a merge.
 - Codacy and CodeFactor (`DEVELOPMENT.md` → Services setup).
 - `SYNC_PAT`: `main` is protected, so Repository metrics cannot commit
   `docs/metrics/` until the token is set.
