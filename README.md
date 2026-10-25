@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.19.1-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.19.1
+Version: 1.20.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -865,9 +865,11 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.20.0
 
 - New: reviewed change sets for post and SEO titles/descriptions through WP-CLI, REST and abilities, with full backups, stale-page skips, read-back checks, optional experiments at apply time and conflict-aware undo. Experiment undo decisions can restore a linked set. Schema v34 adds `change_sets`.
+- Changed: the connections that need an outside account come with the **SEO Pro Analytics Connect** add-on, a separate plugin: Google Search Console, the Chrome UX Report (with its Lighthouse lab test), the paid providers (DataForSEO, Ahrefs, Semrush, Serper, SerpApi, Brave Search, DeepSeek and Linkup) and a LibreCrawl crawler server. Bing Webmaster Tools, IndexNow, every import, the built-in site crawl and all the reports stay in SEO Pro Analytics. Until the add-on is installed, Settings → Connections lists its connections as "(subscription needed)" with a link to it; a connection saved before stays stored, unread, and can still be disconnected, and its imported data stays in the reports.
+- Developers: the add-on registers its connections through the `seoproanalytics_connection_sources` and `seoproanalytics_connection_providers` filters, and its WP-CLI fields, status lines and doctor checks through `seoproanalytics_cli_connect_input`, `seoproanalytics_cli_status_rows` and `seoproanalytics_doctor_connection` (Extending SEO Pro Analytics). The Lighthouse and crawler server routes, commands and ability are the add-on's.
 
 ### 1.19.1
 
