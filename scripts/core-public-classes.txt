@@ -18,6 +18,8 @@
 # Page shell of the plugin's own screens (render_header(), sections_nav()).
 seoproan-wrap
 seoproan-main
+# A tab or screen that needs the whole width (a tab: 'wide' => true).
+seoproan-main--wide
 seoproan-nav
 seoproan-nav__group
 seoproan-nav__tab
@@ -43,7 +45,10 @@ seoproan-setting__desc
 # Feature output at the top of a setting's options panel.
 seoproan-panel-note
 seoproan-panel-note--warning
+# A block of code to copy, such as server rules: <pre class="seoproan-code">.
+seoproan-code
 
 # Colour mode: set on <html> by the header's Light / Dark / System button.
-# Use it only as an ancestor: html.seoproan-dark .seoproan-<screen>-card.
+# Use it as an ancestor: html.seoproan-dark .seoproan-<screen>-card. On <html> alone
+# it takes only a dark palette: custom properties, color-scheme, background.
 seoproan-dark

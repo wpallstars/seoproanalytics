@@ -117,6 +117,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
+= Unreleased =
+* Developers: synced the shared settings, admin styles and maintenance scripts with the starter. Settings and defaults are unchanged.
+
 = 1.20.0 =
 * New: reviewed title and SEO description change sets with backups, experiments and safe undo through CLI, REST and abilities.
 * Changed: Google Search Console, Chrome UX Report, the paid providers and a crawler server come with the SEO Pro Analytics Connect add-on. Bing, IndexNow, imports, the built-in crawl and every report stay. Saved connections and imported data are kept.

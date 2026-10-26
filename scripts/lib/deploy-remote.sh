@@ -318,10 +318,14 @@ log_files() {
 
 new_log_text() {
 	local index=0
-	local file
+	local file start
 	for file in ${LOG_FILES[@]+"${LOG_FILES[@]}"}; do
 		if [[ -f "$file" ]]; then
-			tail -n +"$((LOG_BEFORE[index] + 1))" "$file" | head -n 10
+			start=$((LOG_BEFORE[index] + 1))
+			if [[ "$(file_lines "$file")" -lt "${LOG_BEFORE[index]}" ]]; then
+				start=1
+			fi
+			tail -n +"$start" "$file" | head -n 10
 		fi
 		index=$((index + 1))
 	done
@@ -392,11 +396,22 @@ site_urls() {
 # network, litespeed-purge all empties every site's cache, so each site
 # purges only its own (litespeed-purge blog <id>). Prints purged=yes, no (no
 # known page cache) or failed. A failed purge does not stop the load: the
-# install worked, but visitors may see the old assets.
+# install worked, but visitors may see the old assets. LiteSpeed Cache's
+# command delivers the purge with a request to the site's admin-ajax.php,
+# with WordPress's 5 second timeout; just after an update the site's first
+# requests compile the new code and can take longer (4.6-7 s seen on shared
+# hosting), so that request gets 30 seconds. The commands run in this
+# process (launch false), so the filter applies to them.
 load_code() {
 	cat <<'PHP'
 echo "loaded\n";
 $purged = "no";
+add_filter("http_request_args", function ($args, $url) {
+    if (false !== strpos((string) $url, "/wp-admin/admin-ajax.php")) {
+        $args["timeout"] = max((float) $args["timeout"], 30);
+    }
+    return $args;
+}, 10, 2);
 $run = array("launch" => false, "exit_error" => false, "return" => "all");
 $purges = array("litespeed-purge" => is_multisite() ? "blog " . get_current_blog_id() : "all");
 foreach ($purges as $command => $args) {
@@ -503,7 +518,7 @@ apply_one() {
 	local backups="$5"
 	local plugins="$root/wp-content/plugins"
 	local main="$plugins/$SLUG/$SLUG.php"
-	local before after backup new_lines result="ok" warn="" index file
+	local before after backup new_lines result="ok" warn="" index file current added
 
 	before="$(plugin_version "$main")"
 	backup="$backups/$SLUG-$name-${before:-unknown}.tar.gz"
@@ -536,7 +551,14 @@ apply_one() {
 	new_lines=0
 	index=0
 	for file in ${LOG_FILES[@]+"${LOG_FILES[@]}"}; do
-		new_lines=$((new_lines + $(file_lines "$file") - LOG_BEFORE[index]))
+		current="$(file_lines "$file")"
+		if [[ "$current" -lt "${LOG_BEFORE[index]}" ]]; then
+			# A truncated or rotated log contributes all of its current lines.
+			added="$current"
+		else
+			added=$((current - LOG_BEFORE[index]))
+		fi
+		new_lines=$((new_lines + added))
 		index=$((index + 1))
 	done
 

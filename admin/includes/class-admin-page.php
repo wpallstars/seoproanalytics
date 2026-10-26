@@ -200,11 +200,12 @@ class SEOProAnalytics_Admin_Page {
      * @param string   $slug   Tab slug.
      * @param callable $render The tab's render callback.
      * @param bool     $shown  Whether it is the active tab.
+     * @param bool     $wide   Whether the tab uses the whole width (its 'wide' key).
      */
-    public static function panel($slug, $render, $shown) {
+    public static function panel($slug, $render, $shown, $wide = false) {
         // Not <main>: core's #wpbody already carries role="main".
         ?>
-        <div class="seoproan-main seoproan-tab-<?php echo esc_attr($slug); ?>" id="seoproan-tab-<?php echo esc_attr($slug); ?>" data-seoproan-panel="<?php echo esc_attr($slug); ?>"<?php echo $shown ? '' : ' hidden'; ?>>
+        <div class="seoproan-main<?php echo $wide ? ' seoproan-main--wide' : ''; ?> seoproan-tab-<?php echo esc_attr($slug); ?>" id="seoproan-tab-<?php echo esc_attr($slug); ?>" data-seoproan-panel="<?php echo esc_attr($slug); ?>"<?php echo $shown ? '' : ' hidden'; ?>>
             <?php call_user_func($render); ?>
         </div>
         <?php
