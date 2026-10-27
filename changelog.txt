@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: synced the shared core with WP Plugin Starter at 2817dd1: ordered multi settings and their network comparisons, wide settings tabs, public code-block styles, and deployment log and cache-purge checks. Plugin settings and defaults are unchanged.
+
 = 1.20.0 =
 * New: reviewed change sets apply post titles and the active Rank Math, Yoast SEO or SEOPress title and description on up to 50 pages through WP-CLI, REST and abilities. Preview skips stale or non-editable pages; full backups, per-field read-back and address checks keep partial runs recoverable. Optional experiments start at apply time; change-sets undo or experiments decide undo --restore restores unchanged-since values and reports conflicts. Always live data, administrator and per-page editing permission; no dashboard controls. Schema v34 adds change_sets, kept after experiment deletion.
 * Changed: the connections that need an outside account come with the SEO Pro Analytics Connect add-on, a separate plugin: Google Search Console, the Chrome UX Report (with its Lighthouse lab test), the paid providers (DataForSEO, Ahrefs, Semrush, Serper, SerpApi, Brave Search, DeepSeek and Linkup) and a LibreCrawl crawler server. Bing Webmaster Tools, IndexNow, every import, the built-in site crawl and all the reports stay in SEO Pro Analytics. Until the add-on is installed, Settings → Connections lists its connections as "(subscription needed)" with a link to it; a connection saved before stays stored, unread, and can still be disconnected, and its imported data stays in the reports.

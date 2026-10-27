@@ -865,6 +865,10 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Developers: synced the shared core with WP Plugin Starter at `2817dd1`, including ordered multi settings and network comparisons, wide settings tabs, public code-block styles, and deployment log and cache-purge checks. Plugin settings and defaults are unchanged.
+
 ### 1.20.0
 
 - New: reviewed change sets for post and SEO titles/descriptions through WP-CLI, REST and abilities, with full backups, stale-page skips, read-back checks, optional experiments at apply time and conflict-aware undo. Experiment undo decisions can restore a linked set. Schema v34 adds `change_sets`.

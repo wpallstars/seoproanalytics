@@ -637,6 +637,8 @@ class SEOProAnalytics_Settings_Manager { // NOSONAR: keep the cohesive settings 
      * Render a multi control: a group of checkboxes, with quick choices
      * when the list is long. Locked choices (the field's `locked` values)
      * show ticked and cannot be unticked; the script never sends them.
+     * Ordered fields list the chosen ones first, in their saved order,
+     * each with a handle to drag (or move with the arrow keys).
      *
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
@@ -660,6 +662,18 @@ class SEOProAnalytics_Settings_Manager { // NOSONAR: keep the cohesive settings 
         foreach (array_diff($locked, array_map('strval', array_keys($choices))) as $missing) {
             $choices[$missing] = $missing;
         }
+        $ordered = !empty($field['ordered']);
+        if ($ordered) {
+            // The chosen ones first, in their saved order, so the order the
+            // script sends (the checked boxes, top to bottom) is that order.
+            $first = array();
+            foreach ($chosen as $item) {
+                if (isset($choices[$item])) {
+                    $first[$item] = $choices[$item];
+                }
+            }
+            $choices = $first + $choices;
+        }
         $long = count($choices) > 12;
         if ($long) {
             // Long lists (such as every active plugin) scroll, with quick choices.
@@ -672,10 +686,11 @@ class SEOProAnalytics_Settings_Manager { // NOSONAR: keep the cohesive settings 
         }
         // The group carries data-seoproan-setting; the JS saves every checked value.
         printf(
-            '<fieldset class="seoproan-checkboxes%3$s" data-seoproan-multi %1$s aria-labelledby="%2$s">',
+            '<fieldset class="seoproan-checkboxes%3$s"%4$s data-seoproan-multi %1$s aria-labelledby="%2$s">',
             $attrs, // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in render_field().
             esc_attr($id . '-label'),
-            $long ? ' is-long' : ''
+            $long ? ' is-long' : '',
+            $ordered ? ' data-seoproan-ordered' : ''
         );
         foreach ($choices as $option_value => $option_label) {
             if (in_array((string) $option_value, $locked, true)) {
@@ -687,6 +702,18 @@ class SEOProAnalytics_Settings_Manager { // NOSONAR: keep the cohesive settings 
                 );
                 continue;
             }
+            if ($ordered) {
+                // A handle beside the label, so dragging it never ticks the box.
+                printf(
+                    '<div class="seoproan-checkbox-row"><button type="button" class="seoproan-checkbox__handle" aria-label="%1$s"><span class="dashicons dashicons-menu" aria-hidden="true"></span></button><label class="seoproan-checkbox"><input type="checkbox" value="%2$s"%3$s /> %4$s</label></div>',
+                    /* translators: %s: a choice, such as Facebook. */
+                    esc_attr(sprintf(__('Move %s: drag, or press the up or down arrow key', 'seoproanalytics'), $option_label)),
+                    esc_attr((string) $option_value),
+                    checked(in_array((string) $option_value, $chosen, true), true, false),
+                    esc_html($option_label)
+                );
+                continue;
+            }
             printf(
                 '<label class="seoproan-checkbox"><input type="checkbox" value="%1$s"%2$s /> %3$s</label>',
                 esc_attr((string) $option_value),
@@ -695,6 +722,9 @@ class SEOProAnalytics_Settings_Manager { // NOSONAR: keep the cohesive settings 
             );
         }
         echo '</fieldset>';
+        if ($ordered) {
+            printf('<p class="seoproan-ordered-help">%s</p>', esc_html__('Drag the handles to change the order.', 'seoproanalytics'));
+        }
         if ($locked) {
             printf('<p class="seoproan-locked-help">%s</p>', esc_html__('Choices with a lock are always chosen.', 'seoproanalytics'));
         }
