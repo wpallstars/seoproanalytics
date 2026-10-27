@@ -118,6 +118,7 @@ Use **Support** on the settings screen, or ask aidevops.
 == Changelog ==
 
 = Unreleased =
+* Changed: the banner shows the SEO Pro Analytics name and its new tagline.
 * Developers: synced the shared settings, admin styles and maintenance scripts with the starter. Settings and defaults are unchanged.
 
 = 1.20.0 =

@@ -1,4 +1,4 @@
-![WPALLSTARS SEO Pro Analytics: Actionable analytics](admin/images/banner.svg)
+![WPALLSTARS SEO Pro Analytics: Track keywords & ranking. Every what, when, where, why, how, and who](admin/images/banner.svg)
 
 # SEO Pro Analytics
 
@@ -867,6 +867,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
+- Changed: the banner (this README, the Read Me tab, View details and the WordPress.org images) now reads "SEO Pro Analytics", "Track keywords & ranking" and "Every what, when, where, why, how, and who"; it still showed the old name.
 - Developers: synced the shared core with WP Plugin Starter at `2817dd1`, including ordered multi settings and network comparisons, wide settings tabs, public code-block styles, and deployment log and cache-purge checks. Plugin settings and defaults are unchanged.
 
 ### 1.20.0
