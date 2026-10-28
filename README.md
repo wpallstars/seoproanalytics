@@ -865,6 +865,10 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Developers: synced the shared core with WP Plugin Starter at `d27c538`: `deploy-sites.sh --apply` says why a single-site install failed (GH#31).
+
 ### 1.20.1
 
 - Changed: the banner (this README, the Read Me tab, View details and the WordPress.org images) now reads "SEO Pro Analytics", "Track keywords & ranking" and "Every what, when, where, why, how, and who"; it still showed the old name.
