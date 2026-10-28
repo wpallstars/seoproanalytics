@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.0
+Stable tag: 1.20.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,20 +117,13 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= Unreleased =
+= 1.20.1 =
 * Changed: the banner shows the SEO Pro Analytics name and its new tagline.
 * Developers: synced the shared settings, admin styles and maintenance scripts with the starter. Settings and defaults are unchanged.
 
-= 1.20.0 =
-* New: reviewed title and SEO description change sets with backups, experiments and safe undo through CLI, REST and abilities.
-* Changed: Google Search Console, Chrome UX Report, the paid providers and a crawler server come with the SEO Pro Analytics Connect add-on. Bing, IndexNow, imports, the built-in crawl and every report stay. Saved connections and imported data are kept.
+Every change: changelog.txt.
 
 == Upgrade Notice ==
 
 = 1.20.0 =
 Google Search Console, Chrome UX Report, the paid providers and the crawler server now need the SEO Pro Analytics Connect add-on. Their saved settings and imported data stay.
-
-= 1.19.1 =
-* Fixed: moving from SEO Pro Stats (1.19.0) on an admin page or scheduled job no longer stops with an error on sites with connections.
-
-Every change: changelog.txt.

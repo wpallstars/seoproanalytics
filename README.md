@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.1-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.0
+Version: 1.20.1
 
 <!-- github-only:start -->
 ## Screenshots
@@ -865,10 +865,11 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.20.1
 
 - Changed: the banner (this README, the Read Me tab, View details and the WordPress.org images) now reads "SEO Pro Analytics", "Track keywords & ranking" and "Every what, when, where, why, how, and who"; it still showed the old name.
 - Developers: synced the shared core with WP Plugin Starter at `2817dd1`, including ordered multi settings and network comparisons, wide settings tabs, public code-block styles, and deployment log and cache-purge checks. Plugin settings and defaults are unchanged.
+- Developers: development dependencies qs 6.16.2 and serialize-javascript 7.1.4 (build tools only; nothing shipped changes).
 
 ### 1.20.0
 
