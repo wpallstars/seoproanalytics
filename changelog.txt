@@ -2,7 +2,7 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
-= Unreleased =
+= 1.20.2 =
 * Developers: synced the shared core with WP Plugin Starter at d27c538: deploy-sites.sh --apply says why a single-site install failed and keeps WP-CLI's exit code, and RELEASING.md documents it. Plugin settings and defaults are unchanged (GH#31).
 
 = 1.20.1 =
