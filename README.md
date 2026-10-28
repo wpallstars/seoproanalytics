@@ -865,6 +865,10 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Developers: synced the shared core with WP Plugin Starter at `4fc5c4c`: the Read Me tab leaves out the managed README block, `preflight-release.sh` checks the README ending, long ordered lists stay one column, `sync-core.sh` supports add-ons, and `star-history.yml` is pinned to aidevops v3.39.78 (GH#35).
+
 ### 1.20.2
 
 - Developers: synced the shared core with WP Plugin Starter at `d27c538`: `deploy-sites.sh --apply` says why a single-site install failed (GH#31).

@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: synced the shared core with WP Plugin Starter at 4fc5c4c (1.0.43 and later): the Read Me tab leaves out the managed README block, preflight-release.sh checks the README ending, long ordered lists of choices stay one column, sync-core.sh supports add-ons (scripts/core-skip.txt), and .github/workflows/star-history.yml is the starter's copy, pinned to aidevops v3.39.78. Plugin settings and defaults are unchanged (GH#35).
+
 = 1.20.2 =
 * Developers: synced the shared core with WP Plugin Starter at d27c538: deploy-sites.sh --apply says why a single-site install failed and keeps WP-CLI's exit code, and RELEASING.md documents it. Plugin settings and defaults are unchanged (GH#31).
 
