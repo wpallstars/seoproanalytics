@@ -3,6 +3,7 @@
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
 = Unreleased =
+* Changed: the banner (README.md, the Read Me tab, View details and the WordPress.org PNGs) reads "SEO Pro Analytics", "Track keywords & ranking" and "Every what, when, where, why, how, and who"; its rendered copies still showed SEO Pro Stats.
 * Developers: synced the shared core with WP Plugin Starter at 2817dd1: ordered multi settings and their network comparisons, wide settings tabs, public code-block styles, and deployment log and cache-purge checks. Plugin settings and defaults are unchanged.
 
 = 1.20.0 =
