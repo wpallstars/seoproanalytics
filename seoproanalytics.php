@@ -3,7 +3,7 @@
  * Plugin Name:       SEO Pro Analytics
  * Plugin URI:        https://github.com/wpallstars/seoproanalytics
  * Description:       Actionable analytics: connect your content to the data that shows you how to grow. Private stats, search rankings and sales, no cookies.
- * Version:           1.20.2
+ * Version:           1.20.3
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marcus Quinn
@@ -43,7 +43,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SEOPROANALYTICS_VERSION', '1.20.2');
+define('SEOPROANALYTICS_VERSION', '1.20.3');
 define('SEOPROANALYTICS_FILE', __FILE__);
 define('SEOPROANALYTICS_DIR', plugin_dir_path(__FILE__));
 define('SEOPROANALYTICS_URL', plugin_dir_url(__FILE__));

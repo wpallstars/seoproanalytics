@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.2-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.3-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.2
+Version: 1.20.3
 
 <!-- github-only:start -->
 ## Screenshots
@@ -882,8 +882,9 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.20.3
 
+- Report a problem: Tools → Report a problem drafts problem reports and improvements for the plugin's maker; an administrator reviews them and opens a prefilled GitHub issue, with the site's details left out. AI assistants can draft (`wpallstars/report-problem` ability, `wp wpallstars report`); only an administrator sends (GH#40).
 - Developers: synced the shared core with WP Plugin Starter at `4fc5c4c`: the Read Me tab leaves out the managed README block, `preflight-release.sh` checks the README ending, long ordered lists stay one column, `sync-core.sh` supports add-ons, and `star-history.yml` is pinned to aidevops v3.39.78 (GH#35).
 
 ### 1.20.2
