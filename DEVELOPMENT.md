@@ -64,6 +64,8 @@ scripts/test-site.sh wp --files "<import folder>" eval 'var_dump(is_readable("/f
 scripts/test-site.sh reinstall --ref HEAD        # commit fixes first
 scripts/test-site.sh log                        # wp-content/debug.log
 scripts/test-site.sh down                       # delete this site's data
+scripts/test-site.sh prune --dry-run            # list orphaned sites across checkouts
+scripts/test-site.sh prune                      # remove them and their state folders
 scripts/test-site.sh up --wp 6.2 --php 7.4       # minimum versions
 scripts/test-site.sh down
 scripts/test-site.sh up --multisite              # network activation; /two/ too
@@ -90,6 +92,22 @@ folder only after checking no command is running, then run `down`.
 including interrupted WP-CLI containers. It never touches the preview site
 or other Docker resources. A failed `up` attempts the same scoped cleanup;
 run `down` again if Docker interrupted it.
+
+When aidevops is installed, every container, network and volume also carries
+its owner labels: removing the worktree through aidevops cleans up its Docker
+resources automatically. Persistent sites have a seven-day TTL (168 hours);
+Plugin Check and update-test sites use aidevops' default TTL and still clean
+up on exit. Without aidevops these scripts work as before.
+
+`down` removes the site's state folder when empty. `prune` works from any
+directory, not just the checkout that created a site. It removes sites whose
+recorded checkout is gone, and state folders with no labelled Docker
+resources. It skips locked folders and preserves sites with resources while
+their checkout exists. Old state without a recorded checkout is removed only
+when no resources match its identity. Deletion is always by exact Docker
+label; unknown files keep their containing folder. Use `--dry-run` first to
+list candidates without changing anything. `up` reports the number of other
+running test sites and suggests pruning when more than five are running.
 
 ### Checking screens in a browser
 
@@ -168,6 +186,12 @@ Every pull request and every push to `main` runs these in GitHub Actions
 | Smoke test | `scripts/smoke-test.sh --wp 6.2 --php 7.4`, `scripts/smoke-test.sh` and `scripts/smoke-test.sh --multisite` | Installs the GitHub zip on a site with 10,000 posts, loads the site and admin screens with default settings and with every feature on, runs cron, uninstalls. Lists each page's queries. Fails on any PHP message, a failed page, a full table scan or large sort in the plugin's own queries, or leftover options, cron events or tables (`{prefix}_*`). On a network, also applies a setting to every site and checks the other site picks it up. |
 
 `scripts/lint.sh` with no arguments runs the first seven.
+
+Release preflight also compares core files with a local starter checkout.
+If it is not next to the plugin (for example, in a linked worktree), use
+`scripts/preflight-release.sh --from "<starter checkout>"`. The path is
+passed to `scripts/sync-core.sh --check`; without `--from`, its usual
+`{PREFIX}_STARTER_DIR` override and neighbouring-checkout default apply.
 
 CI downloads actionlint 1.7.12 as a release binary and verifies its published
 SHA-256 checksum; it needs no Docker Hub pull. Before Plugin Check and the
@@ -480,7 +504,10 @@ out"), and a line that names no core file is reported. With no admin
 screen, the scripts take `{css}` from the `{css}-wrap` line of
 `scripts/core-public-classes.txt`, and with no `GitHub Plugin URI` header
 (its parent updates it), `sync-core.sh` takes the repository from the
-`origin` remote. Its other core files get its own names, like any plugin's.
+`origin` remote; when that is not on GitHub either, it stops (exit 2) until
+you pass `--repo OWNER/REPO`, so no core file gets a link to a repository
+that does not exist. Its other core files get its own names, like any
+plugin's.
 
 When a sync adds a core doc at the top of the repository (such as
 `STYLING.md`) and the aidevops commit hook rejects it as a new root file,
