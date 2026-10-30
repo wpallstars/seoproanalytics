@@ -537,11 +537,28 @@ Go to **SEO Pro Analytics → Settings** for the settings. The screen has two gr
 - **Settings**: Shared reports, Tracking, Privacy, Data, Backlinks (the class lists; Search above), Connections and Import. Changes save instantly; there is no Save button. **Search features** (next to the plugin name) finds settings on every tab.
 - **About**: this Read Me.
 
-At the top right of the screen, **Source code** opens the plugin’s [GitHub repository](https://github.com/wpallstars/seoproanalytics) in a new tab, and **Support** opens its [GitHub issues](https://github.com/wpallstars/seoproanalytics/issues) in a new tab. Say what you did, what you expected and what happened, with the versions of WordPress, PHP and SEO Pro Analytics. Leave out passwords, licence keys and personal data, since issues are public. For questions, ask [aidevops](https://aidevops.sh) (Built with AI below). **Buy me a coffee**, next to it, opens the maker’s [Buy Me a Coffee](https://buymeacoffee.com/marcusquinn) page in a new tab.
+At the top right of the screen, **Source code** opens the plugin’s [GitHub repository](https://github.com/wpallstars/seoproanalytics) in a new tab, and **Support** opens **Tools → Report a problem** for administrators (Report a problem below). For questions, ask [aidevops](https://aidevops.sh) (Built with AI below). **Buy me a coffee**, next to it, opens the maker’s [Buy Me a Coffee](https://buymeacoffee.com/marcusquinn) page in a new tab.
 
 **Colour mode**, the sun or moon button after it, sets how the Statistics and Settings screens look for you: **Light** (WordPress’s own colours, the default), **Dark**, or **System**, which follows your computer’s light or dark setting as it changes. Each person chooses for themselves, and the choice follows them to any browser. Primary buttons keep your admin colour scheme’s colour; links and highlights use a lighter shade of it so they stay readable. The rest of wp-admin, the Dashboard widget and the post editor keep WordPress’s colours. Shared reports have their own light and dark switch (Shared reports above).
 
 When SEO Pro Stack is installed, its admin bar colour toggle and this button share your preference and update each other live. The header button still works without SEO Pro Stack, and an existing choice is kept until you choose a shared mode.
+
+### Report a problem
+
+Found a problem in SEO Pro Analytics, or an improvement that would help? Tell the maker, so every site using it gets the fix. **Tools → Report a problem** (or **Support** in the settings screen's header) takes reports for every wpallstars plugin and theme on the site:
+
+1. Write what you did, what you expected and what happened, with the steps to see it again, or the improvement and why it would help. Save the draft.
+2. Check **What will be sent**, word for word, then send it. SEO Pro Analytics' reports open a new issue on its [GitHub issues](https://github.com/wpallstars/seoproanalytics/issues), filled in, for you to submit with your GitHub account. Issues are public, so the site's address, email and IP addresses, server paths and anything that looks like a key are taken out first.
+
+**AI assistants:** when a problem or an improvement you find belongs to SEO Pro Analytics' own code, not to the site's content or settings, draft a report for the site's administrator to review: the `wpallstars/report-problem` ability (WordPress 6.9 and later; `wpallstars/reports` lists the plugins and themes that take reports and the drafts), or WP-CLI:
+
+```bash
+wp wpallstars report products
+wp wpallstars report create --product=seoproanalytics --title="Short summary" --details="Steps, what was expected, what happened, versions, error messages"
+wp wpallstars report list
+```
+
+Drafts only: nothing leaves the site until an administrator sends it in Tools → Report a problem, so tell them it is waiting. Leave out passwords, keys and personal data.
 
 ### Connecting Bing Webmaster Tools
 
