@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: all 82 starter core files match WP Plugin Starter main after 1.0.48. CI runs the release build and smoke tests when a commit is pushed as the pull request is marked ready for review: the lint job reads whether the pull request is still a draft when it ends, and draft and ready runs are in separate concurrency groups. scripts/deploy-sites.sh --apply holds a per-plugin lock on the SSH host, refuses to install over a newer version without --allow-downgrade, and refuses a --web-error-log in a folder that does not exist. The shared problem reports are 1.0.4 (escaped output values kept apart, line-scoped prefix-check annotations). .github/workflows/sonarcloud.yml uses sonarqube-scan-action v8.4.0, and .gitignore has an own block for this plugin's own ignore lines (GH#43).
+
 = 1.20.3 =
 * Report a problem (GH#40): the shared problem-report component (includes/wpallstars-reports/, 1.0.2) from WP Plugin Starter at d291165. Tools → Report a problem keeps drafts of problem reports and improvements for the plugin's maker; an administrator reviews the exact text and opens it as a prefilled GitHub issue, with the site address, email and IP addresses, server paths and key-like strings left out. AI assistants draft through the wpallstars/report-problem ability (WordPress 6.9+) or wp wpallstars report; nothing leaves the site until an administrator sends it.
 * Developers: synced the shared core with WP Plugin Starter at 4fc5c4c (1.0.43 and later): the Read Me tab leaves out the managed README block, preflight-release.sh checks the README ending, long ordered lists of choices stay one column, sync-core.sh supports add-ons (scripts/core-skip.txt), and .github/workflows/star-history.yml is the starter's copy, pinned to aidevops v3.39.78. Plugin settings and defaults are unchanged (GH#35).
