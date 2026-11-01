@@ -884,6 +884,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
+- Developers: the shared **Redundant** view on the Plugins screen (WordPress 6.3 or later) will list plugins a SEO Pro Analytics setting replaces, with those SEO Pro Stack and our other plugins replace; none yet. The Starter sync runs daily (GH#47).
 - Developers: all 82 starter core files match WP Plugin Starter 1.0.49. `deploy-sites.sh --apply` refuses an installed version it cannot read without `--allow-downgrade`, and only one run at a time takes over a stale lock (GH#45).
 - Developers: all 82 starter core files match WP Plugin Starter `main` after 1.0.48. CI runs the release build and smoke tests when a commit is pushed as the pull request is marked ready for review, `deploy-sites.sh --apply` holds a per-plugin lock and refuses downgrades without `--allow-downgrade`, and the shared problem reports are 1.0.4 (GH#43).
 
@@ -1198,7 +1199,7 @@ SEO Pro Analytics is built and maintained with [aidevops](https://aidevops.sh), 
 
 Questions about using, changing or building on SEO Pro Analytics: ask aidevops. Open this repository, or the site it runs on, with aidevops and ask; it reads the plugin's docs and code to answer, and can report a problem for you.
 
-Made from [WP Plugin Starter](https://github.com/wpallstars/wp-plugin-starter-template-for-ai-coding), the wpallstars starter plugin. Its shared standards and the weekly Starter sync keep this plugin up to date.
+Made from [WP Plugin Starter](https://github.com/wpallstars/wp-plugin-starter-template-for-ai-coding), the wpallstars starter plugin. Its shared standards and the daily Starter sync keep this plugin up to date.
 
 Works well with [SEO Pro Stack](https://github.com/wpallstars/seoprostack), the wpallstars base plugin for every site: it speeds WordPress up and keeps the admin organised, each job a switch you turn on.
 
