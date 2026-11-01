@@ -74,6 +74,18 @@ final class SEOProAnalytics {
 
         SEOProAnalytics_Settings::init();
         SEOProAnalytics_Setup::init();
+        // seoproan-own:start
+        if (is_multisite()) {
+            add_filter('wpmu_drop_tables', static function ($tables, $site_id) {
+                foreach (SEOProAnalytics_Schema::site_tables((int) $site_id) as $table) {
+                    if (!in_array($table, $tables, true)) {
+                        $tables[] = $table;
+                    }
+                }
+                return $tables;
+            }, 10, 2);
+        }
+        // seoproan-own:end
         // Priority 0, added after SEOProAnalytics_Settings::maybe_migrate() so features
         // read migrated values, and early enough to hook widgets_init (init:1).
         add_action('init', array(__CLASS__, 'boot_features'), 0);
