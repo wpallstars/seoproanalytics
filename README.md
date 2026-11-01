@@ -861,6 +861,8 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Multisite settings
 
+Deleting a site through Network Admin → Sites → Delete or `wp site delete` also removes that site's live and demo analytics tables while the plugin is active. Other sites' tables are untouched.
+
 **Network Admin → Settings → SEO Pro Analytics** lets super admins set defaults for new sites and apply a settings card to every site. Applied cards are locked on each site's settings screen; switching that off restores the site's own values, which were never overwritten. **Make every site the same** copies a card's values into existing sites once (networks up to 500 sites).
 
 Network changes reach each site's collector and tracker together on its next admin, cron or WP-CLI request. Visitor pages and site AJAX saves use the last applied, autoloaded network snapshot, adding no visitor database query or write. Keep scheduled jobs running so changes reach quiet sites. Other domains, roles, ThriveCart secrets, report colours and Media Library images stay with each site; Connections and Import are site-only tabs. Uninstall removes the network option and each site's applied snapshot and save lock.
@@ -885,6 +887,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
+- Fixed: deleting a multisite site removes its live and demo analytics tables without touching other sites (GH#56).
 - Developers: the shared **Redundant** view on the Plugins screen (WordPress 6.3 or later) will list plugins a SEO Pro Analytics setting replaces, with those SEO Pro Stack and our other plugins replace; none yet. The Starter sync runs daily (GH#47).
 - Developers: all 82 starter core files match WP Plugin Starter 1.0.49. `deploy-sites.sh --apply` refuses an installed version it cannot read without `--allow-downgrade`, and only one run at a time takes over a stale lock (GH#45).
 - Developers: all 82 starter core files match WP Plugin Starter `main` after 1.0.48. CI runs the release build and smoke tests when a commit is pushed as the pull request is marked ready for review, `deploy-sites.sh --apply` holds a per-plugin lock and refuses downgrades without `--allow-downgrade`, and the shared problem reports are 1.0.4 (GH#43).

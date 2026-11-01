@@ -161,6 +161,24 @@ final class SEOProAnalytics_Schema {
     }
 
     /**
+     * Live and demo tables belonging to a site being deleted, independent
+     * of the current site and selected data set. WordPress drops these.
+     *
+     * @param int $site_id Deleted site's ID.
+     * @return string[]
+     */
+    public static function site_tables(int $site_id): array {
+        global $wpdb;
+        $prefix = $wpdb->get_blog_prefix($site_id) . 'seoproanalytics_';
+        $tables = array();
+        foreach (self::names() as $name) {
+            $tables[] = $prefix . $name;
+            $tables[] = $prefix . 'demo_' . $name;
+        }
+        return $tables;
+    }
+
+    /**
      * Full name of one of the plugin's tables on the current site, in the
      * current data set (demo tables: seoproanalytics_demo_*).
      *
