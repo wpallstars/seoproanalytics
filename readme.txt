@@ -117,6 +117,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
+= Unreleased =
+* Developers: starter sync improves CI Docker image pulls; multisite cleanup is unchanged.
+
 = 1.20.3 =
 * Tools → Report a problem: draft a report for the maker, review it, open it as a GitHub issue.
 

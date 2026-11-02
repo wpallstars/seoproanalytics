@@ -105,6 +105,16 @@ final class SEOProAnalytics_Setup {
      * Register the helpers' hooks, after the settings store's.
      */
     public static function init() {
+        if (is_multisite()) {
+            add_filter('wpmu_drop_tables', static function ($tables, $site_id) {
+                foreach (SEOProAnalytics_Schema::site_tables((int) $site_id) as $table) {
+                    if (!in_array($table, $tables, true)) {
+                        $tables[] = $table;
+                    }
+                }
+                return $tables;
+            }, 10, 2);
+        }
         // Tables are made and upgraded on admin requests, and made on a site's first cron or
         // WP-CLI request (SEOProAnalytics_Collection::set_up_outside_admin()); never on visitor pages.
         add_action('admin_init', static function () {

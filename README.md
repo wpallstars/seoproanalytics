@@ -887,6 +887,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
+- Developers: synced all 82 core files with WP Plugin Starter at `199ccac`: CI pulls missing official Docker images directly from Google's mirror before falling back to Docker Hub, with optional Docker Hub login. Local pulls are unchanged; multisite cleanup stays in the plugin's Setup class (GH#52).
 - Fixed: deleting a multisite site removes its live and demo analytics tables without touching other sites (GH#56).
 - Developers: the shared **Redundant** view on the Plugins screen (WordPress 6.3 or later) will list plugins a SEO Pro Analytics setting replaces, with those SEO Pro Stack and our other plugins replace; none yet. The Starter sync runs daily (GH#47).
 - Developers: all 82 starter core files match WP Plugin Starter 1.0.49. `deploy-sites.sh --apply` refuses an installed version it cannot read without `--allow-downgrade`, and only one run at a time takes over a stale lock (GH#45).
