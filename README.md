@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.3-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.4-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.3
+Version: 1.20.4
 
 <!-- github-only:start -->
 ## Screenshots
@@ -885,7 +885,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.20.4
 
 - Developers: synced all 83 core files with WP Plugin Starter at `a37ded2`: CI pulls missing official Docker images directly from Google's mirror before falling back to Docker Hub, with an optional Docker Hub login in a Docker config of the job's own (`scripts/ci-docker-login.sh`) that never reaches a self-hosted runner's credentials and keeps its Docker context. `deploy-sites.sh --apply` no longer removes a replacement run's deploy lock after failing to write its own. Local pulls are unchanged; multisite cleanup stays in the plugin's Setup class (GH#52, GH#53).
 - Fixed: deleting a multisite site removes its live and demo analytics tables without touching other sites (GH#56).
