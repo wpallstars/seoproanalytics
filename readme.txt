@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.4
+Stable tag: 1.20.5
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,9 +117,8 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.20.4 =
-* Fixed: deleting a site from a multisite network removes that site's analytics tables.
-* Developers: starter syncs for CI Docker image pulls and safer site roll-outs.
+= 1.20.5 =
+* Developers: starter sync for steadier site roll-outs, CI Docker image pulls and release checks. No plugin behavior changes.
 
 Every change: changelog.txt.
 

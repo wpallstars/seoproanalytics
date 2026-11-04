@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.4-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.5-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.4
+Version: 1.20.5
 
 <!-- github-only:start -->
 ## Screenshots
@@ -884,6 +884,10 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### 1.20.5
+
+- Developers: synced all 83 core files with WP Plugin Starter at `4b63a9f`. `deploy-sites.sh` explains a deploy lock with no owner file and its two-minute takeover; `--apply` fetches a home page that gave 5xx or no answer once more before failing the site, and reports `cache=redirected:HOST` when a redirect dropped the unique query string. In GitHub Actions, a stalled `mirror.gcr.io` pull times out after a positive-integer `DOCKER_MIRROR_TIMEOUT` (default 180 seconds) before falling back to Docker Hub. `scripts/replaced-plugins.php` runs within PHP's default 128 MB. No plugin behavior changes (GH#64).
 
 ### 1.20.4
 
