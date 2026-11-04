@@ -9,16 +9,17 @@
 # Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
 # Provenance: wpas-e4502af0f07e8a92. Copies, even of part, keep these lines.
 
-# Pull from the mirror with a time limit (DOCKER_MIRROR_TIMEOUT seconds,
-# default 180) where timeout exists, as on GitHub's runners: a stalled mirror
-# would otherwise run until the job's time limit, and the Docker Hub fallback
-# would never run.
+# Pull from the mirror with a positive-integer time limit
+# (DOCKER_MIRROR_TIMEOUT seconds, default 180) where timeout exists, as on
+# GitHub's runners: a stalled mirror would otherwise run until the job's time
+# limit, and the Docker Hub fallback would never run.
 pull_mirror() {
 	local mirror="$1"
 	local limit="${DOCKER_MIRROR_TIMEOUT:-180}"
-	case "$limit" in
-	'' | *[!0-9]* | 0*) limit=180 ;;
-	esac
+	if [[ ! "$limit" =~ ^0*[1-9][0-9]*$ ]]; then
+		limit=180
+	fi
+	limit="${limit#"${limit%%[!0]*}"}"
 	if command -v timeout >/dev/null 2>&1; then
 		timeout "$limit" docker pull "$mirror" || return 1
 		return 0
