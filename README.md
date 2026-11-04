@@ -887,6 +887,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### 1.20.4
 
+- Developers: synced the shared deploy scripts with WP Plugin Starter at `ba25117`. Deploy-status messages identify a lock with no owner file and explain its two-minute takeover window. In GitHub Actions, a stalled `mirror.gcr.io` pull times out (default 180 seconds) before falling back to Docker Hub; local pulls are unchanged (GH#64).
 - Developers: synced all 83 core files with WP Plugin Starter at `a37ded2`: CI pulls missing official Docker images directly from Google's mirror before falling back to Docker Hub, with an optional Docker Hub login in a Docker config of the job's own (`scripts/ci-docker-login.sh`) that never reaches a self-hosted runner's credentials and keeps its Docker context. `deploy-sites.sh --apply` no longer removes a replacement run's deploy lock after failing to write its own. Local pulls are unchanged; multisite cleanup stays in the plugin's Setup class (GH#52, GH#53).
 - Fixed: deleting a multisite site removes its live and demo analytics tables without touching other sites (GH#56).
 - Developers: the shared **Redundant** view on the Plugins screen (WordPress 6.3 or later) will list plugins a SEO Pro Analytics setting replaces, with those SEO Pro Stack and our other plugins replace; none yet. The Starter sync runs daily (GH#47).

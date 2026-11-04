@@ -119,7 +119,7 @@ Use **Support** on the settings screen, or ask aidevops.
 
 = 1.20.4 =
 * Fixed: deleting a site from a multisite network removes that site's analytics tables.
-* Developers: starter syncs for CI Docker image pulls and safer site roll-outs.
+* Developers: starter syncs for CI Docker image pulls and safer site roll-outs; deploy-status messages explain an ownerless lock, and a stalled GitHub Actions mirror pull times out before falling back to Docker Hub.
 
 Every change: changelog.txt.
 

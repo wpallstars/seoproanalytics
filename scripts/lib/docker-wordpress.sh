@@ -15,8 +15,12 @@
 # would never run.
 pull_mirror() {
 	local mirror="$1"
+	local limit="${DOCKER_MIRROR_TIMEOUT:-180}"
+	case "$limit" in
+	'' | *[!0-9]* | 0*) limit=180 ;;
+	esac
 	if command -v timeout >/dev/null 2>&1; then
-		timeout "${DOCKER_MIRROR_TIMEOUT:-180}" docker pull "$mirror" || return 1
+		timeout "$limit" docker pull "$mirror" || return 1
 		return 0
 	fi
 	docker pull "$mirror" || return 1
