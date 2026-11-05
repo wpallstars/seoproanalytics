@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.5
+Stable tag: 1.20.6
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,8 +117,8 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.20.5 =
-* Developers: starter sync for steadier site roll-outs, CI Docker image pulls and release checks. No plugin behavior changes.
+= 1.20.6 =
+* Developers: starter sync: site roll-outs run the plugin's scheduled tasks once to catch errors, and the update test waits for GitHub to list a new release. No plugin behavior changes.
 
 Every change: changelog.txt.
 
