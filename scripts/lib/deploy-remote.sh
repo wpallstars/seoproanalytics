@@ -490,7 +490,8 @@ PHP
 
 # The scheduled events of one site that belong to the plugin: hooks in the
 # site's cron array with a callback defined in the plugin's folder. Prints
-# one "cronhook:NAME" line each. It needs no hook prefix. Running a hook runs
+# one "cronhook:NAME<TAB>ARGS" line per distinct hook and argument set (ARGS
+# is the base64 of the JSON argument list). It needs no hook prefix. Running a hook runs
 # all its callbacks, so a shared hook also runs core and other-plugin
 # callbacks, and a failure in one of them counts as this plugin's. Callbacks
 # registered only while WP-Cron runs (DOING_CRON) are not seen here. A name
@@ -503,36 +504,51 @@ if (false === $base) {
     return;
 }
 $dir = rtrim(wp_normalize_path($base), "/") . "/";
+$owned = array();
 $seen = array();
 foreach ((array) _get_cron_array() as $events) {
-    foreach ((array) $events as $hook => $unused) {
+    foreach ((array) $events as $hook => $instances) {
         $hook = (string) $hook;
-        if (isset($seen[$hook]) || "" === $hook || "-" === $hook[0] || preg_match("/[\\x00-\\x1f\\x7f]/", $hook) || empty($GLOBALS["wp_filter"][$hook])) {
+        if ("" === $hook || "-" === $hook[0] || preg_match("/[\\x00-\\x1f\\x7f]/", $hook) || empty($GLOBALS["wp_filter"][$hook])) {
             continue;
         }
-        foreach ($GLOBALS["wp_filter"][$hook]->callbacks as $callbacks) {
-            foreach ($callbacks as $callback) {
-                $fn = $callback["function"];
-                try {
-                    if (is_array($fn)) {
-                        $ref = new ReflectionMethod($fn[0], $fn[1]);
-                    } elseif (is_object($fn) && !($fn instanceof Closure)) {
-                        $ref = new ReflectionMethod($fn, "__invoke");
-                    } elseif (is_string($fn) && false !== strpos($fn, "::")) {
-                        $parts = explode("::", $fn, 2);
-                        $ref = new ReflectionMethod($parts[0], $parts[1]);
-                    } else {
-                        $ref = new ReflectionFunction($fn);
+        if (!isset($owned[$hook])) {
+            $owned[$hook] = false;
+            foreach ($GLOBALS["wp_filter"][$hook]->callbacks as $callbacks) {
+                foreach ($callbacks as $callback) {
+                    $fn = $callback["function"];
+                    try {
+                        if (is_array($fn)) {
+                            $ref = new ReflectionMethod($fn[0], $fn[1]);
+                        } elseif (is_object($fn) && !($fn instanceof Closure)) {
+                            $ref = new ReflectionMethod($fn, "__invoke");
+                        } elseif (is_string($fn) && false !== strpos($fn, "::")) {
+                            $parts = explode("::", $fn, 2);
+                            $ref = new ReflectionMethod($parts[0], $parts[1]);
+                        } else {
+                            $ref = new ReflectionFunction($fn);
+                        }
+                    } catch (Throwable $e) {
+                        continue;
                     }
-                } catch (Throwable $e) {
-                    continue;
-                }
-                if (0 === strpos(wp_normalize_path((string) $ref->getFileName()), $dir)) {
-                    $seen[$hook] = true;
-                    echo "cronhook:" . $hook . "\n";
-                    break 2;
+                    if (0 === strpos(wp_normalize_path((string) $ref->getFileName()), $dir)) {
+                        $owned[$hook] = true;
+                        break 2;
+                    }
                 }
             }
+        }
+        if (!$owned[$hook]) {
+            continue;
+        }
+        foreach ((array) $instances as $data) {
+            $args = isset($data["args"]) && is_array($data["args"]) ? $data["args"] : array();
+            $encoded = base64_encode(wp_json_encode($args));
+            if (isset($seen[$hook . "\t" . $encoded])) {
+                continue;
+            }
+            $seen[$hook . "\t" . $encoded] = true;
+            echo "cronhook:" . $hook . "\t" . $encoded . "\n";
         }
     }
 }
@@ -540,18 +556,30 @@ PHP
 	return 0
 }
 
-# Runs the plugin's own scheduled events once on one site, each in its own
-# WP-CLI process (a fatal error ends one process, not the count). A fatal
-# error that only a cron callback reaches never shows in the full load, the
-# home fetch or the web PHP log: the host's cron job runs WP-Cron from the
-# command line. Running an event early reschedules it, as wp cron event run
-# does by hand. An event gets DEPLOY_CRON_TIMEOUT seconds (default 120, 0 for
-# no limit); one that times out is a warning, not a failure. Sets CRON_RUN,
-# CRON_TOTAL, CRON_FAILURE and CRON_WARN for the site.
+# The code that runs one scheduled instance (hook DEPLOY_CRON_HOOK with the
+# base64 JSON arguments DEPLOY_CRON_ARGS) the way WP-Cron would.
+cron_run_code() {
+	cat <<'PHP'
+$args = json_decode((string) base64_decode((string) getenv("DEPLOY_CRON_ARGS")), true);
+do_action_ref_array((string) getenv("DEPLOY_CRON_HOOK"), is_array($args) ? array_values($args) : array());
+PHP
+	return 0
+}
+
+# Runs the plugin's own scheduled events once on one site, one WP-CLI process
+# per distinct hook and argument set (a fatal error ends one process, not the
+# count). Every scheduled instance runs, including one hook with different
+# arguments, which "wp cron event run HOOK" would not reach (it runs only the
+# next one). A fatal error that only a cron callback reaches never shows in
+# the full load, the home fetch or the web PHP log: the host's cron job runs
+# WP-Cron from the command line. The events are not rescheduled or removed.
+# An event gets DEPLOY_CRON_TIMEOUT seconds (default 120, 0 for no limit);
+# one that times out is a warning, not a failure. Sets CRON_RUN, CRON_TOTAL,
+# CRON_FAILURE and CRON_WARN for the site.
 run_site_cron() {
 	local root="$1"
 	shift
-	local hooks hook out status limit="${DEPLOY_CRON_TIMEOUT:-120}" detail
+	local hooks line hook args out status limit="${DEPLOY_CRON_TIMEOUT:-120}" detail run_code
 	local cmd=()
 	CRON_RUN=0 CRON_TOTAL=0 CRON_FAILURE="" CRON_WARN=""
 	[[ "$limit" =~ ^[0-9]+$ ]] || limit=120
@@ -569,11 +597,15 @@ run_site_cron() {
 		CRON_FAILURE="cron events not run: timeout is not installed on this host (set DEPLOY_CRON_TIMEOUT=0 for no limit); "
 		return 0
 	fi
-	while IFS= read -r hook; do
-		[[ -n "$hook" ]] || continue
+	run_code="$(cron_run_code)"
+	while IFS= read -r line; do
+		[[ -n "$line" ]] || continue
+		hook="${line%%$'\t'*}"
+		args=""
+		[[ "$line" == *$'\t'* ]] && args="${line#*$'\t'}"
 		CRON_TOTAL=$((CRON_TOTAL + 1))
 		status=0
-		out="$("${cmd[@]+"${cmd[@]}"}" "$WP_CLI" --path="$root" "$@" cron event run "$hook" 2>&1)" || status=$?
+		out="$(DEPLOY_CRON_HOOK="$hook" DEPLOY_CRON_ARGS="$args" "${cmd[@]+"${cmd[@]}"}" "$WP_CLI" --path="$root" "$@" eval "$run_code" 2>&1)" || status=$?
 		if [[ "$status" -eq 124 && "${#cmd[@]}" -gt 0 ]]; then
 			CRON_WARN+="cron $hook timed out (${limit}s), "
 			CRON_RUN=$((CRON_RUN + 1))
