@@ -150,14 +150,14 @@ expected in the GitHub zip too.
    code, cache headers and result.
    After each site's full load, the plugin's own WP-Cron events (hooks in the
    site's cron schedule with a callback in the plugin's folder) run once on
-   that site, each in its own `wp cron event run` process, shown as `cron=N/M`
-   on the install line. A fatal error that only a cron callback reaches does
+   that site, each distinct hook and argument set (so a hook scheduled with
+   different arguments runs once per set) in its own `wp eval` process that
+   fires the hook, shown as `cron=N/M` on the install line. A fatal error that only a cron callback reaches does
    not show in the load, the home fetch or the web PHP log (the host's cron
    job runs WP-Cron from the command line), so a PHP fatal error, database
    error or non-zero exit in one fails the install, with its restore command,
-   and so does a change to the activation lists during the run. Side effect:
-   running an event early also reschedules it, as `wp cron event run` by hand
-   does. A hook runs all its callbacks, so a shared hook also runs core and
+   and so does a change to the activation lists during the run. The events
+   are not rescheduled or removed. A hook runs all its callbacks, so a shared hook also runs core and
    other-plugin callbacks, and a failure in one counts against the install.
    An event gets `DEPLOY_CRON_TIMEOUT` seconds (default 120, `0` for no
    limit, which a host without `timeout` needs when there is an event to
