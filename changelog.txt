@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: synced the 3 core files that differed from WP Plugin Starter at b7d27fa (scripts/lib/deploy-remote.sh, scripts/sync-core.sh, RELEASING.md). scripts/deploy-sites.sh --apply reports new PHP log lines that are all WordPress core's cron-save contention notices (error code could_not_set) as WARN cron save contention instead of a failure; any other new line still fails. scripts/sync-core.sh finds the starter next to the main checkout when run in a linked worktree and names the starter commit it copies from. No plugin behavior changes (GH#71).
+
 = 1.20.6 =
 * Developers: synced all 83 core files with WP Plugin Starter at 2580267. scripts/deploy-sites.sh --apply runs the plugin's own WP-Cron events once on each site after its full load (hooks in the site's cron schedule with a callback in the plugin's folder, such as the collection, processing and search import events), each in its own wp cron event run process, shown as cron=N/M on the install line and on each network site line. A PHP fatal error, database error or non-zero exit in one, or a change to the activation lists during the run, fails the install with its restore command. Running an event early reschedules it, as wp cron event run does by hand. Each event gets DEPLOY_CRON_TIMEOUT seconds (default 120, 0 for no limit); one that times out only warns. A home fetch that curl did not finish (stalled body or reset connection after a 200 header) counts as no answer, so it is fetched once more. scripts/update-test.sh run straight after a release waits up to 2 minutes for the GitHub address the test site reads to name the new release, then checks a missing offer 3 more times, 20 seconds apart, clearing the shared updater's cached release each time; its failure message for a public repository says GitHub may not list the release yet. No plugin behavior changes (GH#66).
 
