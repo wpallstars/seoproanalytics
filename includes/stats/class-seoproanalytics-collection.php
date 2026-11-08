@@ -535,6 +535,22 @@ final class SEOProAnalytics_Collection {
         // or self-signed certificate; the HMAC proves the answer.
         $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 2, 'sslverify' => false));
         $expected = hash_hmac('sha256', $nonce, self::ping_key());
+
+        // A refusal that is not about collect.php (the host's bot protection
+        // refusing the server's own address, a rate limit, an overloaded
+        // origin, a timeout) says nothing about whether the fast endpoint
+        // works: keep the stored endpoint and try again soon, instead of
+        // sending every beacon through a full WordPress boot for an hour.
+        $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+        if ($code === 0 || in_array($code, array(403, 429, 503), true)) {
+            $state            = self::state();
+            $state['checked'] = time();
+            update_option(self::STATE_OPTION, $state, false);
+            // WordPress drops a duplicate single event within ten minutes.
+            wp_schedule_single_event(time() + 5 * MINUTE_IN_SECONDS, self::CRON_HOOK);
+            return !empty($state['fast']);
+        }
+
         $works    = !is_wp_error($response)
             && wp_remote_retrieve_response_code($response) === 200
             && hash_equals($expected, trim((string) wp_remote_retrieve_body($response)));
