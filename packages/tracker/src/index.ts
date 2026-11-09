@@ -111,6 +111,12 @@ const FIELDS = 'input,select,textarea,label,option,[contenteditable],[role=check
 /** Milliseconds a click waits for the page to react before it counts as dead. */
 const DEAD_MS = 1000;
 
+/** Milliseconds a pageview waits, so it does not reach the server in the same moment as the page and its files. */
+const PV_MS = 800;
+
+/** Milliseconds a click on a link followed in this tab waits for pagehide, which sends it with the engagement. */
+const LEAVE_MS = 1500;
+
 /** A running A/B test's wrapper, marked "test:variant" by its swap script (SEOProAnalytics_AB_Tests). */
 const AB = '[data-seoproan-ab]';
 
@@ -252,14 +258,14 @@ function flush(): void {
 	}
 }
 
-/** Queue a hit; hits of the same moment go in one request. */
-function push(hit: Hit): void {
+/** Queue a hit; hits of the same moment (or of the wait already running) go in one request. */
+function push(hit: Hit, wait = 0): void {
 	if (pageSkipped) {
 		return;
 	}
 	queue.push(hit);
 	if (timer === undefined) { // NOSONAR: the tracker builds for ES2018, where ??= compiles to longer code.
-		timer = setTimeout(flush, 0);
+		timer = setTimeout(flush, cfg.t ? 0 : wait);
 	}
 }
 
@@ -315,7 +321,8 @@ function startPage(referrer: string, props?: unknown, context?: unknown): void {
 	if (ab.length) {
 		hit.ab = ab;
 	}
-	push(hit);
+	// A page left sooner sends it on pagehide, with its engagement.
+	push(hit, PV_MS);
 }
 
 /** SPA navigation: a new pageview when the path or a kept parameter changed. */
@@ -526,8 +533,16 @@ function clicked(e: MouseEvent): void { // NOSONAR: one function on purpose: the
 		}
 	}
 	if (sent) {
-		// The page may be about to unload.
-		flush();
+		// A link followed in this tab unloads the page: pagehide sends this
+		// hit with the engagement in one request, and the timer sends it if
+		// the page stays (a script stopped the link, a prompt). Anything else
+		// (a new tab, a download, a button) may be about to unload: send now.
+		if (!cfg.t && link instanceof HTMLAnchorElement && /^https?:$/.test(link.protocol) && e.type === 'click' && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) && /^(?:_self)?$/i.test(link.target) && !(to.flags & DOWNLOAD) && !link.hasAttribute('download') && !/^#/.test(link.getAttribute('href') || '')) {
+			clearTimeout(timer);
+			timer = setTimeout(flush, LEAVE_MS);
+		} else {
+			flush();
+		}
 	}
 }
 
