@@ -11,11 +11,17 @@ development toolchain. None is a shipped security fix: `.distignore` keeps
 
 | Advisory | Package | Disposition |
 | --- | --- | --- |
-| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | braces | [No fix](#braces-advisory); no published patch |
+| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | braces | [Withdrawn](#braces-advisory) by GitHub on 23 October 2026; historical record |
 | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (Dependabot #14, moderate) | minimatch | [Fixed](#minimatch-advisory) by a scoped override |
 | [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) (Dependabot #11, low) | deepmerge | [No fix](#deepmerge-advisory); no published patch |
 
 ## Braces advisory
+
+**Update, 9 November 2026:** GitHub withdrew this advisory on 23 October 2026.
+Everything in this section and the next two is the historical record from
+13 October 2026, when it was active. The counts and the "nonzero exit is
+expected" statements below no longer describe current audits; a current
+`npm audit` failure is not this braces finding, so investigate it as new.
 
 Disposition checked on 13 October 2026 against the committed lockfile with
 Node 26.4.0 and npm 11.17.0: **not fixed; no published upstream patch**. Keep the existing dependencies and build contract.
