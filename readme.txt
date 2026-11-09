@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.7
+Stable tag: 1.20.8
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,9 +117,8 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.20.7 =
-* Fixed: a refused test of the fast collector no longer sends every visit through the slower REST route for an hour; the site keeps its collector and tests again in five minutes.
-* Developers: starter sync: site roll-outs check each site's own PHP log in one run and retry a failed release download.
+= 1.20.8 =
+* Fixed: after a refused test of the fast collector, the next tests wait longer each time, and on a network one test stands for every site, so a host that refuses its own address is not asked again every five minutes by every site.
 
 Every change: changelog.txt.
 
