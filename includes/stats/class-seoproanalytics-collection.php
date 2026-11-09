@@ -37,6 +37,9 @@ final class SEOProAnalytics_Collection {
     /** Hourly cron hook: salts, config and the loopback test. */
     const CRON_HOOK = 'seoproanalytics_hourly';
 
+    /** Single-event cron hook: retry the loopback test after a refusal (only refresh(), never the hourly callbacks). */
+    const ENDPOINT_RETRY_HOOK = 'seoproanalytics_endpoint_retry';
+
     /** Cron hook, every minute: the processor (one file check when idle). */
     const PROCESS_HOOK = 'seoproanalytics_process';
 
@@ -90,6 +93,7 @@ final class SEOProAnalytics_Collection {
         add_action(SEOProAnalytics_Site_Crawler::HOOK, array('SEOProAnalytics_Site_Crawler', 'run'));
         add_action(self::CRON_HOOK, array('SEOProAnalytics_Site_Crawler', 'schedule'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'refresh'));
+        add_action(self::ENDPOINT_RETRY_HOOK, array(__CLASS__, 'refresh'));
         add_action(self::PROCESS_HOOK, array(__CLASS__, 'process'));
         add_action(self::DAILY_HOOK, array(__CLASS__, 'daily'));
         add_action(self::IMPORT_HOOK, array(__CLASS__, 'search_import'));
@@ -547,7 +551,7 @@ final class SEOProAnalytics_Collection {
             $state['checked'] = time();
             update_option(self::STATE_OPTION, $state, false);
             // WordPress drops a duplicate single event within ten minutes.
-            wp_schedule_single_event(time() + 5 * MINUTE_IN_SECONDS, self::CRON_HOOK);
+            wp_schedule_single_event(time() + 5 * MINUTE_IN_SECONDS, self::ENDPOINT_RETRY_HOOK);
             return !empty($state['fast']);
         }
 
@@ -637,6 +641,7 @@ final class SEOProAnalytics_Collection {
             self::remove_dir($parent);
         }
         wp_clear_scheduled_hook(self::CRON_HOOK);
+        wp_clear_scheduled_hook(self::ENDPOINT_RETRY_HOOK);
         wp_clear_scheduled_hook(self::PROCESS_HOOK);
         wp_clear_scheduled_hook(self::DAILY_HOOK);
         delete_option('seoproanalytics_search_updates');
