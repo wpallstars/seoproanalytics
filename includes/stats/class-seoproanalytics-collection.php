@@ -40,6 +40,13 @@ final class SEOProAnalytics_Collection {
     /** Single-event cron hook: retry the loopback test after a refusal (only refresh(), never the hourly callbacks). */
     const ENDPOINT_RETRY_HOOK = 'seoproanalytics_endpoint_retry';
 
+    /**
+     * Site transient (network-wide on multisite): when a site's loopback test
+     * was last refused. While it lasts, the network's other sites skip their
+     * own request: the refusal is the host's, so theirs would be refused too.
+     */
+    const ENDPOINT_REFUSED_TRANSIENT = 'seoproanalytics_loopback_refused';
+
     /** Cron hook, every minute: the processor (one file check when idle). */
     const PROCESS_HOOK = 'seoproanalytics_process';
 
@@ -373,18 +380,40 @@ final class SEOProAnalytics_Collection {
             $state = self::state();
             $since = isset($state['refused']) ? (int) $state['refused'] : 0;
             if ($since > 0 && time() - $since < HOUR_IN_SECONDS) {
-                self::schedule_endpoint_retry();
+                $state['refused_tries'] = (isset($state['refused_tries']) ? (int) $state['refused_tries'] : 0) + 1;
+                update_option(self::STATE_OPTION, $state, false);
+                self::schedule_endpoint_retry($state['refused_tries'], $since);
             }
         }
     }
 
     /**
-     * Test the fast endpoint again in five minutes, after a refused
-     * loopback (only refresh() runs on this hook, not the hourly callbacks).
-     * WordPress drops a duplicate single event within ten minutes.
+     * How long to wait after a streak's Nth refused loopback: 5, 10, 20, 40
+     * minutes. A host that refuses its own address may keep doing so while
+     * the refused requests go on, so each one waits longer.
+     *
+     * @param int $tries Refusals in the streak so far (1 or more).
+     * @return int Seconds.
      */
-    private static function schedule_endpoint_retry() {
-        wp_schedule_single_event(time() + 5 * MINUTE_IN_SECONDS, self::ENDPOINT_RETRY_HOOK);
+    private static function retry_delay($tries) {
+        return 5 * MINUTE_IN_SECONDS * (2 ** min(max((int) $tries, 1) - 1, 3));
+    }
+
+    /**
+     * Test the fast endpoint again after a refused loopback, backing off
+     * (retry_delay()), and not past the hour the refusal may last before it
+     * counts as an answer: the hourly run decides then. Only refresh() runs
+     * on this hook, not the hourly callbacks. WordPress drops a duplicate
+     * single event within ten minutes.
+     *
+     * @param int $tries Refusals in the streak so far.
+     * @param int $since When the streak started.
+     */
+    private static function schedule_endpoint_retry($tries, $since) {
+        $at = time() + self::retry_delay($tries);
+        if ($at - $since < HOUR_IN_SECONDS) {
+            wp_schedule_single_event($at, self::ENDPOINT_RETRY_HOOK);
+        }
     }
 
     /**
@@ -551,42 +580,68 @@ final class SEOProAnalytics_Collection {
             update_option(self::ENDPOINT_OPTION, 'rest', true);
             return false;
         }
-        $nonce    = wp_generate_password(32, false);
-        $url      = add_query_arg(array('s' => get_current_blog_id(), 'ping' => $nonce), self::fast_url());
-        // sslverify off: a loopback to the site itself, often with a local
-        // or self-signed certificate; the HMAC proves the answer.
-        $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 2, 'sslverify' => false));
+        $state = self::state();
+        $since = isset($state['refused']) ? (int) $state['refused'] : 0;
+        $since = $since > 0 && $since <= time() ? $since : 0;
+
+        // Another site of the network was refused moments ago (the
+        // transient lasts that site's retry delay): the host refuses its own
+        // address, so skip this site's request and count it as refused,
+        // unless this site's own streak is already an hour old.
+        $skip = is_multisite()
+            && (int) get_site_transient(self::ENDPOINT_REFUSED_TRANSIENT) > 0
+            && ($since === 0 || time() - $since < HOUR_IN_SECONDS);
+
+        $code  = 0;
+        $body  = '';
+        $nonce = wp_generate_password(32, false);
+        if (!$skip) {
+            $url = add_query_arg(array('s' => get_current_blog_id(), 'ping' => $nonce), self::fast_url());
+            // sslverify off: a loopback to the site itself, often with a local
+            // or self-signed certificate; the HMAC proves the answer.
+            $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 2, 'sslverify' => false));
+            if (!is_wp_error($response)) {
+                $code = (int) wp_remote_retrieve_response_code($response);
+                $body = trim((string) wp_remote_retrieve_body($response));
+            }
+        }
         $expected = hash_hmac('sha256', $nonce, self::ping_key());
 
         // A refusal that is not about collect.php (the host's bot protection
         // refusing the server's own address, a rate limit, an overloaded
         // origin, a timeout) says nothing about whether the fast endpoint
-        // works: keep the stored endpoint and try again soon, instead of
-        // sending every beacon through a full WordPress boot for an hour.
-        // A rule that blocks collect.php itself looks the same, so a
-        // refusal lasting an hour counts as an answer: the endpoint fails.
-        $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
-        if ($code === 0 || in_array($code, array(403, 429, 503), true)) {
-            $state = self::state();
-            $since = isset($state['refused']) ? (int) $state['refused'] : 0;
-            $since = $since > 0 && $since <= time() ? $since : time();
+        // works: keep the stored endpoint and try again later, backing off,
+        // instead of sending every beacon through a full WordPress boot for
+        // an hour. A rule that blocks collect.php itself looks the same, so
+        // a refusal lasting an hour counts as an answer: the endpoint fails.
+        if ($skip || $code === 0 || in_array($code, array(403, 429, 503), true)) {
+            $since = $since > 0 ? $since : time();
             if (time() - $since < HOUR_IN_SECONDS) {
-                $state['refused'] = $since;
-                $state['checked'] = time();
+                $tries                  = (isset($state['refused_tries']) ? (int) $state['refused_tries'] : 0) + 1;
+                $state['refused']       = $since;
+                $state['refused_tries'] = $tries;
+                $state['checked']       = time();
                 update_option(self::STATE_OPTION, $state, false);
-                self::schedule_endpoint_retry();
+                if (!$skip && is_multisite()) {
+                    set_site_transient(self::ENDPOINT_REFUSED_TRANSIENT, time(), self::retry_delay($tries));
+                }
+                self::schedule_endpoint_retry($tries, $since);
                 return !empty($state['fast']);
             }
         }
+        if (is_multisite() && !$skip) {
+            delete_site_transient(self::ENDPOINT_REFUSED_TRANSIENT);
+        }
+        // An answer ends the streak: a retry still queued would only repeat
+        // this test.
+        wp_clear_scheduled_hook(self::ENDPOINT_RETRY_HOOK);
 
-        $works    = !is_wp_error($response)
-            && wp_remote_retrieve_response_code($response) === 200
-            && hash_equals($expected, trim((string) wp_remote_retrieve_body($response)));
+        $works = $code === 200 && hash_equals($expected, $body);
 
         $state            = self::state();
         $state['fast']    = $works;
         $state['checked'] = time();
-        unset($state['refused']);
+        unset($state['refused'], $state['refused_tries']);
         update_option(self::STATE_OPTION, $state, false);
         update_option(self::ENDPOINT_OPTION, $works ? 'fast' : 'rest', true);
         return $works;
@@ -667,6 +722,7 @@ final class SEOProAnalytics_Collection {
         }
         wp_clear_scheduled_hook(self::CRON_HOOK);
         wp_clear_scheduled_hook(self::ENDPOINT_RETRY_HOOK);
+        delete_site_transient(self::ENDPOINT_REFUSED_TRANSIENT);
         wp_clear_scheduled_hook(self::PROCESS_HOOK);
         wp_clear_scheduled_hook(self::DAILY_HOOK);
         delete_option('seoproanalytics_search_updates');

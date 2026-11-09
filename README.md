@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.7-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.8-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.7
+Version: 1.20.8
 
 <!-- github-only:start -->
 ## Screenshots
@@ -884,6 +884,11 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### 1.20.8
+
+- Fixed: after a refused fast collector test, the next tests back off (5, 10, then 20 minutes, then the hourly test) instead of running every five minutes for an hour, and on a network one site's refusal stands for the others for that wait, so a host refusing its own address gets one test per wait from the whole network instead of one per site. A refusal lasting an hour still counts as a failed test, and an answer cancels a retry still waiting (GH#78).
+- Developers: synced `scripts/plugin-check.sh` with WP Plugin Starter 1.0.54 (new random passwords for each run's disposable site). No plugin behavior changes from the sync.
 
 ### 1.20.7
 
