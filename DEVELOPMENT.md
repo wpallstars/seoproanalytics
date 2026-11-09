@@ -72,6 +72,16 @@ scripts/test-site.sh up --multisite              # network activation; /two/ too
 scripts/test-site.sh down
 ```
 
+**Licensed add-ons** (an `Update URI` header and no `GitHub Plugin URI`:
+updates come from the plugin's shop): `scripts/build-release.sh` leaves the
+`Update URI` as it is and builds only `{slug}-X.Y.Z.zip`, with no
+WordPress.org zip. `test-site.sh` first installs each parent named in
+`Requires Plugins:` from WordPress.org (an installed one is only activated)
+and activates it. A parent that is not on WordPress.org stops the run naming
+it: install its zip first with `wp --files DIR plugin install /files/x.zip`.
+`preview-site.sh` copies files only and changes no headers; the parent must
+already be on that site.
+
 `up --ref REF` tests another commit without changing the checkout. `up`
 prints the address and random local admin and database passwords; keep its
 output private. Credentials (mode 600) and site metadata live outside Git,
@@ -463,6 +473,19 @@ Fix what it finds in the repository, or dismiss the alert with the reason.
 checks the tag is on `main`, runs the preflight, builds the zips and
 publishes the GitHub release, with signed build provenance in a public
 repository. It needs no setup. Steps: `RELEASING.md` → GitHub release.
+
+### Deploying to sites
+
+`scripts/deploy-sites.sh` (remote half: `scripts/lib/deploy-remote.sh`)
+swaps the plugin folder with two `rename()` calls inside
+`wp-content/plugins/`: the verified zip is unpacked into a hidden
+`.seoproanalytics-new-<stamp>` folder, the live folder moves to
+`.seoproanalytics-old-<stamp>`, the new one moves in, then both hidden folders
+are removed. The folder is missing only between the two renames, not while
+the zip unpacks, so running jobs (imports, Action Scheduler, CLI cron) are
+very unlikely to find it gone. The tar backup and restore line are unchanged. If the
+swap cannot start (no `unzip`, unexpected zip layout), the live folder is
+untouched and the deploy falls back to `wp plugin install --force`.
 
 ### Starter sync
 

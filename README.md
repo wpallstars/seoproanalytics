@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.6-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.7-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.6
+Version: 1.20.7
 
 <!-- github-only:start -->
 ## Screenshots
@@ -884,6 +884,11 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### 1.20.7
+
+- Fixed: a fast collector test that the host refuses (no answer, 403, 429 or 503, such as bot protection refusing the server's own address) keeps the site's collector and tests again every five minutes on its own event, instead of sending every hit through the REST route (a full WordPress load) for an hour. A refusal lasting an hour counts as a failed test; a 404, a PHP server error or a wrong signature still switch to the REST route at once (GH#73).
+- Developers: synced the 12 core files that differed with WP Plugin Starter 1.0.53. `deploy-sites.sh --web-error-log` takes `{name}`, `{name_}` and a leading `~/`, so one `--apply` run checks each install's own web PHP log on a host with one log per site; a failed release download is retried; `--cloudflare-token-env NAME` purges each updated site's Cloudflare zone; WordPress's cron `could_not_set` line warns instead of failing in any language. Adds the aidevops issue triage gate workflow. No plugin behavior changes from the sync (GH#71, GH#74).
 
 ### 1.20.6
 

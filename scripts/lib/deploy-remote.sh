@@ -21,7 +21,11 @@
 # site, as the host's cron job would hit it from the command line. A home
 # that gives 5xx or no answer is fetched once more after
 # DEPLOY_HOME_RETRY_DELAY seconds (default 5); a pass then is WARN home
-# retried (CODE), a second failure fails the site. apply exits 1 on a failed
+# retried (CODE), a second failure fails the site. With DEPLOY_CDN_PURGE=1
+# each install prints @cdn lines (its site addresses) and cdn=@CDN@ for
+# deploy-sites.sh to fill after purging Cloudflare; with 0 each site's plain
+# home address is fetched once and WARN Cloudflare keeps pages from before
+# the deploy means a cf-cache-status HIT older than the install. apply exits 1 on a failed
 # site, a version not reached or new log lines.
 #
 # apply holds a per-plugin lock on the host, ~/.SLUG-deploy/.lock (mkdir,
@@ -52,12 +56,28 @@ ALLOW_DOWNGRADE=0
 RUN_STAMP=""
 LOCK_DIR=""
 FETCHES=0
+# WordPress's database failures in WP-CLI output: a load or cron run that
+# prints one failed, whatever its exit code.
+readonly DB_QUERY_ERROR="WordPress database error"
+readonly DB_CONNECT_ERROR="Error establishing a database connection"
+# 1 when the person running the deploy gave deploy-sites.sh a Cloudflare
+# token: it purges Cloudflare from their computer (the token never comes
+# here), and this part only names each site (@cdn lines) and leaves cdn=@CDN@
+# on the install line for it to fill. 0: check the plain home address instead.
+CDN_PURGE="${DEPLOY_CDN_PURGE:-0}"
+[[ "$CDN_PURGE" == 1 ]] || CDN_PURGE=0
+CDN_URLS=""
+CF_STALE=""
+MAIN_CF=""
+INSTALL_START=0
 # Seconds before a home page that gave 5xx or no answer is fetched again.
 HOME_RETRY_DELAY="${DEPLOY_HOME_RETRY_DELAY:-5}"
 [[ "$HOME_RETRY_DELAY" =~ ^[0-9]+$ ]] || HOME_RETRY_DELAY=5
 SKIPS=()
 LOG_FILES=()
 LOG_BEFORE=()
+LOG_FIRST=()
+LOG_INODE=()
 
 say() {
 	local message="$1"
@@ -131,7 +151,7 @@ wp_checked() {
 	output="$("$WP_CLI" --path="$root" "$@" 2>"$err_file")" || status=$?
 	errors="$(cat "$err_file")"
 	rm -f "$err_file"
-	if [[ "$status" -ne 0 || "$output$errors" == *"Error establishing a database connection"* || "$output$errors" == *"WordPress database error"* ]]; then
+	if [[ "$status" -ne 0 || "$output$errors" == *"$DB_CONNECT_ERROR"* || "$output$errors" == *"$DB_QUERY_ERROR"* ]]; then
 		[[ -z "$output" ]] || printf '%s\n' "$output" >&2
 		[[ -z "$errors" ]] || printf '%s\n' "$errors" >&2
 		[[ "$status" -ne 0 ]] || status=1
@@ -280,6 +300,42 @@ active_guard() {
 	return "$status"
 }
 
+# TEXT with every FIND replaced by WITH, taken literally: ${var//find/with}
+# reads & in WITH as the match in bash 5.2 and later, and quoting WITH to stop
+# that keeps the quotes in bash 3.2.
+replace_text() {
+	local text="$1"
+	local find="$2"
+	local with="$3"
+	local out=""
+	while [[ "$text" == *"$find"* ]]; do
+		out+="${text%%"$find"*}$with"
+		text="${text#*"$find"}"
+	done
+	printf '%s' "$out$text"
+	return 0
+}
+
+# The web PHP log of one install, from WEB_ERROR_LOG: {name} becomes the
+# install's name (install_name) and {name_} the same with each . as _, so
+# hosts with one log per site (~/.logs/error_log_example_com) need one run. A
+# leading ~/ is the home folder; another relative path is from the install.
+web_error_log_path() {
+	local root="$1"
+	local path="$WEB_ERROR_LOG"
+	local name
+	name="$(install_name "$root")"
+	path="$(replace_text "$path" '{name_}' "${name//./_}")"
+	path="$(replace_text "$path" '{name}' "$name")"
+	if [[ "$path" == \~/* ]]; then
+		path="$HOME/${path#\~/}"
+	elif [[ "$path" != /* ]]; then
+		path="$root/$path"
+	fi
+	printf '%s' "$path"
+	return 0
+}
+
 # Discover log files before installation, then print the lines each one gained.
 log_files() {
 	local root="$1"
@@ -292,11 +348,7 @@ log_files() {
 	php_error="$(wp_bare "$root" eval 'echo ini_get("error_log");')" || return 1
 	candidates+=("$root/error_log" "$root/wp-content/debug.log")
 	if [[ -n "$WEB_ERROR_LOG" ]]; then
-		if [[ "$WEB_ERROR_LOG" == /* ]]; then
-			path="$WEB_ERROR_LOG"
-		else
-			path="$root/$WEB_ERROR_LOG"
-		fi
+		path="$(web_error_log_path "$root")"
 		folder="$(dirname "$path")"
 		if [[ ! -d "$folder" ]]; then
 			say "deploy-remote: the web PHP log's folder does not exist: $folder"
@@ -337,25 +389,136 @@ log_files() {
 	done
 	LOG_FILES=(${unique[@]+"${unique[@]}"})
 	LOG_BEFORE=()
+	LOG_FIRST=()
+	LOG_INODE=()
 	for path in ${LOG_FILES[@]+"${LOG_FILES[@]}"}; do
 		LOG_BEFORE+=("$(file_lines "$path")")
+		LOG_FIRST+=("$(first_line "$path")")
+		LOG_INODE+=("$(file_inode "$path")")
 	done
 	return 0
 }
 
-new_log_text() {
+# First line of a file, to tell a rotated or replaced log from a grown one.
+first_line() {
+	local file="$1"
+	if [[ -f "$file" ]]; then
+		head -n 1 "$file" 2>/dev/null || true
+	fi
+	return 0
+}
+
+# File identity (inode), to tell a replaced log from a grown one even when the
+# replacement has the same first line and at least as many lines.
+file_inode() {
+	local file="$1"
+	if [[ -f "$file" ]]; then
+		# find -ls prints the inode first on GNU and BSD, without stat flags.
+		find "$file" -maxdepth 0 -ls 2>/dev/null | awk '{print $1}' || true
+	fi
+	return 0
+}
+
+# Line to read a log from: after the baseline, or from the top when the log
+# shrank, was replaced (new inode) or its first line changed (rotated, however
+# far it has regrown).
+log_start() {
+	local file="$1" before="$2" first="$3" inode="$4"
+	if [[ "$(file_lines "$file")" -lt "$before" ]] || [[ "$(file_inode "$file")" != "$inode" ]] || { [[ "$before" -gt 0 ]] && [[ "$(first_line "$file")" != "$first" ]]; }; then
+		printf '1'
+	else
+		printf '%s' "$((before + 1))"
+	fi
+	return 0
+}
+
+# Every line the web logs gained since log_files; a truncated or rotated log
+# contributes all of its current lines. awk ends each log's last line with a
+# newline, so a log without one cannot join its last line to the next log's
+# first (an error read as part of a cron notice).
+new_log_all() {
 	local index=0
 	local file start
 	for file in ${LOG_FILES[@]+"${LOG_FILES[@]}"}; do
 		if [[ -f "$file" ]]; then
-			start=$((LOG_BEFORE[index] + 1))
-			if [[ "$(file_lines "$file")" -lt "${LOG_BEFORE[index]}" ]]; then
-				start=1
-			fi
-			tail -n +"$start" "$file" | head -n 10
+			start="$(log_start "$file" "${LOG_BEFORE[index]}" "${LOG_FIRST[index]}" "${LOG_INODE[index]}")"
+			tail -n +"$start" "$file" | awk '{ print }'
 		fi
 		index=$((index + 1))
 	done
+	return 0
+}
+
+# Reads log lines on stdin; HOOKS is the space-separated hooks this run
+# executed. WordPress's cron reschedule/unschedule error with code
+# could_not_set means two cron runners saved the cron option at once. For one
+# of HOOKS (our forced run and the site's own cron runner handled the same
+# event) it prints "race HOOK" once per hook; for any other hook,
+# "contention". Every other line prints "line", which still counts as new.
+# WordPress logs the error in the site's language ("Cron unschedule event
+# error for hook: HOOK, Error code: could_not_set, Error message: ..., Data:
+# {...}"; in Dutch "Cron ongepland event fout voor hook: HOOK, foutcode:
+# could_not_set, foutmelding: ..., gegevens: {...}"), so only its shape is
+# matched: message text with no colon after the timestamp, then ": HOOK, ",
+# a label, ": could_not_set" and a comma or the end of the line. Until
+# then only the English text matched, and translated lines failed installs.
+classify_log() {
+	local hooks=" $1 "
+	awk -v hooks="$hooks" '
+		{
+			if (match($0, /:[[:space:]]*[^[:space:],:]+,[^:,]*:[[:space:]]*could_not_set([[:space:]]*,|[[:space:]]*$)/) \
+				&& substr($0, 1, RSTART - 1) ~ /^(\[[^]]*\][[:space:]]*)*(PHP [A-Za-z ]+:[[:space:]]*)?[^]:[]*$/) {
+				text = substr($0, RSTART, RLENGTH)
+				sub(/^:[[:space:]]*/, "", text)
+				sub(/,.*$/, "", text)
+				if (index(hooks, " " text " ") == 0) {
+					print "contention"
+				} else if (!(text in seen)) {
+					seen[text] = 1
+					print "race " text
+				}
+				next
+			}
+			print "line"
+		}
+	'
+	return 0
+}
+
+# The first lines of the new log text, for the report.
+new_log_text() {
+	new_log_all | head -n 10
+	return 0
+}
+
+# Classifies the new log lines from one snapshot, so a line arriving mid-check
+# cannot hide an error. Cron race lines for hooks this run executed are
+# warnings, not new lines. Sets LOG_NEW_LINES (lines that count), LOG_WARN
+# (warning text) and LOG_FAIL (1 when the new lines fail the install).
+classify_new_log() {
+	local snapshot classified entry contention=0
+	LOG_NEW_LINES=0 LOG_WARN="" LOG_FAIL=1
+	snapshot="$(new_log_all)"
+	if [[ -n "$snapshot" ]]; then
+		classified="$(printf '%s\n' "$snapshot" | classify_log "$CRON_HOOKS_RUN")"
+		while IFS= read -r entry; do
+			case "$entry" in
+			line) LOG_NEW_LINES=$((LOG_NEW_LINES + 1)) ;;
+			contention)
+				# The same cron error, for a hook this run did not execute.
+				LOG_NEW_LINES=$((LOG_NEW_LINES + 1))
+				contention=$((contention + 1))
+				;;
+			"race "*) LOG_WARN+="cron race ${entry#race }, " ;;
+			*) ;;
+			esac
+		done <<<"$classified"
+	fi
+	if [[ "$LOG_NEW_LINES" -gt 0 && "$contention" -eq "$LOG_NEW_LINES" ]]; then
+		# Two cron runners saved the cron option at once: not a failure.
+		LOG_WARN+="cron save contention ($contention lines), "
+		LOG_FAIL=0
+	fi
 	return 0
 }
 
@@ -430,6 +593,10 @@ list_one() {
 	printf '%s\t%s\t%s\t%s' "$name" "${version:-?}" "${kind:-unknown}" "$root"
 	[[ -z "$note" ]] || printf '\t%s' "$note"
 	printf '\n'
+	if [[ "$CDN_PURGE" -eq 1 ]]; then
+		# deploy-sites.sh lists the zones these sites would purge.
+		site_urls "$root" "$kind" 2>/dev/null | cdn_lines || true
+	fi
 	return 0
 }
 
@@ -546,8 +713,10 @@ PHP
 # home fetch or the web PHP log: the host's cron job runs WP-Cron from the
 # command line. Running an event early reschedules it, as wp cron event run
 # does by hand. An event gets DEPLOY_CRON_TIMEOUT seconds (default 120, 0 for
-# no limit); one that times out is a warning, not a failure. Sets CRON_RUN,
-# CRON_TOTAL, CRON_FAILURE and CRON_WARN for the site.
+# no limit); one that times out is a warning, not a failure. A single event
+# the site's own cron ran between the list and its run here (WP-CLI: Invalid
+# cron event) is a note, not a failure, and not counted as run here (GH#1369).
+# Sets CRON_RUN, CRON_TOTAL, CRON_FAILURE and CRON_WARN for the site.
 run_site_cron() {
 	local root="$1"
 	shift
@@ -577,27 +746,77 @@ run_site_cron() {
 		if [[ "$status" -eq 124 && "${#cmd[@]}" -gt 0 ]]; then
 			CRON_WARN+="cron $hook timed out (${limit}s), "
 			CRON_RUN=$((CRON_RUN + 1))
-		elif [[ "$status" -ne 0 || "$out" == *"PHP Fatal error"* || "$out" == *"Fatal error:"* || "$out" == *"WordPress database error"* || "$out" == *"Error establishing a database connection"* ]]; then
+		elif [[ "$status" -ne 0 && "$out" == *"Invalid cron event '$hook'"* && "$out" != *"Fatal error"* && "$out" != *"$DB_QUERY_ERROR"* && "$out" != *"$DB_CONNECT_ERROR"* ]]; then
+			CRON_WARN+="cron $hook ran meanwhile, "
+		elif [[ "$status" -ne 0 || "$out" == *"PHP Fatal error"* || "$out" == *"Fatal error:"* || "$out" == *"$DB_QUERY_ERROR"* || "$out" == *"$DB_CONNECT_ERROR"* ]]; then
 			detail="$(printf '%s\n' "$out" | tail -n 3 | LC_ALL=C tr '\t\r\n' '   ' | LC_ALL=C tr -cd '[:print:]')"
 			CRON_FAILURE+="cron $hook failed (exit $status: ${detail:0:300}); "
 		else
 			CRON_RUN=$((CRON_RUN + 1))
+			# Only a hook that ran to completion can have raced with the site's cron.
+			CRON_HOOKS_RUN+="$hook "
 		fi
 	done <<<"$hooks"
 	return 0
 }
 
-# Sets HOME_CODE/HOME_CACHE and advances FETCHES in the caller's shell.
+# Prints the origin server's IPv4 address for the site: LiteSpeed Cache's
+# Server IP, or else an address the plugin learned from a web request and
+# stored as array('ip' => ...) in its seoproanalytics_origin_ip option (a plugin
+# without such a feature has none). Prints nothing when neither is set or
+# valid. A host behind a CDN can refuse its own uncached fetch
+# that loops back through the CDN, so the home fetch goes to the origin.
+origin_ip() {
+	local root="$1"
+	shift
+	local ip
+	# shellcheck disable=SC2016 # PHP code, not shell.
+	ip="$(wp_bare "$root" "$@" eval '$ip = trim((string) get_option("litespeed.conf.server_ip", "")); if ("" === $ip) { $learned = get_option("seoproanalytics_origin_ip", array()); $ip = is_array($learned) && isset($learned["ip"]) ? trim((string) $learned["ip"]) : ""; } echo "originip:" . $ip;' 2>/dev/null)" || return 0
+	ip="${ip##*originip:}"
+	if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+		printf '%s\n' "$ip"
+	fi
+	return 0
+}
+
+# Sets HOME_CODE/HOME_CACHE/HOME_PINNED and advances FETCHES in the caller's
+# shell. With an origin IP as the second argument the fetch is pinned to it
+# (curl --resolve); a pinned fetch that does not connect falls back to DNS.
 home_check() {
 	local url="$1"
-	local headers fetch result final_url final_host rc=0
+	local ip="${2:-}"
+	local headers fetch result final_url final_host rc=0 scheme host port
+	local pin=()
 	FETCHES=$((FETCHES + 1))
 	HOME_CODE="000"
 	HOME_CACHE="none"
+	HOME_PINNED=""
 	fetch="deploy-check=${RUN_STAMP}-${FETCHES}"
 	headers="$(mktemp)" || return 1
+	if [[ -n "$ip" ]]; then
+		scheme="${url%%://*}"
+		host="${url#*://}"
+		host="${host%%/*}"
+		port=443
+		[[ "$scheme" != "http" ]] || port=80
+		if [[ "$host" == *:* ]]; then
+			port="${host##*:}"
+			host="${host%:*}"
+		fi
+		# Both web ports too, so a redirect to the other scheme on the same
+		# host (http to https) still reaches the origin.
+		pin=(--resolve "${host}:${port}:${ip}" --resolve "${host}:80:${ip}" --resolve "${host}:443:${ip}")
+		HOME_PINNED=1
+	fi
 	result="$(curl -s -o /dev/null -L -D "$headers" -w '%{http_code} %{url_effective}' --max-time 30 \
-		"${url%/}/?${fetch}")" || rc=$?
+		${pin[@]+"${pin[@]}"} "${url%/}/?${fetch}")" || rc=$?
+	if [[ "$rc" -ne 0 && -n "$HOME_PINNED" ]]; then
+		# The pinned address did not answer: use DNS, with the 4xx rule.
+		HOME_PINNED=""
+		rc=0
+		result="$(curl -s -o /dev/null -L -D "$headers" -w '%{http_code} %{url_effective}' --max-time 30 \
+			"${url%/}/?${fetch}")" || rc=$?
+	fi
 	HOME_CODE="${result%% *}"
 	# A fetch curl did not finish (timeout, reset) is no answer, even when
 	# the headers said 200.
@@ -622,7 +841,106 @@ home_check() {
 		final_host="${final_host##*@}"
 		HOME_CACHE="redirected:${final_host:-unknown}"
 	fi
+	# A redirect to another host was fetched through DNS, not the origin.
+	if [[ -n "$HOME_PINNED" && -n "$host" ]]; then
+		final_host="${final_url#*://}"
+		final_host="${final_host%%/*}"
+		final_host="${final_host##*@}"
+		final_host="${final_host%%:*}"
+		[[ "$final_host" == "$host" ]] || HOME_PINNED=""
+	fi
 	rm -f "$headers"
+	return 0
+}
+
+# The plain home address (no query string, through DNS and so through any
+# CDN) once, after the install. Sets CF_STALE to the page's age in seconds
+# when Cloudflare answers HIT with a page older than the install began: it
+# still serves the pages from before the deploy. Sets it to "" otherwise.
+cf_stale_check() {
+	local url="$1"
+	local headers rc=0 found cache age now
+	CF_STALE=""
+	headers="$(mktemp)" || return 0
+	curl -s -o /dev/null -D "$headers" --max-time 30 "${url%/}/" || rc=$?
+	if [[ "$rc" -eq 0 ]]; then
+		found="$(awk '
+			/^HTTP\// { cache = "-"; age = "-" }
+			{
+				line = tolower($0)
+				sub(/\r$/, "", line)
+				if (line ~ /^cf-cache-status:/) { sub(/^[^:]*:[ \t]*/, "", line); cache = line }
+				if (line ~ /^age:/) { sub(/^[^:]*:[ \t]*/, "", line); age = line }
+			}
+			END { print cache, age }
+		' "$headers")"
+		cache="${found%% *}"
+		age="${found#* }"
+		now="$(date +%s)"
+		if [[ "$cache" == hit && "$age" =~ ^[0-9]+$ && "$INSTALL_START" -gt 0 && "$age" -gt $((now - INSTALL_START)) ]]; then
+			CF_STALE="$age"
+		fi
+	fi
+	rm -f "$headers"
+	return 0
+}
+
+cf_warning() {
+	local age="$1"
+	printf 'Cloudflare keeps pages from before the deploy (age=%s s); purge the zone or pass --cloudflare-token-env' "$age"
+	return 0
+}
+
+# One "@cdn<TAB>URL" line per address on stdin: names the sites for
+# deploy-sites.sh, which works out their Cloudflare zones from the host names.
+cdn_lines() {
+	local url
+	while IFS= read -r url; do
+		[[ -z "$url" ]] || printf '@cdn\t%s\n' "$url"
+	done
+	return 0
+}
+
+# The plugin's own scheduled events, once, on one site after a good load. A
+# cron callback must not change the activation lists either. Sets the CRON_*
+# results and adds to the CRON_SUM_* totals.
+cron_step() {
+	local root="$1"
+	shift
+	local cron_before
+	if cron_before="$(active_snapshot "$root")"; then
+		run_site_cron "$root" "$@"
+		active_check "$root" "$cron_before" "" "" || CRON_FAILURE+="activation lists changed during cron; "
+	else
+		CRON_RUN=0 CRON_TOTAL=0 CRON_WARN=""
+		CRON_FAILURE="cron skipped: activation snapshot failed; "
+	fi
+	CRON_SUM_RUN=$((CRON_SUM_RUN + CRON_RUN))
+	CRON_SUM_TOTAL=$((CRON_SUM_TOTAL + CRON_TOTAL))
+	return 0
+}
+
+# Notes one site's address for the Cloudflare purge; without a token, checks
+# the plain home address. Sets CDN_WARN to the warning (with its separator)
+# or "", and MAIN_CF for the first site.
+cdn_step() {
+	local url="$1"
+	CDN_URLS+="$url"$'\n'
+	CDN_WARN=""
+	[[ "$CDN_PURGE" -eq 0 ]] || return 0
+	cf_stale_check "$url"
+	[[ -n "$CF_STALE" ]] || return 0
+	CDN_WARN="$(cf_warning "$CF_STALE"), "
+	[[ "$SITES_TOTAL" -ne 1 ]] || MAIN_CF="$CF_STALE"
+	return 0
+}
+
+# Prints the @cdn lines of the install and sets CDN_FIELD, the cdn= value.
+cdn_announce() {
+	CDN_FIELD="-"
+	[[ "$CDN_PURGE" -eq 1 ]] || return 0
+	CDN_FIELD="@CDN@"
+	printf '%s' "$CDN_URLS" | cdn_lines
 	return 0
 }
 
@@ -632,9 +950,10 @@ check_sites() {
 	local kind urls url status result reason warn load purged line network=0
 	local load_errors load_status summary first_code cron_note cron_before
 	local check_error="home check failed; "
-	local url_args=()
+	local url_args=() origin
+	CDN_URLS="" MAIN_CF=""
 	SITES_TOTAL=0 SITES_FAILED=0 SITES_PURGED=0 PURGE_FAILED=0 SITE_LINES=""
-	CRON_SUM_RUN=0 CRON_SUM_TOTAL=0 CRON_WARNED=""
+	CRON_SUM_RUN=0 CRON_SUM_TOTAL=0 CRON_WARNED="" CRON_HOOKS_RUN=""
 	MAIN_STATUS="?" MAIN_CODE="000" MAIN_CACHE="none" MAIN_REASON="" MAIN_RETRIED=""
 	kind="$(wp_bare "$root" eval 'echo is_multisite() ? "multisite" : "single";')" || return 1
 	case "$kind" in
@@ -660,20 +979,12 @@ check_sites() {
 			esac
 			# The plugin's own scheduled events, once, after a good load.
 			# A cron callback must not change the activation lists either.
-			if cron_before="$(active_snapshot "$root")"; then
-				run_site_cron "$root" ${url_args[@]+"${url_args[@]}"}
-				active_check "$root" "$cron_before" "" "" || CRON_FAILURE+="activation lists changed during cron; "
-			else
-				CRON_RUN=0 CRON_TOTAL=0 CRON_WARN=""
-				CRON_FAILURE="cron skipped: activation snapshot failed; "
-			fi
-			CRON_SUM_RUN=$((CRON_SUM_RUN + CRON_RUN))
-			CRON_SUM_TOTAL=$((CRON_SUM_TOTAL + CRON_TOTAL))
+			cron_step "$root" ${url_args[@]+"${url_args[@]}"}
 			cron_note="cron=${CRON_RUN}/${CRON_TOTAL}"
 			[[ -z "$CRON_FAILURE" ]] || reason+="$CRON_FAILURE"
 			[[ -z "$CRON_WARN" ]] || {
 				warn+="$CRON_WARN"
-				CRON_WARNED=1
+				CRON_WARNED+="$CRON_WARN"
 			}
 		else
 			load_status=$?
@@ -688,7 +999,8 @@ check_sites() {
 		if ! status="$(wp_bare "$root" ${url_args[@]+"${url_args[@]}"} plugin list --name="$SLUG" --field=status)" || [[ -z "$status" ]]; then
 			reason+="status read failed; "
 		fi
-		home_check "$url" || reason+="$check_error"
+		origin="$(origin_ip "$root" ${url_args[@]+"${url_args[@]}"})"
+		home_check "$url" "$origin" || reason+="$check_error"
 		# A busy host can answer one fetch with 5xx (or not at all) while the
 		# site is fine: fetch once more after a pause, and fail only if that
 		# fails too. A pass on the second fetch is a warning, not silence.
@@ -696,15 +1008,18 @@ check_sites() {
 		if [[ "$HOME_CODE" == 5* || "$HOME_CODE" == "000" ]]; then
 			first_code="$HOME_CODE"
 			sleep "$HOME_RETRY_DELAY"
-			home_check "$url" || [[ "$reason" == *"$check_error"* ]] || reason+="$check_error"
+			home_check "$url" "$origin" || [[ "$reason" == *"$check_error"* ]] || reason+="$check_error"
 		fi
-		# 4xx may be the host's firewall: report, but do not fail it.
+		# 4xx may be the host's firewall: report, but do not fail it (a pinned
+		# fetch skips the CDN, so a 4xx there is the origin's own answer).
 		if [[ "$HOME_CODE" == 5* || "$HOME_CODE" == "000" ]]; then
 			reason+="home failed${first_code:+ ($first_code, then $HOME_CODE)}; "
 		elif [[ -n "$first_code" ]]; then
 			warn+="home retried ($first_code), "
 		fi
 		[[ "$HOME_CACHE" != *hit* || "$HOME_CACHE" == redirected:* ]] || warn+="cached, "
+		cdn_step "$url"
+		warn+="$CDN_WARN"
 		if [[ -n "$reason" ]]; then
 			result="FAIL: ${reason%; }"
 			SITES_FAILED=$((SITES_FAILED + 1))
@@ -712,16 +1027,107 @@ check_sites() {
 			result="WARN ${warn%, }"
 		fi
 		if [[ "$SITES_TOTAL" -eq 1 ]]; then
-			MAIN_STATUS="$status" MAIN_CODE="$HOME_CODE" MAIN_CACHE="$HOME_CACHE"
+			MAIN_STATUS="$status" MAIN_CODE="${HOME_CODE}${HOME_PINNED:+ pinned}" MAIN_CACHE="$HOME_CACHE"
 			MAIN_REASON="${reason%; }" MAIN_RETRIED="$first_code"
 		fi
 		if [[ "$network" -eq 1 ]]; then
-			printf -v line '    site %s\tstatus=%s\tpurged=%s\t%s\thome=%s\tcache=%s\t%s\n' "$url" "${status:-?}" "$purged" "$cron_note" "$HOME_CODE" "$HOME_CACHE" "$result"
+			printf -v line '    site %s\tstatus=%s\tpurged=%s\t%s\thome=%s\tcache=%s\t%s\n' "$url" "${status:-?}" "$purged" "$cron_note" "${HOME_CODE}${HOME_PINNED:+ pinned}" "$HOME_CACHE" "$result"
 			SITE_LINES+="$line"
 		fi
 	done <<<"$urls"
 	rm -f "$load_errors"
 	[[ "$SITES_TOTAL" -gt 0 ]] || return 1
+	return 0
+}
+
+# Put back the INT/TERM/HUP handlers saved with trap -p (empty: defaults).
+swap_restore_traps() {
+	local saved="$1"
+	trap - INT TERM HUP
+	[[ -z "$saved" ]] || eval "$saved"
+	return 0
+}
+
+# Replace $plugins/$SLUG with the folder in the zip using two rename() calls
+# inside the plugins folder (same filesystem, so each is atomic). Returns 1
+# with the live folder untouched if anything fails before the first rename;
+# if the second rename fails the old folder is put back.
+#
+# The release zip gives every file the same fixed time (reproducible builds)
+# and unzip keeps it, but PHP's OPcache revalidates a file only when its time
+# changes: the web server would go on running the old version's code, and
+# assets versioned by file time would keep their old addresses. So the
+# extracted files get the current time first, as WordPress's own updater
+# gives them.
+swap_plugin_folder() {
+	local plugins="$1"
+	local zip="$2"
+	local stamp staging old prev_traps
+	stamp="$(date +%s)-$$"
+	staging="$plugins/.$SLUG-new-$stamp"
+	old="$plugins/.$SLUG-old-$stamp"
+
+	command -v unzip >/dev/null 2>&1 || return 1
+	mkdir "$staging" || return 1
+	# umask 022: the web server's account must be able to read what unzip makes.
+	if ! (umask 022 && unzip -q "$zip" -d "$staging") || [[ ! -f "$staging/$SLUG/$SLUG.php" ]] \
+		|| ! find "$staging/$SLUG" -exec touch -c {} +; then
+		rm -rf "$staging"
+		return 1
+	fi
+	# A signal between the two renames would leave the plugin only in $old:
+	# put it back before exiting.
+	# Single quotes: paths expand when the trap runs, so any character is safe.
+	prev_traps="$(trap -p INT TERM HUP)"
+	trap '[[ -d "$plugins/$SLUG" ]] || mv "$old" "$plugins/$SLUG"; rm -rf "$staging"; exit 143' INT TERM HUP
+	if ! mv "$plugins/$SLUG" "$old"; then
+		swap_restore_traps "$prev_traps"
+		rm -rf "$staging"
+		return 1
+	fi
+	# Refuse to move into a destination another writer recreated (mv would nest
+	# the release inside it): roll back and keep the old copy.
+	if [[ -e "$plugins/$SLUG" ]] || ! mv "$staging/$SLUG" "$plugins/$SLUG"; then
+		if [[ -e "$plugins/$SLUG" ]] || ! mv "$old" "$plugins/$SLUG"; then
+			swap_restore_traps "$prev_traps"
+			printf '%s\tFAIL: folder swap and rollback failed; old copy kept at %s\n' "$SLUG" "$old" >&2
+			return 2
+		fi
+		swap_restore_traps "$prev_traps"
+		rm -rf "$staging"
+		return 1
+	fi
+	swap_restore_traps "$prev_traps"
+	rm -rf "$staging"
+	if ! rm -rf "$old"; then
+		printf '%s\tWARN: could not remove old folder %s\n' "$SLUG" "$old" >&2
+	fi
+	return 0
+}
+
+# Swap by two renames so running jobs never find the folder missing.
+# Activation (and network activation) is kept: the folder and main file
+# names do not change. If the swap cannot be made (no unzip, a different
+# filesystem, an odd zip), nothing has changed and install --force runs.
+install_build() {
+	local root="$1"
+	local name="$2"
+	local zip="$3"
+	local plugins="$4"
+	local backup="$5"
+
+	local swap_rc=0
+	swap_plugin_folder "$plugins" "$zip" || swap_rc=$?
+	[[ "$swap_rc" -eq 0 ]] && return 0
+	if [[ "$swap_rc" -eq 2 ]]; then
+		printf '%s\tFAIL: folder swap rollback failed; restore: tar -xzf %q -C %q\n' "$name" "$backup" "$plugins"
+		return 1
+	fi
+	printf '%s\tWARN: folder swap failed; using wp plugin install --force\n' "$name" >&2
+	if ! active_guard "$root" "" "" --skip-plugins --skip-themes plugin install "$zip" --force >/dev/null; then
+		printf '%s\tFAIL: guarded install stopped; restore: tar -xzf %q -C %q\n' "$name" "$backup" "$plugins"
+		return 1
+	fi
 	return 0
 }
 
@@ -733,7 +1139,8 @@ apply_one() {
 	local backups="$5"
 	local plugins="$root/wp-content/plugins"
 	local main="$plugins/$SLUG/$SLUG.php"
-	local before after backup new_lines result="ok" warn="" index file current added
+	local before after backup new_lines result="ok" warn=""
+	local log_fail=1
 	local comparison=0
 
 	before="$(plugin_version "$main")"
@@ -766,9 +1173,8 @@ apply_one() {
 		return 0
 	fi
 
-	# Activation (and network activation) is kept by install --force.
-	if ! active_guard "$root" "" "" --skip-plugins --skip-themes plugin install "$zip" --force >/dev/null; then
-		printf '%s\tFAIL: guarded install stopped; restore: tar -xzf %q -C %q\n' "$name" "$backup" "$plugins"
+	INSTALL_START="$(date +%s)"
+	if ! install_build "$root" "$name" "$zip" "$plugins" "$backup"; then
 		FAILED=1
 		return 0
 	fi
@@ -780,26 +1186,19 @@ apply_one() {
 	fi
 
 	after="$(plugin_version "$main")"
-	new_lines=0
-	index=0
-	for file in ${LOG_FILES[@]+"${LOG_FILES[@]}"}; do
-		current="$(file_lines "$file")"
-		if [[ "$current" -lt "${LOG_BEFORE[index]}" ]]; then
-			# A truncated or rotated log contributes all of its current lines.
-			added="$current"
-		else
-			added=$((current - LOG_BEFORE[index]))
-		fi
-		new_lines=$((new_lines + added))
-		index=$((index + 1))
-	done
+	classify_new_log
+	new_lines="$LOG_NEW_LINES"
+	warn+="$LOG_WARN"
+	log_fail="$LOG_FAIL"
 
 	# Single sites have no site row on which to show these warnings.
 	[[ "$PURGE_FAILED" -eq 0 ]] || warn+="purge failed, "
-	[[ -z "$CRON_WARNED" || -n "$SITE_LINES" ]] || warn+="cron timed out, "
+	[[ -z "$CRON_WARNED" || -n "$SITE_LINES" ]] || warn+="$CRON_WARNED"
 	[[ "$MAIN_CACHE" != *hit* || "$MAIN_CACHE" == redirected:* ]] || warn+="cached, "
 	[[ -z "$MAIN_RETRIED" ]] || warn+="home retried ($MAIN_RETRIED), "
-	if [[ "$after" != "$want" || "$new_lines" -gt 0 || "$SITES_FAILED" -gt 0 ]]; then
+	# A network's site rows carry this warning; a single site has no row.
+	[[ -z "$MAIN_CF" || -n "$SITE_LINES" ]] || warn+="$(cf_warning "$MAIN_CF"), "
+	if [[ "$after" != "$want" || ("$new_lines" -gt 0 && "$log_fail" -eq 1) || "$SITES_FAILED" -gt 0 ]]; then
 		result="FAIL"
 		if [[ -z "$SITE_LINES" && -n "$MAIN_REASON" ]]; then
 			result+=": $MAIN_REASON"
@@ -808,8 +1207,9 @@ apply_one() {
 	elif [[ -n "$warn" ]]; then
 		result="WARN ${warn%, }"
 	fi
-	printf '%s\t%s -> %s\tstatus=%s\tpurged=%s/%s\tcron=%s/%s\thome=%s\tcache=%s\tnew_log_lines=%s' \
-		"$name" "${before:-?}" "${after:-?}" "$MAIN_STATUS" "$SITES_PURGED" "$SITES_TOTAL" "$CRON_SUM_RUN" "$CRON_SUM_TOTAL" "$MAIN_CODE" "$MAIN_CACHE" "$new_lines"
+	cdn_announce
+	printf '%s\t%s -> %s\tstatus=%s\tpurged=%s/%s\tcron=%s/%s\thome=%s\tcache=%s\tcdn=%s\tnew_log_lines=%s' \
+		"$name" "${before:-?}" "${after:-?}" "$MAIN_STATUS" "$SITES_PURGED" "$SITES_TOTAL" "$CRON_SUM_RUN" "$CRON_SUM_TOTAL" "$MAIN_CODE" "$MAIN_CACHE" "$CDN_FIELD" "$new_lines"
 	if [[ -n "$SITE_LINES" ]]; then
 		printf '\tsites=%s/%s' "$((SITES_TOTAL - SITES_FAILED))" "$SITES_TOTAL"
 	fi
