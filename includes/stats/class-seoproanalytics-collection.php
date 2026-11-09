@@ -366,7 +366,25 @@ final class SEOProAnalytics_Collection {
         self::rotate_salts();
         if (self::write_config()) {
             self::test_fast_endpoint();
+        } else {
+            // A retry after a refused loopback that could not write the
+            // config: WP-Cron has removed its event, so keep the retries
+            // going while the refusal is under an hour old.
+            $state = self::state();
+            $since = isset($state['refused']) ? (int) $state['refused'] : 0;
+            if ($since > 0 && time() - $since < HOUR_IN_SECONDS) {
+                self::schedule_endpoint_retry();
+            }
         }
+    }
+
+    /**
+     * Test the fast endpoint again in five minutes, after a refused
+     * loopback (only refresh() runs on this hook, not the hourly callbacks).
+     * WordPress drops a duplicate single event within ten minutes.
+     */
+    private static function schedule_endpoint_retry() {
+        wp_schedule_single_event(time() + 5 * MINUTE_IN_SECONDS, self::ENDPOINT_RETRY_HOOK);
     }
 
     /**
@@ -545,14 +563,20 @@ final class SEOProAnalytics_Collection {
         // origin, a timeout) says nothing about whether the fast endpoint
         // works: keep the stored endpoint and try again soon, instead of
         // sending every beacon through a full WordPress boot for an hour.
+        // A rule that blocks collect.php itself looks the same, so a
+        // refusal lasting an hour counts as an answer: the endpoint fails.
         $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
         if ($code === 0 || in_array($code, array(403, 429, 503), true)) {
-            $state            = self::state();
-            $state['checked'] = time();
-            update_option(self::STATE_OPTION, $state, false);
-            // WordPress drops a duplicate single event within ten minutes.
-            wp_schedule_single_event(time() + 5 * MINUTE_IN_SECONDS, self::ENDPOINT_RETRY_HOOK);
-            return !empty($state['fast']);
+            $state = self::state();
+            $since = isset($state['refused']) ? (int) $state['refused'] : 0;
+            $since = $since > 0 && $since <= time() ? $since : time();
+            if (time() - $since < HOUR_IN_SECONDS) {
+                $state['refused'] = $since;
+                $state['checked'] = time();
+                update_option(self::STATE_OPTION, $state, false);
+                self::schedule_endpoint_retry();
+                return !empty($state['fast']);
+            }
         }
 
         $works    = !is_wp_error($response)
@@ -562,6 +586,7 @@ final class SEOProAnalytics_Collection {
         $state            = self::state();
         $state['fast']    = $works;
         $state['checked'] = time();
+        unset($state['refused']);
         update_option(self::STATE_OPTION, $state, false);
         update_option(self::ENDPOINT_OPTION, $works ? 'fast' : 'rest', true);
         return $works;
