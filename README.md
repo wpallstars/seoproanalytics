@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.8-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.9-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.8
+Version: 1.20.9
 
 <!-- github-only:start -->
 ## Screenshots
@@ -884,6 +884,10 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### 1.20.9
+
+- Fixed: following a link no longer sends three collector requests at once (the click, the engagement and the next pageview). A click on a link followed in the same tab goes with the page's engagement in one request when the page unloads (after 1.5 seconds if it stays), and a pageview waits 0.8 seconds after load, so quick browsing makes one request per page left and does not trip a host's per-address bot protection. New tabs, downloads, other clicks, form submits and test mode still send at once; hits and stored data are unchanged (GH#80).
 
 ### 1.20.8
 

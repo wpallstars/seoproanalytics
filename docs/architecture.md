@@ -263,6 +263,18 @@ dead. **Affiliate links** are links to the site's own forwarding paths
 `rel="sponsored"`; they send an `Affiliate link` event (with the
 destination as `url`) instead of `Outbound link`, so a goal can count them.
 
+Requests are few and spaced, as a host's bot protection may refuse a
+visitor's address after a burst of requests to PHP (GH#80). A pageview
+waits 800 ms (`PV_MS`), so it does not reach the server in the same moment
+as the page and its files; hits queued meanwhile join it. A click on an
+http(s) link followed in the same tab (no other `target`, modifier key or
+`download`) is held for `pagehide`, which sends it with the page's
+engagement, and its pageview when still waiting, in one request; a
+1.5 second timer (`LEAVE_MS`) sends it if the page stays. A link to a new
+tab, a download, a click that does not leave, a form submit and test mode
+send at once. So a visitor going from page to page makes one collector
+request per page left.
+
 The tracker stores nothing in the browser (no cookies, `localStorage` or
 `sessionStorage`, which privacy law treats like cookies). In wp-admin,
 the Research menus keep the administrator's chosen country and language
