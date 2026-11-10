@@ -3,7 +3,25 @@
 <!-- Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt -->
 <!-- Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines. -->
 
-# npm audit: development-toolchain braces advisory
+# npm audit: development-toolchain advisories
+
+Dispositions for the advisories `npm audit` and Dependabot report against the
+development toolchain. None is a shipped security fix: `.distignore` keeps
+`node_modules` out of release builds and only `assets/build/` ships.
+
+| Advisory | Package | Disposition |
+| --- | --- | --- |
+| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | braces | [Withdrawn](#braces-advisory) by GitHub on 23 October 2026; historical record |
+| [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (Dependabot #14, moderate) | minimatch | [Fixed](#minimatch-advisory) by a scoped override |
+| [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) (Dependabot #11, low) | deepmerge | [No fix](#deepmerge-advisory); no published patch |
+
+## Braces advisory
+
+**Update, 9 November 2026:** GitHub withdrew this advisory on 23 October 2026.
+Everything in this section and the next two is the historical record from
+13 October 2026, when it was active. The counts and the "nonzero exit is
+expected" statements below no longer describe current audits; a current
+`npm audit` failure is not this braces finding, so investigate it as new.
 
 Disposition checked on 13 October 2026 against the committed lockfile with
 Node 26.4.0 and npm 11.17.0: **not fixed; no published upstream patch**. Keep the existing dependencies and build contract.
@@ -107,3 +125,69 @@ audit for this advisory, no production regression, and the existing type/build/
 lint checks. Commit only changed generated assets; when bundles change, also
 run release preflight, Plugin Check and all existing WordPress smoke lanes
 listed in `DEVELOPMENT.md`. Preserve exact-head results in the pull request.
+
+## Minimatch advisory
+
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+(Dependabot #14, moderate) affects minimatch `>= 7.0.0, < 11.0.1`; patched in
+11.0.1. Disposition checked on 9 November 2026 with Node 24.22.0:
+**fixed with a scoped override**, `"minimatch@>=7 <11.0.1": "^11.0.1"` in
+`package.json`.
+
+Before the override, minimatch 10.2.6 came from `@wordpress/scripts@36.0.0`
+through `eslint@10.12.0`, `@eslint/config-array@0.23.5`,
+`markdownlint-cli@0.49.1` and `@typescript-eslint/typescript-estree@8.71.1`.
+Their latest releases still declared 10.x (eslint 10.14.0 `^10.2.6`,
+markdownlint-cli 0.50.0 `~10.2.6`, config-array 0.23.5 `^10.2.4`), so no
+compatible upstream update reached 11.0.1. The override resolves those paths
+to minimatch 11.0.5 (engines node `20 || >=22`). minimatch 3.1.5 is below the
+affected range and is untouched.
+
+The override was kept because `npm ci`, `npm run check`, `npm run build`,
+the php, js, shell and workflow lanes of `scripts/lint.sh`, and markdownlint
+pass, and `git diff --exit-code -- assets/build/` is empty: the shipped
+bundles are unchanged. `npm audit --json` no longer lists minimatch. The
+phpcs and phpstan lanes need `composer install` and are unrelated to this
+change.
+
+Remove the override once eslint, config-array, markdownlint-cli and
+typescript-estree all declare minimatch `>=11.0.1` themselves; confirm with
+`npm ls minimatch --all`. If a future eslint or markdownlint release breaks
+on minimatch 11, drop the override and record a no-fix with that release as
+the wake condition.
+
+```sh
+npm ci --ignore-scripts
+npm ls minimatch --all
+npm audit --json
+npm run check
+npm run build
+scripts/lint.sh
+git diff --exit-code -- assets/build/
+```
+
+## Deepmerge advisory
+
+[GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)
+(Dependabot #11, low) affects deepmerge `>= 4.2.0, <= 4.3.1`. Disposition
+checked on 9 November 2026: **not fixed; no published patch**. The advisory
+lists no patched version, and `npm view deepmerge version dist-tags --json`
+shows 4.3.1 as the latest release.
+
+The installed deepmerge 4.3.1 comes from `@wordpress/components@41.0.0`
+(through `@wordpress/rich-text` and `@wordpress/data`, a WordPress external
+that the build does not bundle) and from `@svgr/plugin-svgo` in
+`@wordpress/scripts`. It is development-only: `npm audit --json --omit=dev`
+reports zero vulnerabilities. An override cannot select a version that does
+not exist; no fork or unrelated replacement is introduced.
+
+Revisit at the next dependency review before release, or when a patched
+deepmerge version is published to npm. Then prefer a compatible lockfile
+update, otherwise validate a scoped override with the checks above.
+
+```sh
+npm ci --ignore-scripts
+npm ls deepmerge --all
+npm view deepmerge version dist-tags --json
+npm audit --json --omit=dev
+```
