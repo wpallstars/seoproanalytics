@@ -1,7 +1,7 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-11-09T01:27:41Z",
+  "generated_at": "2026-11-10T13:36:54Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
@@ -11,30 +11,30 @@
     "slug": "wpallstars/seoproanalytics"
   },
   "summary": {
-    "source_files": 306,
-    "code": 128745,
-    "comments": 35728,
-    "blanks": 9234,
+    "source_files": 308,
+    "code": 129654,
+    "comments": 35994,
+    "blanks": 9320,
     "languages": 11,
-    "dependencies": 1464
+    "dependencies": 1465
   },
   "languages": [
     {
       "name": "PHP",
       "files": 121,
-      "code": 53440,
-      "comments": 30619,
-      "blanks": 4629,
-      "percentage": 41.51,
+      "code": 53468,
+      "comments": 30643,
+      "blanks": 4633,
+      "percentage": 41.24,
       "color": "#4F5D95"
     },
     {
       "name": "JSON",
       "files": 9,
-      "code": 21523,
+      "code": 21532,
       "comments": 0,
       "blanks": 0,
-      "percentage": 16.72,
+      "percentage": 16.61,
       "color": "#292929"
     },
     {
@@ -43,43 +43,43 @@
       "code": 14296,
       "comments": 1517,
       "blanks": 789,
-      "percentage": 11.1,
+      "percentage": 11.03,
       "color": "#3178c6"
     },
     {
       "name": "YAML",
-      "files": 13,
-      "code": 10814,
-      "comments": 115,
-      "blanks": 341,
-      "percentage": 8.4,
+      "files": 14,
+      "code": 10828,
+      "comments": 128,
+      "blanks": 345,
+      "percentage": 8.35,
       "color": "#cb171e"
     },
     {
       "name": "Shell",
-      "files": 24,
-      "code": 7763,
-      "comments": 1448,
-      "blanks": 592,
-      "percentage": 6.03,
+      "files": 25,
+      "code": 8454,
+      "comments": 1671,
+      "blanks": 642,
+      "percentage": 6.52,
       "color": "#89e051"
     },
     {
       "name": "Markdown",
       "files": 20,
-      "code": 7706,
+      "code": 7866,
       "comments": 0,
-      "blanks": 1254,
-      "percentage": 5.99,
+      "blanks": 1280,
+      "percentage": 6.07,
       "color": "#083fa1"
     },
     {
       "name": "TypeScript",
       "files": 34,
-      "code": 5658,
-      "comments": 1443,
-      "blanks": 654,
-      "percentage": 4.39,
+      "code": 5665,
+      "comments": 1449,
+      "blanks": 656,
+      "percentage": 4.37,
       "color": "#3178c6"
     },
     {
@@ -88,7 +88,7 @@
       "code": 3888,
       "comments": 295,
       "blanks": 786,
-      "percentage": 3.02,
+      "percentage": 3.0,
       "color": "#563d7c"
     },
     {
@@ -97,7 +97,7 @@
       "code": 2038,
       "comments": 245,
       "blanks": 175,
-      "percentage": 1.58,
+      "percentage": 1.57,
       "color": "#f1e05a"
     },
     {
@@ -106,7 +106,7 @@
       "code": 1611,
       "comments": 43,
       "blanks": 12,
-      "percentage": 1.25,
+      "percentage": 1.24,
       "color": "#6e7781"
     },
     {
@@ -123,8 +123,8 @@
     "direct": 20,
     "runtime": 4,
     "dev": 16,
-    "locked": 1464,
-    "total": 1464,
+    "locked": 1465,
+    "total": 1465,
     "ecosystems": [
       "composer",
       "npm"
@@ -162,7 +162,7 @@
         "direct": 11,
         "runtime": 2,
         "dev": 9,
-        "locked": 1450,
+        "locked": 1451,
         "dependencies": [
           "@tanstack/react-query",
           "@types/react",
