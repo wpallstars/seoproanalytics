@@ -417,6 +417,7 @@ class SEOProAnalytics_Admin_Manager {
                 'saving'      => __('Saving…', 'seoproanalytics'),
                 'saved'       => __('Saved', 'seoproanalytics'),
                 'saveFailed'  => __('Could not save. Please try again.', 'seoproanalytics'),
+                'secretSaved' => __('Saved (hidden). Type a new one to replace it, or a space to remove it.', 'seoproanalytics'),
                 'chooseImage' => __('Choose a picture', 'seoproanalytics'),
                 'useImage'    => __('Use this picture', 'seoproanalytics'),
                 'copyConfirm' => __('Copy these settings into every site’s own settings? Each site can change them again afterwards, unless they are applied to every site.', 'seoproanalytics'),

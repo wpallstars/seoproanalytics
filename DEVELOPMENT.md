@@ -489,16 +489,60 @@ swap cannot start (no `unzip`, unexpected zip layout), the live folder is
 untouched and the deploy falls back to `wp plugin install --force`.
 
 A host at its process or memory limit (CloudLinux LVE) kills WP-CLI with
-exit 137. The post-install load check is run again once, and each killed cron
+exit 137. The post-install load check is run again once, and a killed cron
 event up to 3 tries in all, `DEPLOY_LOAD_RETRY_DELAY` seconds apart (default
 30), whatever the killed process printed; every other exit code fails at once.
-An event gone from `wp cron event list` after a kill (a one-off it took) counts
-as done, only when the list command succeeded. Retried checks report
+Only a hook's lone one-off event still in `wp cron event list` with the same
+timestamp is retried (WP-CLI had not yet taken it). A recurring event is not
+run again (WP-CLI reschedules it before its callback), a one-off gone from the
+list was killed during its callback, the same hook at another time is a
+successor the callback scheduled before it was killed (a
+`wp_schedule_single_event()` chain), and a hook with more than one event
+cannot show which was killed: all fail as `cron HOOK killed (137)`. Retried checks report
 `WARN ... retried (137)`, not FAIL. Events already run one per process, so a
 killed backlog is not run again as one `--due-now` call. To wait before each
 install while the account runs too many processes, set
 `DEPLOY_MAX_ACCOUNT_PROCS` (waits up to 10 minutes while `pgrep -u "$(id -u)"`
-counts more; unset means no wait).
+counts more; unset means no wait). Set both settings on the computer that runs
+`scripts/deploy-sites.sh`; it passes them to the host.
+
+When the retry of a site's load check or cron list is killed too (with the
+activation lists intact and nothing else wrong with the site), the site is
+not failed: its install line waits for a recheck at the end of the run. The
+recheck starts `DEPLOY_LOAD_RETRY_DELAY` seconds after the last install, and
+each held-back install waits for `DEPLOY_MAX_ACCOUNT_PROCS` first; then the
+killed step runs once more, with its own retry (the load also runs the
+page-cache purge and the cron events), and the PHP logs get a new baseline
+first, so lines the recheck logs count as the install's. A pass gives
+`WARN rechecked after host kill (137)`. Killed again, the site is
+`UNVERIFIED: host killed WP-CLI (137) twice`, with a `recheck:` line to run
+by hand (a plain full load, or the cron list when that was killed) and no
+restore command, and the run exits 4 when nothing failed; old run folders are
+still pruned. Any other failure, in the first pass or the recheck, is still
+a FAIL with the restore command (exit 1). The held-back install's Cloudflare
+purge waits for the recheck too, so it follows the page-cache purge.
+
+Every `ssh` the script runs sends a keep-alive every 30 seconds
+(`ServerAliveInterval=30`, `ServerAliveCountMax=4`, over `~/.ssh/config`), so a
+connection that dies without a close fails in about 2 minutes instead of
+hanging for hours. The host may have finished by then: the script names the
+last install it reported, so check the installs after it rather than run
+again blind (running again is safe: an install already on the tag gets the
+same files again).
+
+Each plugin's `--apply` holds its own lock on the host
+(`~/.{slug}-deploy/.lock`). Before taking it, the run also looks at the other
+`~/.*-deploy/.lock` folders there: while another plugin made from the
+starter has a live one (its PID still runs `deploy-remote`), it installs
+nothing, prints `another plugin's deploy is running on this host (<slug>,
+tag …, started …, parent …, PID …)` and exits 3, as for its own lock. Two
+roll-outs to one shared account at once can push it past its process limit,
+and the host then kills the safety checks of both. Another plugin's lock is
+only read, never removed or taken over: a stale one (its run has gone) is
+ignored. Two runs that start in the same second may both pass; the check
+stops the usual case, one roll-out starting while another is mid-way. On a
+host with room for parallel installs, `--allow-concurrent-plugins` skips
+the check. The dry run is unchanged.
 
 When purging Cloudflare by host (no `--cloudflare-token-env`), the WARN
 `Cloudflare keeps pages from before the deploy` on multisite subsites means
@@ -508,7 +552,12 @@ only the main host was purged. Such callers must purge every network host
 `scripts/check-deploy-log.sh` checks the web PHP log classifier
 (`classify_new_log()` in `scripts/lib/deploy-remote.sh`): WordPress's cron
 `could_not_set` notice in several languages and log formats warns, and look-alike
-plugin lines, PHP notices and errors fail. Run it after any change to the
+plugin lines, PHP notices and errors fail. Its `--ignore-log-line` cases
+(`scripts/deploy-sites.sh --ignore-log-line TEXT`, sent to the host as a file
+in `DEPLOY_IGNORE_LOG_FILE`) check that a line with an ignore string warns
+(`ignored log lines (N)`), that it fails beside any other new line, and that
+the string matches literally (regex characters, backslashes) and never in the
+timestamp. Run it after any change to the
 classifier and after `scripts/sync-core.sh`; `--awk PATH` uses another awk
 (the host's may be mawk or GNU Awk). It prints `ok` or `FAIL` per case and
 exits 1 on any mismatch.
@@ -535,8 +584,9 @@ another label, or `none` for no label (a repository that does not use
 aidevops). Keep the issue's title and `starter-sync` label as they are:
 aidevops merges a worker's pull request for this issue by itself (after
 the usual checks) only for that issue shape, and only while the pull
-request changes nothing outside `scripts/core-files.txt` and
-`changelog.txt`; anything else waits for a person.
+request changes nothing outside `scripts/core-files.txt`, `changelog.txt`
+and `README.md` (its Unreleased line, which the release notes need);
+anything else waits for a person.
 
 So that aidevops merges those pull requests by itself even when they add
 a new core file or change the plugin's own files (step 4), set the
@@ -550,6 +600,8 @@ can use the token. Without the secret it uses its own token as before.
 Editing an issue keeps its author, so with the secret set, the next run
 closes an open issue that its own token wrote and opens the maintainer's
 in its place; link an open pull request for the old issue to the new one.
+The replacement keeps a `no-auto-dispatch` hold the old issue had (or is
+held when its labels cannot be read).
 
 To sync by hand, with the starter cloned next to the plugin (the issue
 gives its folder name):
@@ -680,9 +732,10 @@ without its secret, and nothing fails.
    a self-hosted runner label (such as `4cpu-8gb`); private repositories
    pay for GitHub-hosted minutes. Set it per repository:
    `gh variable set CI_RUNNER --repo {owner}/{repo} --body 4cpu-8gb`, and
-   add the repository to the runner group. Jobs that build the zips set up
-   Node 22 themselves (`actions/setup-node`, for the minifier), so the
-   runner needs no Node of its own. An organization variable does
+   add the repository to the runner group. Every job that runs Node sets
+   it up itself (`actions/setup-node`: the lint job for its JavaScript and
+   hook checks, the zip-building jobs for the minifier), so the runner
+   needs no Node of its own. An organization variable does
    not reach private repositories on GitHub's Free plan. Never set it in a
    public repository, or in a private one that runs workflows from fork
    pull requests (Settings → Actions → General): a pull request from a

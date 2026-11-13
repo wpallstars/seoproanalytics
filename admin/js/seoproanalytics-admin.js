@@ -183,6 +183,32 @@
 			}
 		},
 
+		// Show what the server stored in the field that was saved.
+		reflect: function ($input, value, saved) {
+			if ($input.is('[data-seoproan-multi]')) {
+				var chosen = $.map(saved || [], String);
+				$input.find(':checkbox').each(function () {
+					this.checked = this.hasAttribute('data-seoproan-locked') || $.inArray(this.value, chosen) !== -1;
+				});
+			} else if ($input.is(':checkbox')) {
+				$input.data('seoproan-saved', saved ? '1' : '0');
+			} else if ($input.is('input[type="password"][data-seoproan-empty-placeholder]')) {
+				// A secret field: the placeholder always says what the server
+				// stored, even when the field was cleared during the save
+				// (clearing starts no save). The stored value decides: a space
+				// (or only spaces) is stored as nothing, which removes the
+				// secret. The field is emptied only if untouched since this
+				// save started, so newer typing is kept.
+				var removed = saved === undefined || saved === null || String(saved) === '';
+				$input.attr('placeholder', removed ? $input.attr('data-seoproan-empty-placeholder') : i18n.secretSaved);
+				if ($input.val() === value) {
+					$input.val('');
+				}
+			} else if (saved !== undefined && String(saved) !== String($input.val())) {
+				$input.val(saved); // Show the sanitized value.
+			}
+		},
+
 		save: function ($input) {
 			var key = $input.data('seoproan-setting');
 			var value = this.valueOf($input);
@@ -205,16 +231,7 @@
 					return;
 				}
 				var saved = response.data.value;
-				if ($input.is('[data-seoproan-multi]')) {
-					var chosen = $.map(saved || [], String);
-					$input.find(':checkbox').each(function () {
-						this.checked = this.hasAttribute('data-seoproan-locked') || $.inArray(this.value, chosen) !== -1;
-					});
-				} else if ($input.is(':checkbox')) {
-					$input.data('seoproan-saved', saved ? '1' : '0');
-				} else if (saved !== undefined && String(saved) !== String($input.val())) {
-					$input.val(saved); // Show the sanitized value.
-				}
+				Settings.reflect($input, value, saved);
 				if (!$input.is(':checkbox')) {
 					$input.data('seoproan-saved', $input.val());
 				}
