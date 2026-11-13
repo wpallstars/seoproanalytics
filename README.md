@@ -885,6 +885,10 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Developers: synced the 19 core files that differed with WP Plugin Starter 1.0.66 (ffb0c87), including the settings field placeholder fix after an AJAX save, release and hook-check fixes, deploy retries for killed WP-CLI checks and a deploy wait while another starter plugin's deploy runs on the host. No plugin behavior changes beyond the shared admin settings fixes; the version is unchanged (GH#95).
+
 ### 1.20.9
 
 - Fixed: following a link no longer sends three collector requests at once (the click, the engagement and the next pageview). A click on a link followed in the same tab goes with the page's engagement in one request when the page unloads (after 1.5 seconds if it stays), and a pageview waits 0.8 seconds after load, so quick browsing makes one request per page left and does not trip a host's per-address bot protection. New tabs, downloads, other clicks, form submits and test mode still send at once; hits and stored data are unchanged (GH#80).
