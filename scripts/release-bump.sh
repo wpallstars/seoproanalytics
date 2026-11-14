@@ -4,7 +4,10 @@
 # README.md's Version: line; rename the Unreleased block in changelog.txt,
 # readme.txt and README.md to the version; run scripts/readme-badges.sh; print
 # readme.txt's byte budget. Safe to run again: after a rebase conflict, take
-# main's three changelog files and run it again. The short readme.txt lines
+# main's three changelog files (keeping the release's upgrade notice:
+# RELEASING.md, step 1) and run it again. Stops, changing nothing, when
+# README.md has no "### Unreleased" or "### X.Y.Z" written exactly so, or a
+# heading for X.Y.Z in another form (### vX.Y.Z). The short readme.txt lines
 # and any upgrade notice stay hand-written.
 #
 # Usage: scripts/release-bump.sh X.Y.Z
@@ -38,7 +41,7 @@ cleanup() {
 }
 
 usage() {
-	sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
 	return 0
 }
 
@@ -52,6 +55,22 @@ replace_line() {
 	awk -v pat="$pattern" -v rep="$replacement" '
 		!done && $0 ~ pat { print rep; done = 1; next }
 		{ print }' "$file" >"$TMP_FILE"
+	cat "$TMP_FILE" >"$file"
+	rm -f "$TMP_FILE"
+	TMP_FILE=""
+	return 0
+}
+
+# Set the version in the main file's define('{PREFIX}_VERSION', 'X.Y.Z'),
+# keeping its spacing and quotes, on one line or over several: the define
+# plugin_identity() reads (plugin_version_set). Only the version changes.
+replace_define() {
+	local file="$1"
+	local const="$2"
+	local version="$3"
+	TMP_FILE="$(mktemp)"
+	plugin_version_set "$file" "$const" "$version" >"$TMP_FILE" ||
+		die "$file has no define('${const}_VERSION', 'X.Y.Z')"
 	cat "$TMP_FILE" >"$file"
 	rm -f "$TMP_FILE"
 	TMP_FILE=""
@@ -105,10 +124,22 @@ main() {
 	for f in readme.txt README.md changelog.txt; do
 		[[ -f "$f" ]] || die "$f is missing"
 	done
+	# The Release workflow takes the notes from README.md's section for the
+	# version, under exactly "### X.Y.Z": without one the tag's release
+	# fails. Check before any change.
+	local escaped="${version//./\\.}" headings exact
+	headings="$(grep -Ec "^#+ *v?${escaped}[[:space:]]*$" README.md || true)"
+	exact="$(grep -Ec "^### ${escaped}$" README.md || true)"
+	if [[ "$headings" -gt "$exact" ]]; then
+		die "README.md has a heading for $version that is not exactly ### $version (^### (Unreleased|$escaped)\$); the Release workflow would not find its notes. Write it as ### $version, then run again. Nothing changed."
+	fi
+	if ! grep -Eq "^### (Unreleased|${escaped})$" README.md; then
+		die "README.md has no ### Unreleased (or ### $version) section in its changelog, exactly as written (^### (Unreleased|$escaped)\$); add ### Unreleased above the newest version with this release's lines, then run again. Nothing changed."
+	fi
 
 	printf 'Setting version %s\n' "$version"
 	replace_line "$PLUGIN_MAIN_FILE" '^[[:space:]*]*Version:[[:space:]]' " * Version:           $version"
-	replace_line "$PLUGIN_MAIN_FILE" "^define.'${PLUGIN_CONST}_VERSION'" "define('${PLUGIN_CONST}_VERSION', '$version');"
+	replace_define "$PLUGIN_MAIN_FILE" "$PLUGIN_CONST" "$version"
 	replace_line readme.txt '^Stable tag:' "Stable tag: $version"
 	replace_line README.md '^Version:' "Version: $version"
 	rename_unreleased changelog.txt eq "$version"

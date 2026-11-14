@@ -885,6 +885,11 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Developers: core files synced again, with WP Plugin Starter commit 575b24c: `scripts/lib/deploy-remote.sh` is split into `scripts/lib/deploy-remote-*.sh` modules (listed in `scripts/core-files.txt`); `scripts/deploy-sites.sh --apply` no longer fails an install only because the host killed one of the plugin's cron events (exit 137), and says "Nothing installed" when it finds none; the Release workflow uses `actions/setup-node` 7.1.0 as CI does (GH#95).
+- Developers: synced the 19 core files that differed with WP Plugin Starter 1.0.66 (ffb0c87), including the settings field placeholder fix after an AJAX save, release and hook-check fixes, deploy retries for killed WP-CLI checks and a deploy wait while another starter plugin's deploy runs on the host. No plugin behavior changes beyond the shared admin settings fixes; the version is unchanged (GH#95).
+
 ### 1.20.10
 
 - Changed: **Get SEO Pro Analytics Connect** buttons and links (Settings → Connections, Search's set-up, Page experience) have a padlock after them and, on hover, say the feature needs a paid subscription for the connection services. They open the add-on's own page instead of the shop's home page, as do the "(subscription needed)" messages of routes and commands (#97).

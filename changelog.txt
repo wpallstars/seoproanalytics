@@ -2,6 +2,10 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: core files synced again, with WP Plugin Starter commit 575b24c: scripts/lib/deploy-remote.sh is split into scripts/lib/deploy-remote-*.sh modules (listed in scripts/core-files.txt); scripts/deploy-sites.sh --apply no longer fails an install only because the host killed one of the plugin's cron events (exit 137), and says "Nothing installed" when it finds no install; the Release workflow uses actions/setup-node 7.1.0 as CI does. The version is unchanged (GH#95).
+* Developers: synced the 19 core files that differed with WP Plugin Starter 1.0.66 (ffb0c87), including the settings field placeholder fix after an AJAX save, release and hook-check fixes, deploy retries for killed WP-CLI checks, a deploy wait while another starter plugin's deploy runs on the host, and the changelog and doc updates. No plugin behavior changes beyond the shared admin settings fixes; the version is unchanged (GH#95).
+
 = 1.20.10 =
 * Changed: "Get SEO Pro Analytics Connect" buttons and links (Settings → Connections, Search's set-up, Page experience) have a padlock (dashicons-lock) after them and a tooltip: "This feature requires a paid subscription for the connection services. Click for more details…". SEOProAnalytics_Connections::CONNECT_URL is now the add-on's own page instead of the shop's home page, so the REST and WP-CLI "needs the add-on" errors link there too. The app's two links share the new AddonLink component; the Connections tab's button is .seoproan-connection__addon in the tab's own inline styles, so the starter's core stylesheet is unchanged (GitHub issue #97).
 * Developers: synced the 5 core files that differed with WP Plugin Starter main (b87b475): includes/class-seoproanalytics.php, scripts/lib/deploy-remote.sh, scripts/lint.sh, .github/workflows/starter-sync.yml and DEVELOPMENT.md. The Starter sync workflow can write its issue as a maintainer when the optional STARTER_SYNC_TOKEN secret is set; deploys retry a WP-CLI check killed with exit 137 on hosts at their process limit. No plugin behavior changes (GH#93).
