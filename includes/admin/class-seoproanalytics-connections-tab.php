@@ -153,7 +153,7 @@ final class SEOProAnalytics_Connections_Tab {
                 <p><?php esc_html_e('Its connection is still saved here, encrypted, but nothing is read until the add-on is active. Disconnect to forget the saved key.', 'seoproanalytics'); ?></p>
             <?php endif; ?>
             <div class="seoproan-connection__actions">
-                <a class="button" href="<?php echo esc_url(SEOProAnalytics_Connections::connect_url()); ?>" target="_blank" rel="noopener"><?php esc_html_e('Get SEO Pro Analytics Connect', 'seoproanalytics'); ?><span class="screen-reader-text"> <?php esc_html_e('(opens in a new tab)', 'seoproanalytics'); ?></span></a>
+                <a class="button seoproan-addon-link" href="<?php echo esc_url(SEOProAnalytics_Connections::connect_url()); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e('This feature requires a paid subscription for the connection services. Click for more details…', 'seoproanalytics'); ?>"><?php esc_html_e('Get SEO Pro Analytics Connect', 'seoproanalytics'); ?><span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text"> <?php esc_html_e('(opens in a new tab)', 'seoproanalytics'); ?></span></a>
                 <?php if ($kept && $source === 'search-console') : ?>
                     <label><input type="checkbox" data-seoproan-field="delete_data"> <?php esc_html_e('Delete imported search data', 'seoproanalytics'); ?></label>
                 <?php endif; ?>

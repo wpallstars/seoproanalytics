@@ -130,6 +130,21 @@
 	border-color: #b8e6bf;
 }
 
+/* A link to the paid add-on: a padlock after its label. */
+.seoproan-addon-link .dashicons {
+	width: 16px;
+	height: 16px;
+	margin-inline-start: 4px;
+	font-size: 16px;
+	line-height: 1;
+	vertical-align: -3px;
+}
+
+.seoproan-addon-link.button .dashicons {
+	vertical-align: middle;
+	margin-top: -2px;
+}
+
 /* The network screen (multisite), so it is never taken for a site's. */
 .seoproan-badge--network {
 	color: #fff;
