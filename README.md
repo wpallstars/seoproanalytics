@@ -887,7 +887,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
-- Changed: **Get SEO Pro Analytics Connect** buttons and links (Settings → Connections, Search's set-up, Page experience) have a padlock after them and, on hover, say the feature needs a paid subscription for the connection services (#97).
+- Changed: **Get SEO Pro Analytics Connect** buttons and links (Settings → Connections, Search's set-up, Page experience) have a padlock after them and, on hover, say the feature needs a paid subscription for the connection services. They open the add-on's own page instead of the shop's home page, as do the "(subscription needed)" messages of routes and commands (#97).
 
 ### 1.20.9
 
