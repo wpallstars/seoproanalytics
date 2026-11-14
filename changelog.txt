@@ -3,6 +3,7 @@
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
 = Unreleased =
+* Developers: core files synced again, with WP Plugin Starter commit 575b24c: scripts/lib/deploy-remote.sh is split into scripts/lib/deploy-remote-*.sh modules (listed in scripts/core-files.txt); scripts/deploy-sites.sh --apply no longer fails an install only because the host killed one of the plugin's cron events (exit 137), and says "Nothing installed" when it finds no install; the Release workflow uses actions/setup-node 7.1.0 as CI does. The version is unchanged (GH#95).
 * Developers: synced the 19 core files that differed with WP Plugin Starter 1.0.66 (ffb0c87), including the settings field placeholder fix after an AJAX save, release and hook-check fixes, deploy retries for killed WP-CLI checks, a deploy wait while another starter plugin's deploy runs on the host, and the changelog and doc updates. No plugin behavior changes beyond the shared admin settings fixes; the version is unchanged (GH#95).
 
 = 1.20.10 =
