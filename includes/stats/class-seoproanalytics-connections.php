@@ -64,7 +64,7 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
      * The add-on's page, unless SEOPROANALYTICS_CONNECT_URL or the
      * seoproanalytics_connect_url filter gives another.
      */
-    const CONNECT_URL = 'https://www.wpallstars.com/';
+    const CONNECT_URL = 'https://www.wpallstars.com/wordpress/plugins/seoproanalytics-connect/';
 
     /** Prefix of an encrypted value, so a later scheme can be told apart. */
     const CIPHER = 'v1:';

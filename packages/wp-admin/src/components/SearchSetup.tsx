@@ -17,6 +17,7 @@ import type { SearchEngine, SearchEngineChoice } from '@seoproanalytics/core';
 import type { ViewProps } from '../App';
 import { boot } from '../boot';
 import { useDataSet } from '../data';
+import { AddonLink } from './AddonLink';
 
 /** A page and query to open Rankings with. */
 export interface SearchPick {
@@ -85,12 +86,7 @@ export function SearchSetup({ answer }: Readonly<{ answer: { through: string; co
 		return (
 			<Notice status="info" isDismissible={false} className="seoproan-notice">
 				{__('Google Search Console (subscription needed) comes with the SEO Pro Analytics Connect add-on: clicks, impressions, CTR and average position, next to your visits and changes. Bing Webmaster Tools stays free.', 'seoproanalytics')}{' '}
-				{boot.addon.url && (
-					<a href={boot.addon.url} target="_blank" rel="noopener noreferrer">
-						{__('Get SEO Pro Analytics Connect', 'seoproanalytics')}
-						<span className="screen-reader-text"> {__('(opens in a new tab)', 'seoproanalytics')}</span>
-					</a>
-				)}
+				<AddonLink />
 				{connections && (
 					<>
 						{' · '}

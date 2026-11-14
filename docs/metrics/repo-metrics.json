@@ -1,7 +1,7 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-11-12T12:40:43Z",
+  "generated_at": "2026-11-14T15:15:58Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
@@ -11,10 +11,10 @@
     "slug": "wpallstars/seoproanalytics"
   },
   "summary": {
-    "source_files": 310,
-    "code": 130460,
-    "comments": 36192,
-    "blanks": 9388,
+    "source_files": 311,
+    "code": 130565,
+    "comments": 36217,
+    "blanks": 9399,
     "languages": 11,
     "dependencies": 1465
   },
@@ -23,9 +23,9 @@
       "name": "PHP",
       "files": 121,
       "code": 53486,
-      "comments": 30659,
+      "comments": 30660,
       "blanks": 4634,
-      "percentage": 41.0,
+      "percentage": 40.97,
       "color": "#4F5D95"
     },
     {
@@ -34,43 +34,43 @@
       "code": 21532,
       "comments": 0,
       "blanks": 0,
-      "percentage": 16.5,
+      "percentage": 16.49,
       "color": "#292929"
     },
     {
       "name": "TSX",
-      "files": 61,
-      "code": 14296,
-      "comments": 1517,
-      "blanks": 789,
+      "files": 62,
+      "code": 14313,
+      "comments": 1527,
+      "blanks": 791,
       "percentage": 10.96,
       "color": "#3178c6"
     },
     {
       "name": "YAML",
       "files": 14,
-      "code": 10861,
-      "comments": 153,
-      "blanks": 353,
+      "code": 10879,
+      "comments": 162,
+      "blanks": 354,
       "percentage": 8.33,
       "color": "#cb171e"
     },
     {
       "name": "Shell",
       "files": 26,
-      "code": 8955,
-      "comments": 1777,
-      "blanks": 681,
-      "percentage": 6.86,
+      "code": 8984,
+      "comments": 1781,
+      "blanks": 682,
+      "percentage": 6.88,
       "color": "#89e051"
     },
     {
       "name": "Markdown",
       "files": 20,
-      "code": 7923,
+      "code": 7952,
       "comments": 0,
-      "blanks": 1283,
-      "percentage": 6.07,
+      "blanks": 1288,
+      "percentage": 6.09,
       "color": "#083fa1"
     },
     {
@@ -85,10 +85,10 @@
     {
       "name": "CSS",
       "files": 10,
-      "code": 3888,
-      "comments": 295,
-      "blanks": 786,
-      "percentage": 2.98,
+      "code": 3900,
+      "comments": 296,
+      "blanks": 788,
+      "percentage": 2.99,
       "color": "#563d7c"
     },
     {

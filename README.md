@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.9-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.20.10-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.9
+Version: 1.20.10
 
 <!-- github-only:start -->
 ## Screenshots
@@ -574,7 +574,7 @@ While connected, the same hourly job also reads Bing's crawl issues, crawl stats
 
 ### The SEO Pro Analytics Connect add-on
 
-The SEO Pro Analytics Connect add-on, a separate plugin, adds the connections that need an outside account. Until it is installed, Settings → Connections lists them as **(subscription needed)**, with a link to the add-on, and their routes and commands say so. What each adds goes into the same reports:
+The SEO Pro Analytics Connect add-on, a separate plugin, adds the connections that need an outside account. Until it is installed, Settings → Connections lists them as **(subscription needed)**, with a **Get SEO Pro Analytics Connect** button that opens the add-on's page (a padlock after it, and on hover: "This feature requires a paid subscription for the connection services"), and their routes and commands say so. What each adds goes into the same reports:
 
 - **Google Search Console**: Google's clicks, impressions and positions for each page and search query, with sitemaps and URL Inspection.
 - **Chrome UX Report**: real Chrome users' page experience (Page experience above), and a Lighthouse lab test of one page on request.
@@ -888,6 +888,10 @@ this feature; no tracking pixels or tracked links are added.
 ### Unreleased
 
 - Developers: synced the 19 core files that differed with WP Plugin Starter 1.0.66 (ffb0c87), including the settings field placeholder fix after an AJAX save, release and hook-check fixes, deploy retries for killed WP-CLI checks and a deploy wait while another starter plugin's deploy runs on the host. No plugin behavior changes beyond the shared admin settings fixes; the version is unchanged (GH#95).
+
+### 1.20.10
+
+- Changed: **Get SEO Pro Analytics Connect** buttons and links (Settings → Connections, Search's set-up, Page experience) have a padlock after them and, on hover, say the feature needs a paid subscription for the connection services. They open the add-on's own page instead of the shop's home page, as do the "(subscription needed)" messages of routes and commands (#97).
 
 ### 1.20.9
 
