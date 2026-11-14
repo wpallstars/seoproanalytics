@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.9
+Stable tag: 1.20.10
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,8 +117,8 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.20.9 =
-* Fixed: the tracker sends one request per page a visitor leaves, not three at once, and the pageview a moment after the page loads, so quick browsing does not trip a host's bot protection.
+= 1.20.10 =
+* Changed: "Get SEO Pro Analytics Connect" buttons show a padlock and a tooltip, and open the add-on's own page.
 
 Every change: changelog.txt.
 

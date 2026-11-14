@@ -12,20 +12,29 @@
 import { __ } from '@wordpress/i18n';
 import { boot } from '../boot';
 
+// The padlock sits on the text's baseline, after the label.
+const LOCK_STYLE = {
+	width: 16,
+	height: 16,
+	marginInlineStart: 4,
+	fontSize: 16,
+	lineHeight: 1,
+	verticalAlign: '-3px',
+};
+
 export function AddonLink() {
 	if (!boot.addon.url) {
 		return null;
 	}
 	return (
 		<a
-			className="seoproan-addon-link"
 			href={boot.addon.url}
 			target="_blank"
 			rel="noopener noreferrer"
 			title={__('This feature requires a paid subscription for the connection services. Click for more details…', 'seoproanalytics')}
 		>
 			{__('Get SEO Pro Analytics Connect', 'seoproanalytics')}
-			<span className="dashicons dashicons-lock" aria-hidden="true" />
+			<span className="dashicons dashicons-lock" style={LOCK_STYLE} aria-hidden="true" />
 			<span className="screen-reader-text"> {__('(opens in a new tab)', 'seoproanalytics')}</span>
 		</a>
 	);
