@@ -14,6 +14,7 @@ import type { LighthouseAnswer, VitalMetric, VitalsAnswer } from '@seoproanalyti
 import { boot } from './boot';
 import { useDataSet } from './data';
 import { errorMessage, shareAccess } from './api';
+import { AddonLink } from './components/AddonLink';
 import { MainChart } from './components/MainChart';
 import { TableScroll } from './components/TableScroll';
 
@@ -47,7 +48,7 @@ export function Vitals({ chartOnly = false }: Readonly<{ chartOnly?: boolean }>)
 			<p>{__('Chrome UX Report: p75 from real Chrome users over overlapping 28-day windows, not daily measurements or Lighthouse lab scores. Traffic counts cover the last 30 days. Samples older than 14 days are stale and do not create findings.', 'seoproanalytics')}</p>
 			{query.isError && <Notice status="error" isDismissible={false}>{errorMessage(query.error, __('Field data could not be read.', 'seoproanalytics'))}</Notice>}
 			{answer && !answer.connected && (boot.addon.needed.includes('crux')
-				? <p>{__('Chrome UX Report (subscription needed) comes with the SEO Pro Analytics Connect add-on.', 'seoproanalytics')}{' '}{boot.addon.url && <a href={boot.addon.url} target="_blank" rel="noopener noreferrer">{__('Get SEO Pro Analytics Connect', 'seoproanalytics')}<span className="screen-reader-text"> {__('(opens in a new tab)', 'seoproanalytics')}</span></a>}</p>
+				? <p>{__('Chrome UX Report (subscription needed) comes with the SEO Pro Analytics Connect add-on.', 'seoproanalytics')}{' '}<AddonLink /></p>
 				: <p>{__('Connect Chrome UX Report in Settings → Connections to collect field data.', 'seoproanalytics')}</p>)}
 			<SelectControl label={__('Origin metric (p75)', 'seoproanalytics')} value={metric} options={(['lcp', 'inp', 'cls', 'fcp', 'ttfb'] as const).map((m) => ({ value: m, label: m.toUpperCase() }))} onChange={(m: string) => setMetric(m as VitalMetric)} __nextHasNoMarginBottom />
 			<SelectControl label={__('Form factor', 'seoproanalytics')} value={form} options={[{ value: 'PHONE', label: __('Phone', 'seoproanalytics') }, { value: 'DESKTOP', label: __('Desktop', 'seoproanalytics') }]} onChange={(f: string) => setForm(f === 'DESKTOP' ? 'DESKTOP' : 'PHONE')} __nextHasNoMarginBottom />

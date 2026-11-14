@@ -574,7 +574,7 @@ While connected, the same hourly job also reads Bing's crawl issues, crawl stats
 
 ### The SEO Pro Analytics Connect add-on
 
-The SEO Pro Analytics Connect add-on, a separate plugin, adds the connections that need an outside account. Until it is installed, Settings → Connections lists them as **(subscription needed)**, with a link to the add-on, and their routes and commands say so. What each adds goes into the same reports:
+The SEO Pro Analytics Connect add-on, a separate plugin, adds the connections that need an outside account. Until it is installed, Settings → Connections lists them as **(subscription needed)**, with a **Get SEO Pro Analytics Connect** button that opens the add-on's page (a padlock after it, and on hover: "This feature requires a paid subscription for the connection services"), and their routes and commands say so. What each adds goes into the same reports:
 
 - **Google Search Console**: Google's clicks, impressions and positions for each page and search query, with sitemaps and URL Inspection.
 - **Chrome UX Report**: real Chrome users' page experience (Page experience above), and a Lighthouse lab test of one page on request.
@@ -884,6 +884,10 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### Unreleased
+
+- Changed: **Get SEO Pro Analytics Connect** buttons and links (Settings → Connections, Search's set-up, Page experience) have a padlock after them and, on hover, say the feature needs a paid subscription for the connection services. They open the add-on's own page instead of the shop's home page, as do the "(subscription needed)" messages of routes and commands (#97).
 
 ### 1.20.9
 
