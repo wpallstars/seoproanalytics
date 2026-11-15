@@ -81,8 +81,19 @@ function spaces(n,   s) { s = ""; while (n-- > 0) s = s " "; return s }
 # string across lines.
 function code_of(line,   out, i, n, c, j) {
 	out = ""; n = length(line); i = 1
+	# Inside a heredoc/nowdoc body everything is text up to the closing
+	# label (alone, or followed by a non-name character such as ;).
+	if (hd != "") {
+		if (match(line, "^[ \t]*" hd) && substr(line, RLENGTH + 1, 1) !~ /[A-Za-z0-9_]/) {
+			out = spaces(RLENGTH); i = RLENGTH + 1; hd = ""
+		} else return spaces(n)
+	}
 	while (i <= n) {
 		c = substr(line, i, 1)
+		if (st == "" && c == "<" && substr(line, i, 3) == "<<<" && match(substr(line, i), /^<<<[ \t]*[\047"]?[A-Za-z_][A-Za-z0-9_]*[\047"]?/)) {
+			hd = substr(line, i, RLENGTH); sub(/^<<<[ \t]*[\047"]?/, "", hd); sub(/[\047"]$/, "", hd)
+			out = out substr(line, i, RLENGTH) spaces(n - i + 1 - RLENGTH); break
+		}
 		if (st == "block") {
 			j = index(substr(line, i), "*/")
 			if (j == 0) { out = out spaces(n - i + 1); break }
@@ -103,14 +114,34 @@ function code_of(line,   out, i, n, c, j) {
 	}
 	return out
 }
-{ text = text $0 "\n"; code = code code_of($0) "\n" }
+# The line as 1 for each character inside a string literal (the opening quote
+# to the closing one) and 0 elsewhere, same length as code_of(): a define(
+# inside a string is text, not the constant. Block comments are blanked by
+# code_of() already, so only quotes matter; comment text is spaces there.
+function mask_of(code, line,   out, i, n, c, in_q) {
+	out = ""; n = length(line); i = 1
+	while (i <= n) {
+		c = substr(line, i, 1)
+		if (ms == "q") {
+			out = out "1"
+			if (c == "\\" && i < n) { out = out "1"; i += 2; continue }
+			if (c == mq) ms = ""
+			i++; continue
+		}
+		if (substr(code, i, 1) == " " && c != " ") { out = out "0"; i++; continue }
+		if (c == "\047" || c == "\"") { ms = "q"; mq = c; out = out "1"; i++; continue }
+		out = out "0"; i++
+	}
+	return out
+}
+{ text = text $0 "\n"; cl = code_of($0); code = code cl "\n"; mask = mask mask_of(cl, $0) "0" }
 END {
 	name = (want == "") ? "[A-Z0-9_]+" : want
 	pat = "define[[:space:]]*[(][[:space:]]*[\047\"]" name "_VERSION[\047\"]"
 	pos = 0; found = 0
 	while (match(substr(code, pos + 1), pat)) {
 		at = pos + RSTART; len = RLENGTH
-		if (at == 1 || substr(code, at - 1, 1) !~ /[A-Za-z0-9_$>:\\]/) { found = 1; break }
+		if (substr(mask, at, 1) == "0" && (at == 1 || substr(code, at - 1, 1) !~ /[A-Za-z0-9_$>:\\]/)) { found = 1; break }
 		pos = at
 	}
 	if (!found) { if (mode == "set") exit 3; exit 0 }
