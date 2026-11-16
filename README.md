@@ -898,7 +898,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### 1.20.9
 
-- Fixed: following a link no longer sends three collector requests at once (the click, the engagement and the next pageview). A click on a link followed in the same tab goes with the page's engagement in one request when the page unloads (after 1.5 seconds if it stays), and a pageview waits 0.8 seconds after load, so quick browsing makes one request per page left and does not trip a host's per-address bot protection. New tabs, downloads, other clicks, form submits and test mode still send at once; hits and stored data are unchanged (GH#80).
+- Fixed: following a link no longer sends three collector requests at once (the click, the engagement and the next pageview). A click on a link followed in the same tab goes with the page's engagement in one request when the page unloads (after 1.5 seconds if it stays), and a pageview waits 0.8 seconds after load, so quick browsing makes one request per page left (a page stayed on longer sends its pageview first, so at least two) and does not trip a host's per-address bot protection. New tabs, downloads, other clicks, form submits and test mode still send at once; hits and stored data are unchanged (GH#80).
 
 ### 1.20.8
 
