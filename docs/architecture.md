@@ -272,8 +272,13 @@ http(s) link followed in the same tab (no other `target`, modifier key or
 engagement, and its pageview when still waiting, in one request; a
 1.5 second timer (`LEAVE_MS`) sends it if the page stays. A link to a new
 tab, a download, a click that does not leave, a form submit and test mode
-send at once. So a visitor going from page to page makes one collector
-request per page left.
+send at once, and a send at once also sends a waiting pageview. A link to
+a new tab through the page's `<base target>`, and a fragment link to the
+same page, send at once too (a link to the page's own address without a
+fragment reloads it, so it is held). So a visitor who leaves a page within
+0.8 seconds with no click that sends at once makes one collector request
+for it; one who stays longer, or whose click sent at once, makes at least
+two (the pageview or click, then the exit).
 
 The tracker stores nothing in the browser (no cookies, `localStorage` or
 `sessionStorage`, which privacy law treats like cookies). In wp-admin,
