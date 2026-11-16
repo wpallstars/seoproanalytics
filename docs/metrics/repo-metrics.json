@@ -1,7 +1,7 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-11-14T15:15:58Z",
+  "generated_at": "2026-11-16T04:38:04Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
@@ -11,10 +11,10 @@
     "slug": "wpallstars/seoproanalytics"
   },
   "summary": {
-    "source_files": 311,
-    "code": 130565,
-    "comments": 36217,
-    "blanks": 9399,
+    "source_files": 319,
+    "code": 131540,
+    "comments": 36644,
+    "blanks": 9446,
     "languages": 11,
     "dependencies": 1465
   },
@@ -22,10 +22,10 @@
     {
       "name": "PHP",
       "files": 121,
-      "code": 53486,
+      "code": 53491,
       "comments": 30660,
       "blanks": 4634,
-      "percentage": 40.97,
+      "percentage": 40.67,
       "color": "#4F5D95"
     },
     {
@@ -34,43 +34,43 @@
       "code": 21532,
       "comments": 0,
       "blanks": 0,
-      "percentage": 16.49,
+      "percentage": 16.37,
       "color": "#292929"
     },
     {
       "name": "TSX",
       "files": 62,
-      "code": 14313,
-      "comments": 1527,
-      "blanks": 791,
-      "percentage": 10.96,
+      "code": 14320,
+      "comments": 1528,
+      "blanks": 792,
+      "percentage": 10.89,
       "color": "#3178c6"
     },
     {
       "name": "YAML",
       "files": 14,
-      "code": 10879,
-      "comments": 162,
-      "blanks": 354,
-      "percentage": 8.33,
+      "code": 10896,
+      "comments": 167,
+      "blanks": 355,
+      "percentage": 8.28,
       "color": "#cb171e"
     },
     {
       "name": "Shell",
-      "files": 26,
-      "code": 8984,
-      "comments": 1781,
-      "blanks": 682,
-      "percentage": 6.88,
+      "files": 34,
+      "code": 9659,
+      "comments": 2141,
+      "blanks": 715,
+      "percentage": 7.34,
       "color": "#89e051"
     },
     {
       "name": "Markdown",
       "files": 20,
-      "code": 7952,
+      "code": 8046,
       "comments": 0,
-      "blanks": 1288,
-      "percentage": 6.09,
+      "blanks": 1294,
+      "percentage": 6.12,
       "color": "#083fa1"
     },
     {
@@ -79,25 +79,25 @@
       "code": 5665,
       "comments": 1449,
       "blanks": 656,
-      "percentage": 4.34,
+      "percentage": 4.31,
       "color": "#3178c6"
     },
     {
       "name": "CSS",
       "files": 10,
-      "code": 3900,
-      "comments": 296,
-      "blanks": 788,
-      "percentage": 2.99,
+      "code": 3888,
+      "comments": 295,
+      "blanks": 786,
+      "percentage": 2.96,
       "color": "#563d7c"
     },
     {
       "name": "JavaScript",
       "files": 8,
-      "code": 2235,
-      "comments": 296,
-      "blanks": 192,
-      "percentage": 1.71,
+      "code": 2424,
+      "comments": 358,
+      "blanks": 200,
+      "percentage": 1.84,
       "color": "#f1e05a"
     },
     {
@@ -106,7 +106,7 @@
       "code": 1611,
       "comments": 43,
       "blanks": 12,
-      "percentage": 1.23,
+      "percentage": 1.22,
       "color": "#6e7781"
     },
     {
