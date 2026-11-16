@@ -541,7 +541,7 @@ function clicked(e: MouseEvent): void { // NOSONAR: one function on purpose: the
 		// to the same page (a fragment, with or without the path) stays.
 		const base = doc.querySelector('base[target]');
 		const where = (link instanceof HTMLAnchorElement && link.target) || (base && base.getAttribute('target')) || '';
-		if (!cfg.t && link instanceof HTMLAnchorElement && /^https?:$/.test(link.protocol) && e.type === 'click' && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) && /^(?:_self)?$/i.test(where) && !(to.flags & DOWNLOAD) && !link.hasAttribute('download') && link.href.split('#')[0] !== loc.href.split('#')[0]) {
+		if (!cfg.t && link instanceof HTMLAnchorElement && /^https?:$/.test(link.protocol) && e.type === 'click' && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) && /^(?:_self)?$/i.test(where) && !(to.flags & DOWNLOAD) && !link.hasAttribute('download') && !(link.href.includes('#') && link.href.split('#')[0] === loc.href.split('#')[0])) {
 			clearTimeout(timer);
 			timer = setTimeout(flush, LEAVE_MS);
 		} else {
