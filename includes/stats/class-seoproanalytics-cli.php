@@ -6052,8 +6052,11 @@ final class SEOProAnalytics_CLI { // NOSONAR: WP-CLI discovers the public comman
             return;
         }
         $imported = $status['imported'];
+        $account  = $status['account'] !== ''
+            ? $status['account']
+            : (($status['method'] ?? '') === 'google' ? 'Sign in with Google' : 'API key (stored encrypted)');
         $rows     = array(
-            array('field' => 'account', 'value' => $status['account'] !== '' ? $status['account'] : 'API key (stored encrypted)'),
+            array('field' => 'account', 'value' => $account),
             array('field' => 'property', 'value' => $status['property']),
             array('field' => 'imported', 'value' => $imported['from'] !== '' ? $imported['from'] . ' – ' . $imported['to'] : 'nothing yet'),
             array('field' => 'history', 'value' => $imported['complete'] ? 'complete' : sprintf('%d of %d days', $imported['days'], $imported['of'])),
