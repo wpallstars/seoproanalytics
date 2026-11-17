@@ -8,8 +8,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect, useId, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent } from '@seoproanalytics/core';
 import { errorMessage, useBreakdown, useSpeed, type SpeedFigures, type SpeedMetric, type SpeedRating, type SpeedSummary } from './api';
@@ -17,6 +16,7 @@ import { locale } from './boot';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
+import { PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 const METRIC_ORDER: readonly SpeedMetric[] = ['lcp', 'inp', 'cls', 'fcp', 'ttfb'];
@@ -99,11 +99,8 @@ function Rated({ metric, value, rating }: Readonly<{ metric: SpeedMetric; value:
 
 export function Speed({ state, update }: Readonly<ViewProps>) {
 	const page = state.page ?? '';
-	const [typed, setTyped] = useState(page);
-	useEffect(() => setTyped(page), [page]);
 	const query = useSpeed(state, page, 25);
 	const pages = useBreakdown(state, 'page', 100);
-	const list = useId();
 	const answer = query.data;
 	const totals = answer?.totals;
 	const before = answer?.compare?.totals;
@@ -129,44 +126,11 @@ export function Speed({ state, update }: Readonly<ViewProps>) {
 						</h2>
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 					</div>
-					<form
-						className="seoproan-properties__event"
-						onSubmit={(e) => {
-							e.preventDefault();
-							update({ page: typed.trim() });
-						}}
-					>
-						<TextControl
-							__nextHasNoMarginBottom
-							label={__('Only on page', 'seoproanalytics')}
-							value={typed}
-							list={list}
-							autoComplete="off"
-							placeholder={__('Any page; * for any text', 'seoproanalytics')}
-							onChange={setTyped}
-						/>
-						<datalist id={list}>
-							{(pages.data?.rows ?? [])
-								.filter((r) => r.value !== '')
-								.map((r) => (
-									<option key={r.value} value={r.value} />
-								))}
-						</datalist>
-						<Button variant="secondary" type="submit">
-							{__('Apply', 'seoproanalytics')}
-						</Button>
-						{page && (
-							<Button
-								variant="link"
-								onClick={() => {
-									setTyped('');
-									update({ page: '' });
-								}}
-							>
-								{__('Any page', 'seoproanalytics')}
-							</Button>
-						)}
-					</form>
+					<PageFilter
+						page={page}
+						suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
+						onApply={(value) => update({ page: value })}
+					/>
 				</CardHeader>
 
 				<div className="seoproan-tiles">

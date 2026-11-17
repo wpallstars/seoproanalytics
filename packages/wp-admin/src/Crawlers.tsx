@@ -9,8 +9,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect, useId, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { CRAWLER_GROUPS, formatNumber, type CrawlerGroup, type CrawlerKind } from '@seoproanalytics/core';
 import { errorMessage, useCrawlers, type CrawlerRow, type CrawlerTotals, type CrawlersAnswer } from './api';
@@ -18,6 +17,7 @@ import { locale } from './boot';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
+import { PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 interface Tile {
@@ -96,10 +96,7 @@ export function Crawlers({ state, update }: Readonly<ViewProps>) {
 	const kind: CrawlerKind = state.crawl ?? 'bots';
 	const group: CrawlerGroup = state.bots ?? '';
 	const page = state.page ?? '';
-	const [typed, setTyped] = useState(page);
-	useEffect(() => setTyped(page), [page]);
 	const query = useCrawlers(state, kind, group, page, 100);
-	const list = useId();
 	const answer = query.data;
 	const totals = answer?.totals;
 	const change = answer?.compare?.change;
@@ -132,12 +129,10 @@ export function Crawlers({ state, update }: Readonly<ViewProps>) {
 						</h2>
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 					</div>
-					<form
-						className="seoproan-properties__event"
-						onSubmit={(e) => {
-							e.preventDefault();
-							update({ page: typed.trim() });
-						}}
+					<PageFilter
+						page={page}
+						suggestions={kind === 'pages' ? (answer?.rows ?? []).map((r) => r.path ?? '').filter((path) => path !== '') : []}
+						onApply={(value) => update({ page: value })}
 					>
 						<SelectControl
 							__nextHasNoMarginBottom
@@ -147,36 +142,7 @@ export function Crawlers({ state, update }: Readonly<ViewProps>) {
 							options={(['', ...CRAWLER_GROUPS] as CrawlerGroup[]).map((value) => ({ value, label: groupName(value) }))}
 							onChange={(value) => update({ bots: (value || undefined) as ViewProps['state']['bots'] })}
 						/>
-						<TextControl
-							__nextHasNoMarginBottom
-							label={__('Only on page', 'seoproanalytics')}
-							value={typed}
-							list={list}
-							autoComplete="off"
-							placeholder={__('Any page; * for any text', 'seoproanalytics')}
-							onChange={setTyped}
-						/>
-						<datalist id={list}>
-							{kind === 'pages' &&
-								(answer?.rows ?? [])
-									.filter((r) => r.path)
-									.map((r) => <option key={r.path} value={r.path} />)}
-						</datalist>
-						<Button variant="secondary" type="submit">
-							{__('Apply', 'seoproanalytics')}
-						</Button>
-						{page && (
-							<Button
-								variant="link"
-								onClick={() => {
-									setTyped('');
-									update({ page: '' });
-								}}
-							>
-								{__('Any page', 'seoproanalytics')}
-							</Button>
-						)}
-					</form>
+					</PageFilter>
 				</CardHeader>
 
 				<div className="seoproan-tiles" role="group" aria-label={__('Show', 'seoproanalytics')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}

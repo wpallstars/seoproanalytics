@@ -8,8 +8,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect, useId, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClicksAnswer, type ClickTotals, type ClickPageInfo } from '@seoproanalytics/core';
 import { errorMessage, shareAccess, useBreakdown, useClicks } from './api';
@@ -19,6 +18,7 @@ import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
 import { EditLink } from './components/EditLink';
+import { PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 interface Tile {
@@ -172,12 +172,8 @@ function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url'
 export function Clicks({ state, update }: Readonly<ViewProps>) {
 	const kind: ClickKind = state.kind ?? 'elements';
 	const page = state.page ?? '';
-	// The box is a draft until Apply; it follows the address (back button, links).
-	const [typed, setTyped] = useState(page);
-	useEffect(() => setTyped(page), [page]);
 	const query = useClicks(state, kind, page);
 	const pages = useBreakdown(state, 'page', 100);
-	const list = useId();
 	const printAll = usePrintAll();
 	const answer = query.data;
 	const totals = answer?.totals;
@@ -203,44 +199,11 @@ export function Clicks({ state, update }: Readonly<ViewProps>) {
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 						{pageInfo && <PageLinks info={pageInfo} />}
 					</div>
-					<form
-						className="seoproan-properties__event"
-						onSubmit={(e) => {
-							e.preventDefault();
-							update({ page: typed.trim() });
-						}}
-					>
-						<TextControl
-							__nextHasNoMarginBottom
-							label={__('Only on page', 'seoproanalytics')}
-							value={typed}
-							list={list}
-							autoComplete="off"
-							placeholder={__('Any page; * for any text', 'seoproanalytics')}
-							onChange={setTyped}
-						/>
-						<datalist id={list}>
-							{(pages.data?.rows ?? [])
-								.filter((r) => r.value !== '')
-								.map((r) => (
-									<option key={r.value} value={r.value} />
-								))}
-						</datalist>
-						<Button variant="secondary" type="submit">
-							{__('Apply', 'seoproanalytics')}
-						</Button>
-						{page && (
-							<Button
-								variant="link"
-								onClick={() => {
-									setTyped('');
-									update({ page: '' });
-								}}
-							>
-								{__('Any page', 'seoproanalytics')}
-							</Button>
-						)}
-					</form>
+					<PageFilter
+						page={page}
+						suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
+						onApply={(value) => update({ page: value })}
+					/>
 				</CardHeader>
 
 				<div className="seoproan-tiles" role="group" aria-label={__('Show', 'seoproanalytics')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
