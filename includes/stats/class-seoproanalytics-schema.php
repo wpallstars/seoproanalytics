@@ -112,15 +112,22 @@ final class SEOProAnalytics_Schema {
     const ENGINE_BING   = 2;
 
     /**
-     * Serp-only engines (SEOProAnalytics_Serp::ENGINES): Brave's and DeepSeek's
-     * web results, and the sources Brave (its LLM Context) and Linkup (its
-     * sourced answers) give an AI to answer from, kept apart from search
-     * places. Never in gsc_* rows.
+     * Serp-only engines (SEOProAnalytics_Serp::ENGINES): Brave's, DeepSeek's
+     * and Oxylabs' web results, and the sources AI answers are given or
+     * cite, kept apart from search places: Brave (its LLM Context), Linkup
+     * (its sourced answers), ChatGPT, Gemini, Google AI Mode, Google's AI
+     * Overview and Bing AI Mode. Never in gsc_* rows.
      */
-    const ENGINE_BRAVE     = 3;
-    const ENGINE_DEEPSEEK  = 4;
-    const ENGINE_BRAVE_AI  = 5;
-    const ENGINE_LINKUP_AI = 6;
+    const ENGINE_BRAVE      = 3;
+    const ENGINE_DEEPSEEK   = 4;
+    const ENGINE_BRAVE_AI   = 5;
+    const ENGINE_LINKUP_AI  = 6;
+    const ENGINE_CHATGPT_AI = 7;
+    const ENGINE_GEMINI_AI  = 8;
+    const ENGINE_AIMODE_AI  = 9;
+    const ENGINE_AIO_AI     = 10;
+    const ENGINE_BING_AI    = 11;
+    const ENGINE_OXYLABS    = 12;
 
     /** Device of gsc_totals rows (as SEOProAnalytics_UA's device codes; 0 other). */
     const GSC_DEVICES = array(

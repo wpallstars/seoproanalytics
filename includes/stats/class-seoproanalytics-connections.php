@@ -54,9 +54,11 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
         'semrush'        => array('name' => 'Semrush', 'kind' => 'provider'),
         'serper'         => array('name' => 'Serper', 'kind' => 'provider'),
         'serpapi'        => array('name' => 'SerpApi', 'kind' => 'provider'),
+        'oxylabs'        => array('name' => 'Oxylabs', 'kind' => 'provider'),
         'brave'          => array('name' => 'Brave Search', 'kind' => 'provider'),
         'deepseek'       => array('name' => 'DeepSeek', 'kind' => 'provider'),
         'linkup'         => array('name' => 'Linkup', 'kind' => 'provider'),
+        'cloro'          => array('name' => 'cloro', 'kind' => 'provider'),
         'crawler'        => array('name' => 'LibreCrawl server', 'kind' => 'source'),
     );
 
@@ -208,9 +210,11 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
             'semrush'        => __('Backlinks and the Google positions of your search targets, with your own account.', 'seoproanalytics'),
             'serper'         => __('The Google positions of your search targets, with your own account.', 'seoproanalytics'),
             'serpapi'        => __('The Google positions of your search targets, with your own account.', 'seoproanalytics'),
+            'oxylabs'        => __('The Google positions of your search targets, read through Oxylabs\' web scraper, with your own account.', 'seoproanalytics'),
             'brave'          => __('Your search targets\' Brave positions, and whether Brave gives AI assistants your pages to answer them from, with your own account.', 'seoproanalytics'),
             'deepseek'       => __('Your search targets\' positions in DeepSeek\'s search, which its AI assistant answers from, with your own account.', 'seoproanalytics'),
             'linkup'         => __('Whether the sources Linkup, a search API AI agents use, gives its answers to your search targets include your pages, and a second look at referring pages the backlinks check cannot open, with your own account.', 'seoproanalytics'),
+            'cloro'          => __('Whether ChatGPT, Gemini, Google AI Mode, Google\'s AI Overview and Bing AI Mode cite your pages when they answer your search targets, read through cloro, with your own account.', 'seoproanalytics'),
             'crawler'        => __('Scheduled crawls of this site by your own LibreCrawl server, imported into Site crawl.', 'seoproanalytics'),
         );
         $out = array();

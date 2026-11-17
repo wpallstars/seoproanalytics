@@ -578,7 +578,7 @@ The SEO Pro Analytics Connect add-on, a separate plugin, adds the connections th
 
 - **Google Search Console**: Google's clicks, impressions and positions for each page and search query, with sitemaps and URL Inspection.
 - **Chrome UX Report**: real Chrome users' page experience (Page experience above), and a Lighthouse lab test of one page on request.
-- **Paid providers** (DataForSEO, Ahrefs, Semrush, Serper, SerpApi, Brave Search, DeepSeek and Linkup, with your own accounts and spending limits): backlinks with the linking sites' ranks, the search targets' places, and whether AI answers give your pages as sources.
+- **Paid providers** (DataForSEO, Ahrefs, Semrush, Serper, SerpApi, Oxylabs, Brave Search, DeepSeek, Linkup and cloro, with your own accounts and spending limits): backlinks with the linking sites' ranks, the search targets' places, and whether AI answers give or cite your pages as sources (with cloro: ChatGPT, Gemini, Google AI Mode, Google's AI Overview and Bing AI Mode).
 - **Crawler server**: scheduled crawls of the site by your own LibreCrawl server, imported into Site crawl.
 
 A connection saved before stays stored without the add-on, unread, and can still be disconnected; its imported data stays in the reports.
@@ -887,6 +887,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
+- New: **cloro** and **Oxylabs** as paid providers in the SEO Pro Analytics Connect add-on (shown as "(subscription needed)" without it). cloro tracks whether ChatGPT, Gemini, Google AI Mode, Google's AI Overview and Bing AI Mode cite the site's pages when they answer each search target; Oxylabs tracks the targets' Google places. Search → Targets shows each one's newest place; entering or leaving an AI answer's sources is an `ai_source` change. New `tracked_engines` keys: `oxylabs`, `chatgpt_ai`, `gemini_ai`, `aimode_ai`, `aio_ai` and `bing_ai`.
 - Fixed: the tracker sends a click at once when a link opens in a new tab only through the page's base target, and when a link goes to the same page (a fragment); before they waited 1.5 seconds. "One request per page left" in 1.20.9 holds only when the page is left within 0.8 seconds; a page stayed on longer sends its pageview first, so at least two (GH#106).
 - Fixed: the padlock on Settings → Connections' **Get SEO Pro Analytics Connect** buttons sits level with the label instead of at the top of the button (#97).
 - Developers: core files synced again, with WP Plugin Starter commit 575b24c: `scripts/lib/deploy-remote.sh` is split into `scripts/lib/deploy-remote-*.sh` modules (listed in `scripts/core-files.txt`); `scripts/deploy-sites.sh --apply` no longer fails an install only because the host killed one of the plugin's cron events (exit 137), and says "Nothing installed" when it finds none; the Release workflow uses `actions/setup-node` 7.1.0 as CI does (GH#95).

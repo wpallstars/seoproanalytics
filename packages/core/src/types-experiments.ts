@@ -381,15 +381,19 @@ export interface TargetRow {
 export const SERP_FEATURES = ['ai_overview', 'featured_snippet', 'people_also_ask', 'local_pack', 'video', 'images', 'top_stories', 'shopping', 'knowledge_graph', 'cited'] as const;
 export type SerpFeature = (typeof SERP_FEATURES)[number];
 
-/** Engines tracked besides Google: Brave's and DeepSeek's web results, and the sources Brave (brave_ai) and Linkup (linkup_ai) give an AI to answer from. */
-export const TRACKED_ENGINES = ['brave', 'deepseek', 'brave_ai', 'linkup_ai'] as const;
+/**
+ * Engines tracked besides Google: Brave's, DeepSeek's and Oxylabs' (Google's, read through Oxylabs) web results, and
+ * the sources AI answers are given or cite: Brave (brave_ai), Linkup (linkup_ai), ChatGPT (chatgpt_ai), Gemini
+ * (gemini_ai), Google AI Mode (aimode_ai), Google's AI Overview (aio_ai) and Bing AI Mode (bing_ai).
+ */
+export const TRACKED_ENGINES = ['brave', 'deepseek', 'oxylabs', 'brave_ai', 'linkup_ai', 'chatgpt_ai', 'gemini_ai', 'aimode_ai', 'aio_ai', 'bing_ai'] as const;
 export type TrackedEngine = (typeof TRACKED_ENGINES)[number];
 
 /** A target's newest tracked positions in one engine. */
 export interface TrackedPosition {
 	/** The newest day checked. */
 	day: string;
-	/** Best organic place (brave_ai, linkup_ai: its place among the AI answer's sources); null when not within the results read. */
+	/** Best organic place (the *_ai engines: its place among the AI answer's sources); null when not within the results read. */
 	desktop: number | null;
 	mobile: number | null;
 	/** The site's page at that place (a path). */

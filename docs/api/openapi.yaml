@@ -4583,13 +4583,15 @@ components:
         Settings → Data), index_status (a page's verdict in Google's
         URL Inspection changed; old and new are Google's coverage states;
         see /inspections), rank_move (a tracked search target's Google,
-        Brave or DeepSeek position moved by 3 or more, or onto or off the
-        first 10, in a paid provider's weekly check; old and new are
-        places, empty when not within the results read; meta engine names
-        the engine), ai_source (in the search group: the site entered or
-        left the sources Brave or Linkup gives an AI to answer a tracked
-        target from; old and new are its place among them, empty when not
-        among them; meta engine names the engine), served (in the seo group: what a
+        Brave, DeepSeek or Oxylabs (Google) position moved by 3 or more,
+        or onto or off the first 10, in a paid provider's weekly check;
+        old and new are places, empty when not within the results read;
+        meta engine names the engine), ai_source (in the search group: the
+        site entered or left the sources Brave or Linkup gives an AI to
+        answer a tracked target from, or the sources ChatGPT, Gemini,
+        Google AI Mode, Google's AI Overview or Bing AI Mode cite, read
+        through cloro; old and new are its place among them, empty when
+        not among them; meta engine names the engine), served (in the seo group: what a
         page served to an imported crawl changed since the crawl before,
         its status, noindex or canonical elsewhere; old and new say what
         it served; see /crawl); note, experiment (an experiment's start;
@@ -6678,9 +6680,14 @@ components:
             site's place among the pages Brave gives an AI to answer the
             target from, its LLM Context; null when not among them),
             linkup_ai (the site's place among the sources of Linkup's
-            sourced answer to the target; null when not among them). These
-            engines have no devices: desktop holds the place and mobile is
-            null. Null when none is tracked.
+            sourced answer to the target; null when not among them),
+            oxylabs (Google's web results read through Oxylabs), and
+            chatgpt_ai, gemini_ai, aimode_ai (Google AI Mode), aio_ai
+            (Google's AI Overview) and bing_ai (Bing AI Mode): the site's
+            place among the sources that answer cites, read through cloro;
+            null when not among them. These engines have no devices:
+            desktop holds the place and mobile is null. Null when none is
+            tracked.
           oneOf:
             - type: object
               properties:
@@ -6688,9 +6695,21 @@ components:
                   $ref: '#/components/schemas/TrackedPosition'
                 deepseek:
                   $ref: '#/components/schemas/TrackedPosition'
+                oxylabs:
+                  $ref: '#/components/schemas/TrackedPosition'
                 brave_ai:
                   $ref: '#/components/schemas/TrackedPosition'
                 linkup_ai:
+                  $ref: '#/components/schemas/TrackedPosition'
+                chatgpt_ai:
+                  $ref: '#/components/schemas/TrackedPosition'
+                gemini_ai:
+                  $ref: '#/components/schemas/TrackedPosition'
+                aimode_ai:
+                  $ref: '#/components/schemas/TrackedPosition'
+                aio_ai:
+                  $ref: '#/components/schemas/TrackedPosition'
+                bing_ai:
                   $ref: '#/components/schemas/TrackedPosition'
             - type: 'null'
 
@@ -6705,7 +6724,7 @@ components:
         desktop:
           type: [integer, 'null']
           minimum: 1
-          description: The site's best organic place on desktop (engines without devices, such as Brave, here); null when not within the results read (20 for Google and Brave, 50 for DeepSeek, the sources given for brave_ai and linkup_ai).
+          description: The site's best organic place on desktop (engines without devices, such as Brave, here); null when not within the results read (20 for Google, Oxylabs and Brave, 50 for DeepSeek, the sources given or cited for the *_ai engines).
         mobile:
           type: [integer, 'null']
           minimum: 1
