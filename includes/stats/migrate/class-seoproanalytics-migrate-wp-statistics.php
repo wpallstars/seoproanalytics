@@ -520,6 +520,7 @@ final class SEOProAnalytics_Migrate_WP_Statistics extends SEOProAnalytics_Migrat
             $out['network'] = array_filter(array(
                 'options'   => self::options_like($site_transients, 'sitemeta'),
                 'user_meta' => self::user_meta_like('wp_statistics'),
+                'files'     => $lang,
             ));
         }
         return $out;

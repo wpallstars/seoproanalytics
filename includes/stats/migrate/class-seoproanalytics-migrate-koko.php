@@ -310,6 +310,7 @@ final class SEOProAnalytics_Migrate_Koko extends SEOProAnalytics_Migrate_Source 
             // Shared by every site: listed, never deleted from one site.
             $out['network'] = array_filter(array(
                 'user_meta' => self::user_meta_like('_koko_analytics_'),
+                'files'     => $lang,
             ));
         }
         return $out;
