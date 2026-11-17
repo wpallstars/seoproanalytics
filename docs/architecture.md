@@ -3129,8 +3129,8 @@ or native elsewhere).
 ## Performance budgets
 
 - Visitor pages: no database query, option write or remote request added;
-  the inline tracker under 5 KB compressed (`gzip -9`: 4,886 bytes in
-  1.22.0, of which page speed and click places are 587; 4,299 in
+  the inline tracker under 5 KB compressed (`gzip -9`: 4,974 bytes in
+  1.22.0, of which page speed and click places are 675; 4,299 in
   1.21.0). Page speed adds observers
   only (no timers, no request: it rides on the engagement hit); crawler
   counting adds one user-agent match, and writes only for bots; the

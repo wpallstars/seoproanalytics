@@ -74,14 +74,16 @@ final class SEOProAnalytics_Toolbar {
     }
 
     /**
-     * The current page's path, as pageviews store it (no query).
+     * The current page's path, as pageviews store it (no query; decoded,
+     * as SEOProAnalytics_Processor::split_url() stores it: /caf%C3%A9/ is
+     * /café/).
      *
      * @return string
      */
     private static function path() {
         $uri  = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '/'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sent to our own REST route as a parameter, escaped for the page.
         $path = (string) wp_parse_url($uri, PHP_URL_PATH);
-        return $path === '' ? '/' : $path;
+        return '/' . ltrim(rawurldecode($path === '' ? '/' : $path), '/');
     }
 
     /**
@@ -151,7 +153,9 @@ final class SEOProAnalytics_Toolbar {
             return;
         }
         $config = array(
-            'root'  => esc_url_raw(rest_url(SEOProAnalytics_Collection::REST_NAMESPACE . '/')),
+            // Whole endpoint addresses: with plain permalinks the route is itself a query parameter.
+            'summaryUrl' => esc_url_raw(rest_url(SEOProAnalytics_Collection::REST_NAMESPACE . '/page-summary')),
+            'heatmapUrl' => esc_url_raw(rest_url(SEOProAnalytics_Collection::REST_NAMESPACE . '/heatmap')),
             'nonce' => wp_create_nonce('wp_rest'),
             'page'  => self::path(),
             'node'  => 'wp-admin-bar-' . self::NODE,

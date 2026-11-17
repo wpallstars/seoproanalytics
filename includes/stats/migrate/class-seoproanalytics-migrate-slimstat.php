@@ -14,7 +14,9 @@
  * read, and so are slim_stats_3 and slim_stats_archive_3, the pageviews
  * kept from version 3 (renamed when 4.0 upgraded), whose browser,
  * platform and browser_type are in slim_browsers (by browser_id) and
- * content_type in slim_content_info (by content_info_id). Its rows also
+ * content_type in slim_content_info (by content_info_id); without those
+ * two they are not read, and rows 4.0 copied into slim_stats (same id
+ * and dt) are read from slim_stats only. Its rows also
  * hold the IP addresses, the user name and e-mail, the fingerprint and
  * the user agent: those columns are never read, only grouped counts.
  *
@@ -455,8 +457,14 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
     private function tables() {
         global $wpdb;
         $out = array();
+        // A version 3 row's crawler and wp-admin marks are in the shared
+        // tables: without them its rows cannot be told from visitors'.
+        $classified = self::table_exists($wpdb->base_prefix . 'slim_browsers') && self::table_exists($wpdb->base_prefix . 'slim_content_info');
         foreach (self::READ as $name) {
             $table = $wpdb->prefix . $name;
+            if (self::old($table) && !$classified) {
+                continue;
+            }
             if (!array_diff(self::old($table) ? self::COLUMNS_3 : self::COLUMNS, self::columns($table))) {
                 $out[] = $table;
             }
@@ -478,7 +486,10 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
      * A table read, as SQL to select from (alias it) and its placeholders'
      * values: the table itself, or a version 3 table's rows of a dt range
      * with browser, platform and browser_type from slim_browsers and
-     * content_type from slim_content_info (NULL when that table is gone).
+     * content_type from slim_content_info (rows without both are left
+     * out, as 4.0's own copy did). 4.0 copied slim_stats_3's rows into
+     * slim_stats with the same id and dt: a row found there (or in the
+     * archive its retention moved it to) is read from there only.
      *
      * @param string $table Full name.
      * @param int    $from  First dt.
@@ -490,28 +501,17 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
         if (!self::old($table)) {
             return array('%i', array($table));
         }
-        $cols = 's.id, s.dt, s.visit_id, s.resource, s.referer, s.country';
-        $join = '';
-        $args = array($table);
-        // Shared by the network in version 3, so under the base prefix.
-        $browsers = $wpdb->base_prefix . 'slim_browsers';
-        if (self::table_exists($browsers)) {
-            $cols  .= ', b.browser, b.platform, b.type AS browser_type';
-            $join  .= ' LEFT JOIN %i b ON b.browser_id = s.browser_id';
-            $args[] = $browsers;
-        } else {
-            $cols .= ', NULL AS browser, NULL AS platform, NULL AS browser_type';
+        // slim_browsers and slim_content_info: shared by the network in version 3, so under the base prefix.
+        $args = array($table, $wpdb->base_prefix . 'slim_browsers', $wpdb->base_prefix . 'slim_content_info', $from, $to);
+        $copied = '';
+        foreach (array('slim_stats', 'slim_stats_archive') as $name) {
+            $current = $wpdb->prefix . $name;
+            if (self::table_exists($current)) {
+                $copied .= ' AND NOT EXISTS (SELECT 1 FROM %i n WHERE n.id = s.id AND n.dt = s.dt)';
+                $args[]  = $current;
+            }
         }
-        $content = $wpdb->base_prefix . 'slim_content_info';
-        if (self::table_exists($content)) {
-            $cols  .= ', c.content_type';
-            $join  .= ' LEFT JOIN %i c ON c.content_info_id = s.content_info_id';
-            $args[] = $content;
-        } else {
-            $cols .= ', NULL AS content_type';
-        }
-        array_push($args, $from, $to);
-        return array("(SELECT $cols FROM %i s$join WHERE s.dt >= %d AND s.dt < %d)", $args);
+        return array("(SELECT s.id, s.dt, s.visit_id, s.resource, s.referer, s.country, b.browser, b.platform, b.type AS browser_type, c.content_type FROM %i s INNER JOIN %i b ON b.browser_id = s.browser_id INNER JOIN %i c ON c.content_info_id = s.content_info_id WHERE s.dt >= %d AND s.dt < %d$copied)", $args);
     }
 
     /**

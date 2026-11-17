@@ -201,8 +201,14 @@
 
 	function load() {
 		status.textContent = t.loading;
-		var query = 'heatmap?page=' + encodeURIComponent(cfg.page) + '&range=' + encodeURIComponent(state.range) + '&compare=none' + (state.device ? '&device=' + encodeURIComponent(state.device) : '');
-		fetch(cfg.root + query, { credentials: 'same-origin', headers: { 'X-WP-Nonce': cfg.nonce } })
+		var url = new URL(cfg.heatmapUrl, window.location.href);
+		url.searchParams.set('page', cfg.page);
+		url.searchParams.set('range', state.range);
+		url.searchParams.set('compare', 'none');
+		if (state.device) {
+			url.searchParams.set('device', state.device);
+		}
+		fetch(url.toString(), { credentials: 'same-origin', headers: { 'X-WP-Nonce': cfg.nonce } })
 			.then(function (response) {
 				return response.ok ? response.json() : Promise.reject(response);
 			})

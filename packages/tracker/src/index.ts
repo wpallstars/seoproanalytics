@@ -359,6 +359,10 @@ function measureSpeed(): void {
 		}
 	});
 	// CLS: the largest burst of shifts (gaps under 1 s, up to 5 s), not caused by input.
+	// A page shown that never shifts measured 0, not nothing.
+	if (shown && PerformanceObserver.supportedEntryTypes?.includes('layout-shift')) {
+		s.c = 0;
+	}
 	watch('layout-shift', (entry) => {
 		if (entry.hadRecentInput) {
 			return;
@@ -374,7 +378,8 @@ function measureSpeed(): void {
 		shift = Math.max(shift, windowSum);
 		s.c = Math.round(shift * 1000);
 	});
-	// INP: the slowest interaction, leaving out one in 50 on long visits.
+	// INP: the slowest interaction, leaving out one in 50 of all interactions
+	// (the browser's count; the observer sees only the slower ones).
 	watch(
 		'event',
 		(entry) => {
@@ -384,7 +389,9 @@ function measureSpeed(): void {
 				const all = Object.keys(inputs)
 					.map((key) => inputs[Number(key)] || 0)
 					.sort((a, b) => b - a);
-				s.i = Math.round(all[Math.min(all.length - 1, Math.floor(all.length / 50))] || 0);
+				const count = (perf as Performance & { interactionCount?: number }).interactionCount;
+				const total = typeof count === 'number' && count >= all.length ? count : all.length;
+				s.i = Math.round(all[Math.min(all.length - 1, Math.floor(total / 50))] || 0);
 			}
 		},
 		{ durationThreshold: 40 },

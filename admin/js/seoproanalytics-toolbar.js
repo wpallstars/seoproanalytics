@@ -125,7 +125,9 @@
 			return;
 		}
 		box.textContent = t.loading;
-		fetch(cfg.root + 'page-summary?page=' + encodeURIComponent(cfg.page), {
+		var url = new URL(cfg.summaryUrl, window.location.href);
+		url.searchParams.set('page', cfg.page);
+		fetch(url.toString(), {
 			credentials: 'same-origin',
 			headers: { 'X-WP-Nonce': cfg.nonce },
 		})
