@@ -480,7 +480,7 @@ abstract class SEOProAnalytics_Migrate_Source {
         $found = glob($dir . $domain . '-*', GLOB_NOSORT);
         $out   = array();
         foreach (is_array($found) ? $found : array() as $path) {
-            if (is_string($path) && is_file($path) && preg_match('/^' . preg_quote($domain, '/') . '-[a-z]{2,3}(_[A-Za-z0-9]+)*(_[a-z]+)?(-[a-f0-9]{32})?\.(mo|po|json|l10n\.php|mo\.php)$/', basename($path))) {
+            if (is_file($path) && preg_match('/^' . preg_quote($domain, '/') . '-[a-z]{2,3}(_[A-Za-z0-9]+)*(_[a-z]+)?(-[a-f0-9]{32})?\.(mo|po|json|l10n\.php|mo\.php)$/', basename($path))) {
                 $out[] = $path;
             }
         }
