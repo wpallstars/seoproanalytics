@@ -382,7 +382,7 @@ export const SERP_FEATURES = ['ai_overview', 'featured_snippet', 'people_also_as
 export type SerpFeature = (typeof SERP_FEATURES)[number];
 
 /**
- * Engines tracked besides Google: Brave's, DeepSeek's and Oxylabs' (Google's, read through Oxylabs) web results, and
+ * Engines tracked besides Google: Brave's, DeepSeek's and Oxylabs' (its Web API's live search) web results, and
  * the sources AI answers are given or cite: Brave (brave_ai), Linkup (linkup_ai), ChatGPT (chatgpt_ai), Gemini
  * (gemini_ai), Google AI Mode (aimode_ai), Google's AI Overview (aio_ai) and Bing AI Mode (bing_ai).
  */

@@ -4583,7 +4583,7 @@ components:
         Settings → Data), index_status (a page's verdict in Google's
         URL Inspection changed; old and new are Google's coverage states;
         see /inspections), rank_move (a tracked search target's Google,
-        Brave, DeepSeek or Oxylabs (Google) position moved by 3 or more,
+        Brave, DeepSeek or Oxylabs position moved by 3 or more,
         or onto or off the first 10, in a paid provider's weekly check;
         old and new are places, empty when not within the results read;
         meta engine names the engine), ai_source (in the search group: the
@@ -6681,7 +6681,7 @@ components:
             target from, its LLM Context; null when not among them),
             linkup_ai (the site's place among the sources of Linkup's
             sourced answer to the target; null when not among them),
-            oxylabs (Google's web results read through Oxylabs), and
+            oxylabs (the live web search of Oxylabs' Web API), and
             chatgpt_ai, gemini_ai, aimode_ai (Google AI Mode), aio_ai
             (Google's AI Overview) and bing_ai (Bing AI Mode): the site's
             place among the sources that answer cites, read through cloro;

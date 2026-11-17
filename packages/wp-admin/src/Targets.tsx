@@ -466,7 +466,7 @@ function engineTitle(engine: TrackedEngine): string {
 	const titles: Record<TrackedEngine, string> = {
 		brave: __('Tracked place in Brave Search', 'seoproanalytics'),
 		deepseek: __('Tracked place in DeepSeek\'s search', 'seoproanalytics'),
-		oxylabs: __('Tracked place in Google, read through Oxylabs', 'seoproanalytics'),
+		oxylabs: __('Tracked place in the live web search of Oxylabs\' Web API', 'seoproanalytics'),
 		brave_ai: __('Place among the pages Brave gives an AI to answer this from', 'seoproanalytics'),
 		linkup_ai: __('Place among the sources of Linkup\'s answer to this, a search AI agents use', 'seoproanalytics'),
 		chatgpt_ai: __('Place among the sources ChatGPT cites in its answer to this, read through cloro', 'seoproanalytics'),
@@ -512,7 +512,7 @@ function engineLine(engine: TrackedEngine, value: number | null): string {
 			return sprintf(__('DeepSeek: %s', 'seoproanalytics'), shown);
 		case 'oxylabs':
 			/* translators: %s: place ("–": not within the results read). */
-			return sprintf(__('Google (Oxylabs): %s', 'seoproanalytics'), shown);
+			return sprintf(__('Oxylabs: %s', 'seoproanalytics'), shown);
 		case 'linkup_ai':
 			return value === null
 				? __('Linkup AI sources: not cited', 'seoproanalytics')
