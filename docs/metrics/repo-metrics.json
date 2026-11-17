@@ -1,7 +1,7 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-11-16T04:38:04Z",
+  "generated_at": "2026-11-17T06:24:24Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
@@ -12,9 +12,9 @@
   },
   "summary": {
     "source_files": 319,
-    "code": 131540,
-    "comments": 36644,
-    "blanks": 9446,
+    "code": 131619,
+    "comments": 36660,
+    "blanks": 9448,
     "languages": 11,
     "dependencies": 1465
   },
@@ -22,10 +22,10 @@
     {
       "name": "PHP",
       "files": 121,
-      "code": 53491,
-      "comments": 30660,
+      "code": 53518,
+      "comments": 30665,
       "blanks": 4634,
-      "percentage": 40.67,
+      "percentage": 40.66,
       "color": "#4F5D95"
     },
     {
@@ -34,25 +34,25 @@
       "code": 21532,
       "comments": 0,
       "blanks": 0,
-      "percentage": 16.37,
+      "percentage": 16.36,
       "color": "#292929"
     },
     {
       "name": "TSX",
       "files": 62,
-      "code": 14320,
-      "comments": 1528,
-      "blanks": 792,
-      "percentage": 10.89,
+      "code": 14344,
+      "comments": 1533,
+      "blanks": 794,
+      "percentage": 10.9,
       "color": "#3178c6"
     },
     {
       "name": "YAML",
       "files": 14,
-      "code": 10896,
+      "code": 10915,
       "comments": 167,
       "blanks": 355,
-      "percentage": 8.28,
+      "percentage": 8.29,
       "color": "#cb171e"
     },
     {
@@ -67,7 +67,7 @@
     {
       "name": "Markdown",
       "files": 20,
-      "code": 8046,
+      "code": 8053,
       "comments": 0,
       "blanks": 1294,
       "percentage": 6.12,
@@ -76,8 +76,8 @@
     {
       "name": "TypeScript",
       "files": 34,
-      "code": 5665,
-      "comments": 1449,
+      "code": 5667,
+      "comments": 1455,
       "blanks": 656,
       "percentage": 4.31,
       "color": "#3178c6"
@@ -88,7 +88,7 @@
       "code": 3888,
       "comments": 295,
       "blanks": 786,
-      "percentage": 2.96,
+      "percentage": 2.95,
       "color": "#563d7c"
     },
     {
