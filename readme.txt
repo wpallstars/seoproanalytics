@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.21.0
+Stable tag: 1.22.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,9 +117,10 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.21.0 =
-* Added: Search → Targets shows the Oxylabs and cloro paid providers' data from the SEO Pro Analytics Connect add-on: Oxylabs web search places, and whether ChatGPT, Gemini, Google AI Mode, Google's AI Overview and Bing AI Mode cite your pages.
-* Fixed: the tracker sends clicks on same-page links and base-target new-tab links at once; the padlock on the Connect buttons sits level with the label.
+= 1.22.0 =
+* Added: real visitors' page speed (Core Web Vitals by device and page), crawler visits (search engines, AI crawlers and other bots, by page and status), a click and scroll heatmap over the page, the page's statistics in the toolbar for statistics readers, and a campaign link builder. Each has a setting; none adds a request for visitors.
+* Added: the Slimstat import also reads Slimstat's version 3 pageviews; its clean-up removes more of its tables and, for every import, the old plugin's translation files.
+* Security: filters' "matches" patterns are matched without a regular expression.
 
 Every change: changelog.txt.
 
