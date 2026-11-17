@@ -294,6 +294,8 @@ final class SEOProAnalytics_Migrate_Koko extends SEOProAnalytics_Migrate_Source 
      */
     public function leftovers() {
         $uploads = wp_upload_dir(null, false);
+        // Its translation files, in the languages folder every site shares.
+        $lang    = self::files_present(self::translation_files('koko-analytics'));
         $out     = array(
             'tables'     => self::tables_like('koko_analytics_'),
             'options'    => array_merge(self::options_like(array('koko_analytics_')), self::options_exact(array('widget_koko-analytics-most-viewed-posts'))),
@@ -301,7 +303,7 @@ final class SEOProAnalytics_Migrate_Koko extends SEOProAnalytics_Migrate_Source 
             'transients' => self::options_like(array('_transient_koko_analytics_', '_transient_timeout_koko_analytics_', '_transient_ka_counter_', '_transient_timeout_ka_counter_')),
             'cron'       => self::cron_like('koko_analytics_'),
             'user_meta'  => is_multisite() ? array() : self::user_meta_like('_koko_analytics_'),
-            'files'      => self::files_present(array(trailingslashit((string) $uploads['basedir']) . 'koko-analytics')),
+            'files'      => array_merge(self::files_present(array(trailingslashit((string) $uploads['basedir']) . 'koko-analytics')), is_multisite() ? array() : $lang),
             'network'    => array(),
         );
         if (is_multisite()) {

@@ -361,21 +361,23 @@ final class SEOProAnalytics_Migrate_Independent_Analytics extends SEOProAnalytic
         $files   = array($uploads . 'iawp-favicons', $uploads . 'iawp-click-endpoint.php', $uploads . 'iawp-click-config.php', $uploads . 'iawp-click-data.php', trailingslashit(WPMU_PLUGIN_DIR) . 'iawp-performance-boost.php');
         // Its GeoIP database, in the main site's uploads on a network.
         $geo = array($uploads . 'iawp-geo-db.mmdb', $uploads . 'iawp-geo-db.zip');
-        $out = array(
+        // Its translation files, in the languages folder every site shares.
+        $lang = self::files_present(self::translation_files('independent-analytics'));
+        $out  = array(
             'tables'     => self::tables_like('independent_analytics_'),
             'options'    => self::options_like(array('iawp_')),
             'transients' => self::options_like(array('_transient_iawp_', '_transient_timeout_iawp_')),
             'cron'       => self::cron_like('iawp_'),
             'user_meta'  => is_multisite() ? array() : self::user_meta_like('iawp_'),
             'post_meta'  => array_values(array_intersect(self::post_meta_like(self::POST_META), array(self::POST_META))),
-            'files'      => self::files_present(is_multisite() ? $files : array_merge($files, $geo)),
+            'files'      => array_merge(self::files_present(is_multisite() ? $files : array_merge($files, $geo)), is_multisite() ? array() : $lang),
             'network'    => array(),
         );
         if (is_multisite()) {
             // Shared by every site: listed, never deleted from one site.
             $out['network'] = array_filter(array(
                 'user_meta' => self::user_meta_like('iawp_'),
-                'files'     => is_main_site() ? self::files_present($geo) : array(),
+                'files'     => array_merge(is_main_site() ? self::files_present($geo) : array(), $lang),
             ));
         }
         return $out;

@@ -336,13 +336,15 @@ final class SEOProAnalytics_Migrate_Burst extends SEOProAnalytics_Migrate_Source
         foreach (array('burst.min.js', 'timeme.min.js', substr(hash('sha256', 'burst-' . get_site_url()), 0, 8) . '.min.js') as $name) {
             $files[] = $base . 'js/' . $name;
         }
-        $out = array(
+        // Its translation files, in the languages folder every site shares.
+        $lang  = self::files_present(self::translation_files('burst-statistics'));
+        $out   = array(
             'tables'     => self::tables_like('burst_'),
             'options'    => self::options_like(array('burst_', 'burst-')),
             'transients' => self::options_like(array('_transient_burst_', '_transient_timeout_burst_', '_site_transient_burst_', '_site_transient_timeout_burst_')),
             'cron'       => self::cron_like('burst_'),
             'user_meta'  => is_multisite() ? array() : self::user_meta_like('burst_'),
-            'files'      => self::files_present($files),
+            'files'      => array_merge(self::files_present($files), is_multisite() ? array() : $lang),
             'network'    => array(),
         );
         if (is_multisite()) {
@@ -350,6 +352,7 @@ final class SEOProAnalytics_Migrate_Burst extends SEOProAnalytics_Migrate_Source
             $out['network'] = array_filter(array(
                 'options'   => self::options_like(array('burst_', 'burst-', '_site_transient_burst_', '_site_transient_timeout_burst_'), 'sitemeta'),
                 'user_meta' => self::user_meta_like('burst_'),
+                'files'     => $lang,
             ));
         }
         return $out;

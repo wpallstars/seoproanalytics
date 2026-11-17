@@ -188,14 +188,16 @@ final class SEOProAnalytics_Migrate_Statify extends SEOProAnalytics_Migrate_Sour
      */
     public function leftovers() {
         $table = self::table();
+        // Its translation files, in the languages folder every site shares.
+        $lang  = self::files_present(self::translation_files('statify'));
         return array(
             'tables'     => self::table_exists($table) ? array($table) : array(),
             'options'    => array_values(array_intersect(self::options_like(array(self::SETTINGS_OPTION)), array(self::SETTINGS_OPTION))),
             'transients' => array_values(array_intersect(self::options_like(array('_transient_statify_data', '_transient_timeout_statify_data')), array('_transient_statify_data', '_transient_timeout_statify_data'))),
             'cron'       => array_values(array_intersect(self::cron_like('statify_cleanup'), array('statify_cleanup'))),
             'user_meta'  => array(),
-            'files'      => array(),
-            'network'    => array(),
+            'files'      => is_multisite() ? array() : $lang,
+            'network'    => is_multisite() && $lang ? array('files' => $lang) : array(),
         );
     }
 
