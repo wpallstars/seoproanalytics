@@ -501,6 +501,8 @@ final class SEOProAnalytics_Migrate_WP_Statistics extends SEOProAnalytics_Migrat
                 $files[] = $dir;
             }
         }
+        // Its translation files, in the languages folder every site shares.
+        $lang            = self::files_present(self::translation_files('wp-statistics'));
         $site_transients = array('_site_transient_wp_statistics', '_site_transient_timeout_wp_statistics');
         $out             = array(
             'tables'     => $tables,
@@ -510,7 +512,7 @@ final class SEOProAnalytics_Migrate_WP_Statistics extends SEOProAnalytics_Migrat
             'cron'       => self::cron_like('wp_statistics_'),
             'user_meta'  => is_multisite() ? array() : self::user_meta_like('wp_statistics'),
             'post_meta'  => self::post_meta_like('wp_statistics'),
-            'files'      => self::files_present($files),
+            'files'      => array_merge(self::files_present($files), is_multisite() ? array() : $lang),
             'network'    => array(),
         );
         if (is_multisite()) {
@@ -518,6 +520,7 @@ final class SEOProAnalytics_Migrate_WP_Statistics extends SEOProAnalytics_Migrat
             $out['network'] = array_filter(array(
                 'options'   => self::options_like($site_transients, 'sitemeta'),
                 'user_meta' => self::user_meta_like('wp_statistics'),
+                'files'     => $lang,
             ));
         }
         return $out;

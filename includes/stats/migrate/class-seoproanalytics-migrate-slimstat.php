@@ -389,6 +389,8 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
             $uploads = (string) preg_replace('~/sites/\d+$~', '', untrailingslashit($uploads));
         }
         $folder    = self::files_present(array(trailingslashit($uploads) . 'wp-slimstat'));
+        // Its translation files, in the languages folder every site shares.
+        $lang      = self::files_present(self::translation_files('wp-slimstat'));
         $user_meta = array();
         foreach (self::USER_META as $prefix) {
             $user_meta = array_merge($user_meta, self::user_meta_like($prefix));
@@ -399,7 +401,7 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
             'transients' => self::options_like(array('_transient_slimstat_', '_transient_timeout_slimstat_', '_transient_wp_slimstat_', '_transient_timeout_wp_slimstat_', '_transient_wp-slimstat-', '_transient_timeout_wp-slimstat-')),
             'cron'       => self::cron_like('wp_slimstat_'),
             'user_meta'  => is_multisite() ? array() : $user_meta,
-            'files'      => is_multisite() ? array() : $folder,
+            'files'      => is_multisite() ? array() : array_merge($folder, $lang),
             'network'    => array(),
         );
         if (is_multisite()) {
@@ -414,7 +416,7 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
             $out['network'] = array_filter(array(
                 'tables'    => $found,
                 'user_meta' => $user_meta,
-                'files'     => $folder,
+                'files'     => array_merge($folder, $lang),
             ));
         }
         return $out;

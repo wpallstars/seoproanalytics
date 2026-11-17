@@ -416,6 +416,8 @@ final class SEOProAnalytics_Migrate_Matomo extends SEOProAnalytics_Migrate_Sourc
     public function leftovers() {
         $folder = (defined('MATOMO_UPLOAD_DIR') ? (string) constant('MATOMO_UPLOAD_DIR') : 'matomo');
         $files  = self::files_present(array(trailingslashit((string) wp_upload_dir(null, false)['basedir']) . $folder));
+        // Its translation files, in the languages folder every site shares.
+        $lang   = self::files_present(self::translation_files('matomo'));
         $roles  = array_values(array_filter(self::ROLES, function ($role) {
             return (bool) get_role($role);
         }));
@@ -427,7 +429,7 @@ final class SEOProAnalytics_Migrate_Matomo extends SEOProAnalytics_Migrate_Sourc
             'cron'       => self::cron_like('matomo_'),
             'user_meta'  => is_multisite() ? array() : $meta,
             'roles'      => $roles,
-            'files'      => $files,
+            'files'      => is_multisite() ? $files : array_merge($files, $lang),
             'network'    => array(),
         );
         if (is_multisite()) {
@@ -435,6 +437,7 @@ final class SEOProAnalytics_Migrate_Matomo extends SEOProAnalytics_Migrate_Sourc
             $out['network'] = array_filter(array(
                 'options'   => self::options_like(array('matomo-', 'matomo_global-'), 'sitemeta'),
                 'user_meta' => $meta,
+                'files'     => $lang,
             ));
         }
         return $out;

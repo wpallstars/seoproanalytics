@@ -462,6 +462,32 @@ abstract class SEOProAnalytics_Migrate_Source {
     }
 
     /**
+     * Absolute paths of a plugin's translation files in the shared
+     * languages/plugins folder (.mo, .po, .json, .l10n.php, .mo.php).
+     *
+     * Only files named `<text-domain>-<locale>.<ext>` directly in that
+     * folder; nothing else is matched.
+     *
+     * @param string $domain Plugin text domain.
+     * @return string[]
+     */
+    protected static function translation_files($domain) {
+        $domain = sanitize_key($domain);
+        $dir    = trailingslashit(WP_LANG_DIR) . 'plugins/';
+        if ($domain === '' || !is_dir($dir)) {
+            return array();
+        }
+        $found = glob($dir . $domain . '-*', GLOB_NOSORT);
+        $out   = array();
+        foreach (is_array($found) ? $found : array() as $path) {
+            if (is_file($path) && preg_match('/^' . preg_quote($domain, '/') . '-[a-z]{2,3}(_[A-Za-z0-9]+)*(_[a-z]+)?(-[a-f0-9]{32})?\.(mo|po|json|l10n\.php|mo\.php)$/', basename($path))) {
+                $out[] = $path;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * A referrer as the source dimension stores it: the host, lower case,
      * without www. ('' for none).
      *
