@@ -913,6 +913,7 @@ this feature; no tracking pixels or tracked links are added.
 - Changed: the Slimstat import also reads its version 3 pageviews (`slim_stats_3`, `slim_stats_archive_3`); its clean-up also removes `slim_meta` and `slim_user_agents`. Its clicks and load timings are not imported (GH#115).
 - Developers: schema 35 (`speed`, `bots`, `clicks.x`/`y`); REST `GET /speed`, `/crawlers`, `/heatmap`, `/page-summary`; the inline tracker is 4,886 bytes gzipped (+587) (GH#115).
 - Fixed: an import's clean-up also removes the old plugin's translation files from `wp-content/languages/plugins` (GH#108).
+- Security: filters' "matches" patterns on names are matched without a regular expression, so many `*`s cannot keep PHP busy (GH#115).
 
 ### 1.21.0
 

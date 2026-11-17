@@ -2214,12 +2214,43 @@ final class SEOProAnalytics_Query { // NOSONAR: one report engine for REST, WP-C
             return $value !== '' && strpos($text, $value) !== false;
         }
         if ($op === 'matches') {
-            $pattern = '~^' . implode('.*', array_map(static function ($part) {
-                return preg_quote($part, '~');
-            }, explode('*', $value))) . '$~';
-            return (bool) preg_match($pattern, $text);
+            return self::glob_matches($text, $value);
         }
         return $text === $value;
+    }
+
+    /**
+     * Whether text matches a pattern where * is any text, without a regular
+     * expression (a value from a request with many *s cannot make it
+     * backtrack): the first part starts the text, the last ends it, and the
+     * ones between follow in order, each found from where the last ended.
+     *
+     * @param string $text    Text tested.
+     * @param string $pattern Pattern.
+     * @return bool
+     */
+    private static function glob_matches($text, $pattern) {
+        $parts = explode('*', $pattern);
+        $first = array_shift($parts);
+        if (!$parts) {
+            return $text === $first;
+        }
+        if (strncmp($text, $first, strlen($first)) !== 0) {
+            return false;
+        }
+        $last = (string) array_pop($parts);
+        $pos  = strlen($first);
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+            $found = strpos($text, $part, $pos);
+            if ($found === false) {
+                return false;
+            }
+            $pos = $found + strlen($part);
+        }
+        return strlen($text) - strlen($last) >= $pos && ($last === '' || substr($text, -strlen($last)) === $last);
     }
 
     /**
