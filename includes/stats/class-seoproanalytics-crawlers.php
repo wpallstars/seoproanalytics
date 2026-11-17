@@ -313,11 +313,7 @@ final class SEOProAnalytics_Crawlers {
         $where = '';
         $args  = array(SEOProAnalytics_Schema::table('bots'), self::day_start((int) $range['from']), (int) $range['to']);
         if ($page !== '') {
-            $ids = array_map('intval', SEOProAnalytics_Query::dict_ids(SEOProAnalytics_Schema::DICT_PATH, array(
-                'dimension' => 'page',
-                'op'        => strpos($page, '*') !== false ? 'matches' : 'is',
-                'values'    => array($page),
-            )));
+            $ids = SEOProAnalytics_Query::page_ids($page);
             if (!$ids) {
                 return null;
             }

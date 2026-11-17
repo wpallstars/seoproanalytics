@@ -101,7 +101,7 @@ export function Overview({ state, update }: Readonly<ViewProps>) {
 						{ dimension: 'source', title: __('Sources', 'seoproanalytics') },
 						{ dimension: 'utm_campaign', title: __('Campaigns', 'seoproanalytics') },
 					]}
-					action={shareAccess.token ? null : <CampaignBuilder state={state} />}
+					action={<CampaignBuilder state={state} />}
 				/>
 				<BusinessProfilesCard state={state} update={update} />
 				<BreakdownCard

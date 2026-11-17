@@ -2041,6 +2041,20 @@ final class SEOProAnalytics_Query { // NOSONAR: one report engine for REST, WP-C
     }
 
     /**
+     * Path ids of one page path, or of a pattern when it has a * in it.
+     *
+     * @param string $page Page path or pattern.
+     * @return int[]
+     */
+    public static function page_ids($page) {
+        return array_map('intval', self::dict_ids(SEOProAnalytics_Schema::DICT_PATH, array(
+            'dimension' => 'page',
+            'op'        => strpos($page, '*') !== false ? 'matches' : 'is',
+            'values'    => array($page),
+        )));
+    }
+
+    /**
      * Dictionary ids a filter selects ('' selects id 0: none).
      *
      * @param int                                               $kind   Dictionary kind.

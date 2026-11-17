@@ -9,15 +9,14 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
+import { Button, Card, CardBody, Notice, SelectControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { CRAWLER_GROUPS, formatNumber, type CrawlerGroup, type CrawlerKind } from '@seoproanalytics/core';
 import { errorMessage, useCrawlers, type CrawlerRow, type CrawlerTotals, type CrawlersAnswer } from './api';
 import { locale } from './boot';
 import type { ViewProps } from './App';
-import { PeriodLine } from './Overview';
-import { Change } from './components/Change';
-import { PageFilter } from './components/PageFilter';
+import { KindTiles } from './components/KindTiles';
+import { PageCardHeader, PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 interface Tile {
@@ -122,47 +121,40 @@ export function Crawlers({ state, update }: Readonly<ViewProps>) {
 			)}
 
 			<Card className="seoproan-app-card is-wide seoproan-app-section" size="small">
-				<CardHeader className="seoproan-app-card__header">
-					<div>
-						<h2 className="seoproan-app-card__title">
-							{page ? sprintf(/* translators: %s: a page path. */ __('Crawler visits to %s', 'seoproanalytics'), page) : __('Crawler visits', 'seoproanalytics')}
-						</h2>
-						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
-					</div>
-					<PageFilter
-						page={page}
-						suggestions={kind === 'pages' ? (answer?.rows ?? []).map((r) => r.path ?? '').filter((path) => path !== '') : []}
-						onApply={(value) => update({ page: value })}
-					>
-						<SelectControl
-							__nextHasNoMarginBottom
-							__next40pxDefaultSize
-							label={__('Crawlers', 'seoproanalytics')}
-							value={group}
-							options={(['', ...CRAWLER_GROUPS] as CrawlerGroup[]).map((value) => ({ value, label: groupName(value) }))}
-							onChange={(value) => update({ bots: (value || undefined) as ViewProps['state']['bots'] })}
-						/>
-					</PageFilter>
-				</CardHeader>
-
-				<div className="seoproan-tiles" role="group" aria-label={__('Show', 'seoproanalytics')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
-					{all.map((t) => (
-						<button
-							key={t.kind}
-							type="button"
-							className={`seoproan-tile${kind === t.kind ? ' is-selected' : ''}`}
-							aria-pressed={kind === t.kind}
-							onClick={() => update({ crawl: t.kind === 'bots' ? undefined : t.kind })}
+				<PageCardHeader
+					title={page ? sprintf(/* translators: %s: a page path. */ __('Crawler visits to %s', 'seoproanalytics'), page) : __('Crawler visits', 'seoproanalytics')}
+					range={answer?.range}
+					compare={answer?.compare?.range}
+					filter={
+						<PageFilter
+							page={page}
+							suggestions={kind === 'pages' ? (answer?.rows ?? []).map((r) => r.path ?? '').filter((path) => path !== '') : []}
+							onApply={(value) => update({ page: value })}
 						>
-							<span className="seoproan-tile__label">{t.label}</span>
-							<span className="seoproan-tile__value">{totals ? formatNumber(t.value(totals), locale) : '–'}</span>
-							<span className="seoproan-tile__foot">
-								<span className="seoproan-muted">{totals ? t.foot(totals) : ''}</span>
-								{change && <Change change={change[t.change]} better={t.better} />}
-							</span>
-						</button>
-					))}
-				</div>
+							<SelectControl
+								__nextHasNoMarginBottom
+								__next40pxDefaultSize
+								label={__('Crawlers', 'seoproanalytics')}
+								value={group}
+								options={(['', ...CRAWLER_GROUPS] as CrawlerGroup[]).map((value) => ({ value, label: groupName(value) }))}
+								onChange={(value) => update({ bots: (value || undefined) as ViewProps['state']['bots'] })}
+							/>
+						</PageFilter>
+					}
+				/>
+
+				<KindTiles
+					selected={kind}
+					onPick={(picked) => update({ crawl: picked === 'bots' ? undefined : picked })}
+					tiles={all.map((t) => ({
+						kind: t.kind,
+						label: t.label,
+						value: totals ? formatNumber(t.value(totals), locale) : '–',
+						foot: totals ? t.foot(totals) : '',
+						change: change ? change[t.change] : undefined,
+						better: t.better,
+					}))}
+				/>
 
 				<CardBody className="seoproan-app-card__body">
 					{!answer && !query.isError && <div className="seoproan-skeleton seoproan-skeleton--table" aria-busy="true" />}

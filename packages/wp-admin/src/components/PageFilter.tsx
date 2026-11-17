@@ -8,8 +8,31 @@
  */
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { Button, TextControl } from '@wordpress/components';
+import { Button, CardHeader, TextControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
+import { PeriodLine } from '../Overview';
+
+type Range = { from: string; to: string };
+
+/** A page-filtered view's card header: title, period, extra lines and the PageFilter. */
+export function PageCardHeader({
+	title,
+	range,
+	compare,
+	info,
+	filter,
+}: Readonly<{ title: string; range?: Range; compare?: Range; info?: ReactNode; filter: ReactNode }>) {
+	return (
+		<CardHeader className="seoproan-app-card__header">
+			<div>
+				<h2 className="seoproan-app-card__title">{title}</h2>
+				{range && <PeriodLine range={range} compare={compare} />}
+				{info}
+			</div>
+			{filter}
+		</CardHeader>
+	);
+}
 
 export function PageFilter({
 	page,

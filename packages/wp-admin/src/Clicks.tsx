@@ -8,17 +8,16 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { Button, Card, CardBody, CardHeader, Notice } from '@wordpress/components';
+import { Button, Card, CardBody, Notice } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClicksAnswer, type ClickTotals, type ClickPageInfo } from '@seoproanalytics/core';
 import { errorMessage, shareAccess, useBreakdown, useClicks } from './api';
 import { locale } from './boot';
 import { usePrintAll } from './printAll';
 import type { ViewProps } from './App';
-import { PeriodLine } from './Overview';
-import { Change } from './components/Change';
 import { EditLink } from './components/EditLink';
-import { PageFilter } from './components/PageFilter';
+import { KindTiles } from './components/KindTiles';
+import { PageCardHeader, PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 interface Tile {
@@ -191,39 +190,32 @@ export function Clicks({ state, update }: Readonly<ViewProps>) {
 			)}
 
 			<Card className="seoproan-app-card is-wide seoproan-app-section" size="small">
-				<CardHeader className="seoproan-app-card__header">
-					<div>
-						<h2 className="seoproan-app-card__title">
-							{page ? sprintf(/* translators: %s: a page path. */ __('Clicks on %s', 'seoproanalytics'), page) : __('Clicks', 'seoproanalytics')}
-						</h2>
-						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
-						{pageInfo && <PageLinks info={pageInfo} />}
-					</div>
-					<PageFilter
-						page={page}
-						suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
-						onApply={(value) => update({ page: value })}
-					/>
-				</CardHeader>
+				<PageCardHeader
+					title={page ? sprintf(/* translators: %s: a page path. */ __('Clicks on %s', 'seoproanalytics'), page) : __('Clicks', 'seoproanalytics')}
+					range={answer?.range}
+					compare={answer?.compare?.range}
+					info={pageInfo && <PageLinks info={pageInfo} />}
+					filter={
+						<PageFilter
+							page={page}
+							suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
+							onApply={(value) => update({ page: value })}
+						/>
+					}
+				/>
 
-				<div className="seoproan-tiles" role="group" aria-label={__('Show', 'seoproanalytics')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
-					{all.map((t) => (
-						<button
-							key={t.kind}
-							type="button"
-							className={`seoproan-tile${kind === t.kind ? ' is-selected' : ''}`}
-							aria-pressed={kind === t.kind}
-							onClick={() => update({ kind: t.kind })}
-						>
-							<span className="seoproan-tile__label">{t.label}</span>
-							<span className="seoproan-tile__value">{totals ? formatNumber(totals[t.total], locale) : '–'}</span>
-							<span className="seoproan-tile__foot">
-								<span className="seoproan-muted">{totals ? t.foot(totals) : ''}</span>
-								{change && <Change change={change[t.total]} better={t.better} />}
-							</span>
-						</button>
-					))}
-				</div>
+				<KindTiles
+					selected={kind}
+					onPick={(picked) => update({ kind: picked })}
+					tiles={all.map((t) => ({
+						kind: t.kind,
+						label: t.label,
+						value: totals ? formatNumber(totals[t.total], locale) : '–',
+						foot: totals ? t.foot(totals) : '',
+						change: change ? change[t.total] : undefined,
+						better: t.better,
+					}))}
+				/>
 
 				<CardBody className="seoproan-app-card__body">
 					{printAll ? (

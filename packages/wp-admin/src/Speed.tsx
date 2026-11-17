@@ -8,15 +8,15 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { Button, Card, CardBody, CardHeader, Notice } from '@wordpress/components';
+import type { ReactNode } from 'react';
+import { Button, Card, CardBody, Notice } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent } from '@seoproanalytics/core';
-import { errorMessage, useBreakdown, useSpeed, type SpeedFigures, type SpeedMetric, type SpeedRating, type SpeedSummary } from './api';
+import { errorMessage, useBreakdown, useSpeed, type SpeedFigures, type SpeedMetric, type SpeedRating } from './api';
 import { locale } from './boot';
 import type { ViewProps } from './App';
-import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
-import { PageFilter } from './components/PageFilter';
+import { PageCardHeader, PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 const METRIC_ORDER: readonly SpeedMetric[] = ['lcp', 'inp', 'cls', 'fcp', 'ttfb'];
@@ -89,7 +89,7 @@ function Shares({ figures }: Readonly<{ figures: SpeedFigures }>) {
 }
 
 /** A value with its rating's colour. */
-function Rated({ metric, value, rating }: Readonly<{ metric: SpeedMetric; value: number | null | undefined; rating: SpeedRating | undefined }>) {
+function Rated({ metric, value, rating }: Readonly<{ metric: SpeedMetric; value: number | null | undefined; rating: SpeedRating | null | undefined }>) {
 	return (
 		<span className={`seoproan-speed-value${rating ? ` is-${rating}` : ''}`} title={ratingName(rating ?? '')}>
 			{speedValue(metric, value)}
@@ -119,19 +119,18 @@ export function Speed({ state, update }: Readonly<ViewProps>) {
 			)}
 
 			<Card className="seoproan-app-card is-wide seoproan-app-section" size="small">
-				<CardHeader className="seoproan-app-card__header">
-					<div>
-						<h2 className="seoproan-app-card__title">
-							{page ? sprintf(/* translators: %s: a page path. */ __('Page speed on %s', 'seoproanalytics'), page) : __('Page speed for real visitors', 'seoproanalytics')}
-						</h2>
-						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
-					</div>
-					<PageFilter
-						page={page}
-						suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
-						onApply={(value) => update({ page: value })}
-					/>
-				</CardHeader>
+				<PageCardHeader
+					title={page ? sprintf(/* translators: %s: a page path. */ __('Page speed on %s', 'seoproanalytics'), page) : __('Page speed for real visitors', 'seoproanalytics')}
+					range={answer?.range}
+					compare={answer?.compare?.range}
+					filter={
+						<PageFilter
+							page={page}
+							suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
+							onApply={(value) => update({ page: value })}
+						/>
+					}
+				/>
 
 				<div className="seoproan-tiles">
 					{METRIC_ORDER.map((metric) => {
@@ -174,10 +173,35 @@ export function Speed({ state, update }: Readonly<ViewProps>) {
 								first={__('Device', 'seoproanalytics')}
 								rows={(['desktop', 'mobile', 'tablet'] as const)
 									.filter((device) => answer.devices[device])
-									.map((device) => ({ key: device, name: deviceName(device), summary: answer.devices[device]! }))}
+									.map((device) => {
+										const summary = answer.devices[device]!;
+										return {
+											key: device,
+											name: <th scope="row">{deviceName(device)}</th>,
+											loads: summary.loads,
+											values: METRIC_ORDER.map((metric) => [summary[metric].p75, summary[metric].rating] as const),
+										};
+									})}
 							/>
 							{answer.pages.length > 0 && (
-								<PageTable answer={answer.pages} page={page} update={update} fetching={query.isFetching} />
+								<SpeedTable
+									caption={__('Pages with the most page loads', 'seoproanalytics')}
+									first={__('Page', 'seoproanalytics')}
+									fetching={query.isFetching}
+									rows={answer.pages.map((row) => ({
+										key: row.path,
+										selected: page === row.path,
+										name: (
+											<td>
+												<Button variant="link" aria-pressed={page === row.path} onClick={() => update({ page: page === row.path ? '' : row.path })}>
+													{row.path}
+												</Button>
+											</td>
+										),
+										loads: row.loads,
+										values: METRIC_ORDER.map((metric) => [row[metric], row[`${metric}_rating`]] as const),
+									}))}
+								/>
 							)}
 						</>
 					)}
@@ -218,13 +242,23 @@ function MetricHeads() {
 	);
 }
 
-/** Rows of summaries, such as by device. */
-function SpeedTable({ caption, first, rows }: Readonly<{ caption: string; first: string; rows: { key: string; name: string; summary: SpeedSummary }[] }>) {
+interface SpeedRow {
+	key: string;
+	/** The first cell: a th for a device, a td with a link for a page. */
+	name: ReactNode;
+	loads: number;
+	/** p75 and rating of each of METRIC_ORDER, in that order. */
+	values: readonly (readonly [number | null | undefined, SpeedRating | null | undefined])[];
+	selected?: boolean;
+}
+
+/** Rows of page speed: by device, or the pages with the most page loads. */
+function SpeedTable({ caption, first, rows, fetching = false }: Readonly<{ caption: string; first: string; rows: SpeedRow[]; fetching?: boolean }>) {
 	return (
 		<>
 		<h3 className="seoproan-subtitle">{caption}</h3>
 		<TableScroll label={caption}>
-			<table className="widefat striped seoproan-table">
+			<table className={`widefat striped seoproan-table${fetching ? ' is-refreshing' : ''}`}>
 				<thead>
 					<tr>
 						<th scope="col">{first}</th>
@@ -233,49 +267,12 @@ function SpeedTable({ caption, first, rows }: Readonly<{ caption: string; first:
 				</thead>
 				<tbody>
 					{rows.map((row) => (
-						<tr key={row.key}>
-							<th scope="row">{row.name}</th>
-							<td className="num">{formatNumber(row.summary.loads, locale)}</td>
-							{METRIC_ORDER.map((metric) => (
-								<td key={metric} className="num">
-									<Rated metric={metric} value={row.summary[metric].p75} rating={row.summary[metric].rating} />
-								</td>
-							))}
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</TableScroll>
-		</>
-	);
-}
-
-/** Pages with the most measured page loads. */
-function PageTable({ answer, page, update, fetching }: Readonly<{ answer: NonNullable<ReturnType<typeof useSpeed>['data']>['pages']; page: string; update: ViewProps['update']; fetching: boolean }>) {
-	const caption = __('Pages with the most page loads', 'seoproanalytics');
-	return (
-		<>
-		<h3 className="seoproan-subtitle">{caption}</h3>
-		<TableScroll label={caption}>
-			<table className={`widefat striped seoproan-table${fetching ? ' is-refreshing' : ''}`}>
-				<thead>
-					<tr>
-						<th scope="col">{__('Page', 'seoproanalytics')}</th>
-						<MetricHeads />
-					</tr>
-				</thead>
-				<tbody>
-					{answer.map((row) => (
-						<tr key={row.path} className={page === row.path ? 'is-selected' : ''}>
-							<td>
-								<Button variant="link" aria-pressed={page === row.path} onClick={() => update({ page: page === row.path ? '' : row.path })}>
-									{row.path}
-								</Button>
-							</td>
+						<tr key={row.key} className={row.selected ? 'is-selected' : undefined}>
+							{row.name}
 							<td className="num">{formatNumber(row.loads, locale)}</td>
-							{METRIC_ORDER.map((metric) => (
+							{METRIC_ORDER.map((metric, i) => (
 								<td key={metric} className="num">
-									<Rated metric={metric} value={row[metric]} rating={row[`${metric}_rating`]} />
+									<Rated metric={metric} value={row.values[i]?.[0]} rating={row.values[i]?.[1]} />
 								</td>
 							))}
 						</tr>

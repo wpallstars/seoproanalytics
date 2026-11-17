@@ -265,11 +265,7 @@ final class SEOProAnalytics_Clicks {
         $compiled = SEOProAnalytics_Query::compile($filters, $range);
         $pages    = $compiled['pages'];
         if ($page !== '') {
-            $ids   = array_map('intval', SEOProAnalytics_Query::dict_ids(SEOProAnalytics_Schema::DICT_PATH, array(
-                'dimension' => 'page',
-                'op'        => strpos($page, '*') !== false ? 'matches' : 'is',
-                'values'    => array($page),
-            )));
+            $ids   = SEOProAnalytics_Query::page_ids($page);
             $pages = $pages === null ? $ids : array_values(array_intersect($pages, $ids));
         }
         if ($pages !== null && !$pages) {

@@ -13,7 +13,7 @@ import { useId, useMemo, useState } from 'react';
 import { Button, Modal, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import type { ViewState } from '@seoproanalytics/core';
-import { useBreakdown } from '../api';
+import { shareAccess, useBreakdown } from '../api';
 import { boot } from '../boot';
 
 const TAGS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const;
@@ -93,9 +93,12 @@ function home(): string {
 
 const EMPTY: Tags = { utm_source: '', utm_medium: '', utm_campaign: '', utm_term: '', utm_content: '' };
 
-/** The Sources card's "Campaign link" button and its builder. */
+/** The Sources card's "Campaign link" button and its builder; nothing on a shared report. */
 export function CampaignBuilder({ state }: Readonly<{ state: ViewState }>) {
 	const [open, setOpen] = useState(false);
+	if (shareAccess.token) {
+		return null;
+	}
 	return (
 		<>
 			<Button variant="tertiary" size="compact" icon="admin-links" onClick={() => setOpen(true)}>

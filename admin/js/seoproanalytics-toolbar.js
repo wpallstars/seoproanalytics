@@ -20,12 +20,8 @@
 
 	function el(tag, text, className) {
 		var node = document.createElement(tag);
-		if (text !== undefined && text !== null) {
-			node.textContent = String(text);
-		}
-		if (className) {
-			node.className = className;
-		}
+		node.textContent = text === undefined || text === null ? '' : String(text);
+		node.className = className || '';
 		return node;
 	}
 
