@@ -466,15 +466,43 @@ function engineTitle(engine: TrackedEngine): string {
 	const titles: Record<TrackedEngine, string> = {
 		brave: __('Tracked place in Brave Search', 'seoproanalytics'),
 		deepseek: __('Tracked place in DeepSeek\'s search', 'seoproanalytics'),
+		oxylabs: __('Tracked place in the live web search of Oxylabs\' Web API', 'seoproanalytics'),
 		brave_ai: __('Place among the pages Brave gives an AI to answer this from', 'seoproanalytics'),
 		linkup_ai: __('Place among the sources of Linkup\'s answer to this, a search AI agents use', 'seoproanalytics'),
+		chatgpt_ai: __('Place among the sources ChatGPT cites in its answer to this, read through cloro', 'seoproanalytics'),
+		gemini_ai: __('Place among the sources Gemini cites in its answer to this, read through cloro', 'seoproanalytics'),
+		aimode_ai: __('Place among the sources Google AI Mode cites in its answer to this, read through cloro', 'seoproanalytics'),
+		aio_ai: __('Place among the sources of the AI Overview above Google\'s results, read through cloro', 'seoproanalytics'),
+		bing_ai: __('Place among the sources Bing AI Mode cites in its answer to this, read through cloro', 'seoproanalytics'),
 	};
 	return titles[engine];
 }
 
+/** An AI engine's place among its answer's sources, as a line. */
+function aiLine(name: string, value: number | null): string {
+	return value === null
+		/* translators: %s: the AI answer's name, such as ChatGPT. */
+		? sprintf(__('%s sources: not cited', 'seoproanalytics'), name)
+		/* translators: 1: the AI answer's name, such as ChatGPT, 2: the site's place among its sources. */
+		: sprintf(__('%1$s sources: #%2$s', 'seoproanalytics'), name, String(value));
+}
+
+/** The AI answers read through cloro: engine => name (brand names, not translated). */
+const CITED_NAMES: Partial<Record<TrackedEngine, string>> = {
+	chatgpt_ai: 'ChatGPT',
+	gemini_ai: 'Gemini',
+	aimode_ai: 'Google AI Mode',
+	aio_ai: 'Google AI Overview',
+	bing_ai: 'Bing AI Mode',
+};
+
 /** An engine's tracked place, as a line. */
 function engineLine(engine: TrackedEngine, value: number | null): string {
 	const shown = value === null ? '–' : String(value);
+	const cited = CITED_NAMES[engine];
+	if (cited) {
+		return aiLine(cited, value);
+	}
 	switch (engine) {
 		case 'brave':
 			/* translators: %s: place ("–": not within the results read). */
@@ -482,6 +510,9 @@ function engineLine(engine: TrackedEngine, value: number | null): string {
 		case 'deepseek':
 			/* translators: %s: place ("–": not within the results read). */
 			return sprintf(__('DeepSeek: %s', 'seoproanalytics'), shown);
+		case 'oxylabs':
+			/* translators: %s: place ("–": not within the results read). */
+			return sprintf(__('Oxylabs: %s', 'seoproanalytics'), shown);
 		case 'linkup_ai':
 			return value === null
 				? __('Linkup AI sources: not cited', 'seoproanalytics')

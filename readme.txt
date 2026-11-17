@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.10
+Stable tag: 1.21.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,8 +117,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.20.10 =
-* Changed: "Get SEO Pro Analytics Connect" buttons show a padlock and a tooltip, and open the add-on's own page.
+= 1.21.0 =
+* Added: Search → Targets shows the Oxylabs and cloro paid providers' data from the SEO Pro Analytics Connect add-on: Oxylabs web search places, and whether ChatGPT, Gemini, Google AI Mode, Google's AI Overview and Bing AI Mode cite your pages.
+* Fixed: the tracker sends clicks on same-page links and base-target new-tab links at once; the padlock on the Connect buttons sits level with the label.
 
 Every change: changelog.txt.
 

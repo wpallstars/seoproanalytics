@@ -40,26 +40,47 @@ final class SEOProAnalytics_Serp {
 
     /** Engines of the rows: name => code (SEOProAnalytics_Schema::ENGINE_*). */
     const ENGINES = array(
-        'google'    => SEOProAnalytics_Schema::ENGINE_GOOGLE,
-        'brave'     => SEOProAnalytics_Schema::ENGINE_BRAVE,
-        'deepseek'  => SEOProAnalytics_Schema::ENGINE_DEEPSEEK,
-        'brave_ai'  => SEOProAnalytics_Schema::ENGINE_BRAVE_AI,
-        'linkup_ai' => SEOProAnalytics_Schema::ENGINE_LINKUP_AI,
+        'google'     => SEOProAnalytics_Schema::ENGINE_GOOGLE,
+        'brave'      => SEOProAnalytics_Schema::ENGINE_BRAVE,
+        'deepseek'   => SEOProAnalytics_Schema::ENGINE_DEEPSEEK,
+        'oxylabs'    => SEOProAnalytics_Schema::ENGINE_OXYLABS,
+        'brave_ai'   => SEOProAnalytics_Schema::ENGINE_BRAVE_AI,
+        'linkup_ai'  => SEOProAnalytics_Schema::ENGINE_LINKUP_AI,
+        'chatgpt_ai' => SEOProAnalytics_Schema::ENGINE_CHATGPT_AI,
+        'gemini_ai'  => SEOProAnalytics_Schema::ENGINE_GEMINI_AI,
+        'aimode_ai'  => SEOProAnalytics_Schema::ENGINE_AIMODE_AI,
+        'aio_ai'     => SEOProAnalytics_Schema::ENGINE_AIO_AI,
+        'bing_ai'    => SEOProAnalytics_Schema::ENGINE_BING_AI,
     );
 
-    /** Engines whose rows are an AI answer's sources, not search places: name => the search engine named. */
+    /**
+     * Engines whose rows are an AI answer's sources, not search places:
+     * name => the service named. aimode_ai is Google's AI Mode, aio_ai the
+     * AI Overview above Google's results, bing_ai Bing's AI Mode.
+     */
     const AI_ENGINES = array(
-        'brave_ai'  => 'brave',
-        'linkup_ai' => 'linkup',
+        'brave_ai'   => 'brave',
+        'linkup_ai'  => 'linkup',
+        'chatgpt_ai' => 'chatgpt',
+        'gemini_ai'  => 'gemini',
+        'aimode_ai'  => 'google',
+        'aio_ai'     => 'google',
+        'bing_ai'    => 'bing',
     );
 
     /** Engine names shown in change labels (brand names, not translated). */
     const NAMES = array(
-        'google'    => 'Google',
-        'brave'     => 'Brave',
-        'deepseek'  => 'DeepSeek',
-        'brave_ai'  => 'Brave',
-        'linkup_ai' => 'Linkup',
+        'google'     => 'Google',
+        'brave'      => 'Brave',
+        'deepseek'   => 'DeepSeek',
+        'oxylabs'    => 'Oxylabs',
+        'brave_ai'   => 'Brave',
+        'linkup_ai'  => 'Linkup',
+        'chatgpt_ai' => 'ChatGPT',
+        'gemini_ai'  => 'Gemini',
+        'aimode_ai'  => 'Google AI Mode',
+        'aio_ai'     => 'Google AI Overview',
+        'bing_ai'    => 'Bing AI Mode',
     );
 
     /** Result features: the provider's item type => bit. cited: the site is among an AI overview's sources. */
