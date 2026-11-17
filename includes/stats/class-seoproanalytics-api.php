@@ -104,6 +104,10 @@ final class SEOProAnalytics_API {
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-targets.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-target-sources.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-loop.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-speed.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-ua.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-crawlers.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-heatmap.php';
     }
 
     /**
@@ -321,6 +325,7 @@ final class SEOProAnalytics_API {
                 'offset' => self::args(true)['offset'],
             ),
         ));
+        self::page_insight_routes($ns, $read, $base);
         $engine = array(
             'description' => __('Search engine: google (Search Console) or bing (Bing Webmaster Tools).', 'seoproanalytics'),
             'type'        => 'string',
@@ -2466,6 +2471,135 @@ final class SEOProAnalytics_API {
         return self::report($request, static function ($req) use ($kind, $page) {
             return SEOProAnalytics_Clicks::report($req, $kind, $page);
         });
+    }
+
+    /**
+     * Real visitors' page speed, crawler visits, one page's heatmap and the
+     * toolbar's page summary.
+     *
+     * @param non-falsy-string                    $ns   REST namespace.
+     * @param array<string,mixed>                 $read Read route options.
+     * @param array<string,array<string,mixed>>   $base Range, compare, filters and data arguments.
+     */
+    private static function page_insight_routes($ns, array $read, array $base) {
+        $page = array(
+            'description' => __('Only this page (a path such as /pricing/; * for any text).', 'seoproanalytics'),
+            'type'        => 'string',
+            'default'     => '',
+        );
+        register_rest_route($ns, '/speed', $read + array(
+            'callback' => array(__CLASS__, 'speed'),
+            'args'     => $base + array(
+                'page'   => $page,
+                'limit'  => self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/crawlers', $read + array(
+            'callback' => array(__CLASS__, 'crawlers'),
+            'args'     => $base + array(
+                'kind'   => array(
+                    'description' => __('Rows: crawlers, pages, HTTP statuses or days.', 'seoproanalytics'),
+                    'type'        => 'string',
+                    'enum'        => SEOProAnalytics_Crawlers::KINDS,
+                    'default'     => 'bots',
+                ),
+                'group'  => array(
+                    'description' => __('Only this group of crawler: search engines, AI crawlers, SEO tools, social previews, monitors or other bots.', 'seoproanalytics'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), SEOProAnalytics_Crawlers::GROUPS),
+                    'default'     => '',
+                ),
+                'bot'    => array(
+                    'description' => __('Only this crawler (its name as listed).', 'seoproanalytics'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'page'   => $page,
+                'limit'  => array('maximum' => SEOProAnalytics_Crawlers::MAX_LIMIT) + self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/heatmap', $read + array(
+            'callback' => array(__CLASS__, 'heatmap'),
+            'args'     => $base + array(
+                'page'   => array('required' => true, 'description' => __('The page (a path such as /pricing/).', 'seoproanalytics')) + $page,
+                'device' => array(
+                    'description' => __('Only clicks and scrolling on this kind of device; all when left out.', 'seoproanalytics'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), array_keys(SEOProAnalytics_Heatmap::DEVICES)),
+                    'default'     => '',
+                ),
+            ),
+        ));
+        register_rest_route($ns, '/page-summary', $read + array(
+            'callback' => array(__CLASS__, 'page_summary'),
+            'args'     => array(
+                'page' => array('required' => true, 'description' => __('The page (a path such as /pricing/).', 'seoproanalytics')) + $page,
+            ),
+        ));
+    }
+
+    /**
+     * GET /speed: real visitors' page speed (SEOProAnalytics_Speed).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function speed($request) {
+        $page = (string) $request->get_param('page');
+        return self::report($request, static function ($req) use ($page) {
+            return SEOProAnalytics_Speed::report($req, $page);
+        });
+    }
+
+    /**
+     * GET /crawlers: crawler visits (SEOProAnalytics_Crawlers); live data only.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function crawlers($request) {
+        $kind  = (string) $request->get_param('kind');
+        $group = (string) $request->get_param('group');
+        $bot   = (string) $request->get_param('bot');
+        $page  = (string) $request->get_param('page');
+        return self::report($request, static function ($req) use ($kind, $group, $bot, $page) {
+            return SEOProAnalytics_Crawlers::report($req, $kind, $page, $group, $bot);
+        });
+    }
+
+    /**
+     * GET /heatmap: one page's clicks by place and scroll depth (SEOProAnalytics_Heatmap).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function heatmap($request) {
+        $page   = (string) $request->get_param('page');
+        $device = (string) $request->get_param('device');
+        return self::report($request, static function ($req) use ($page, $device) {
+            return SEOProAnalytics_Heatmap::report($req, $page, $device);
+        });
+    }
+
+    /**
+     * GET /page-summary: the toolbar's figures for one page over the last
+     * 30 days (SEOProAnalytics_Toolbar).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function page_summary($request) {
+        require_once __DIR__ . '/class-seoproanalytics-toolbar.php';
+        $answer = SEOProAnalytics_Toolbar::summary((string) $request->get_param('page'));
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
+        self::short_floats();
+        $response = rest_ensure_response($answer);
+        $response->header('Cache-Control', 'private, no-store');
+        return $response;
     }
 
     /**

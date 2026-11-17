@@ -374,6 +374,13 @@ export interface PropertiesAnswer extends Answer {
 export const CLICK_KINDS = ['elements', 'dead', 'links', 'downloads', 'forms', 'pages'] as const;
 export type ClickKind = (typeof CLICK_KINDS)[number];
 
+/** Rows of the crawler visits report (SEOProAnalytics_Crawlers::KINDS). */
+export const CRAWLER_KINDS = ['bots', 'pages', 'statuses', 'days'] as const;
+export type CrawlerKind = (typeof CRAWLER_KINDS)[number];
+/** Groups of crawler (SEOProAnalytics_Crawlers::GROUPS); '' is every group. */
+export const CRAWLER_GROUPS = ['search', 'ai', 'seo', 'social', 'monitor', 'other'] as const;
+export type CrawlerGroup = '' | (typeof CRAWLER_GROUPS)[number];
+
 export interface ClickTotals {
 	/** Clicks (form submits are counted apart). */
 	clicks: number;

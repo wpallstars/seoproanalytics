@@ -148,6 +148,13 @@ final class SEOProAnalytics_Setup {
             // Prints the tracker on front-end pages.
             require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-tracker.php';
             SEOProAnalytics_Tracker::init();
+            // Crawlers' requests: one user-agent check; bots only are recorded, at shutdown.
+            require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-ua.php';
+            require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-crawlers.php';
+            SEOProAnalytics_Crawlers::init();
+            // The toolbar's page statistics, for people who may see them (hooks only).
+            require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-toolbar.php';
+            SEOProAnalytics_Toolbar::init();
         }
 
         if (wp_doing_cron()) {

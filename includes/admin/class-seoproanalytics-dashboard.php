@@ -136,6 +136,8 @@ final class SEOProAnalytics_Dashboard {
             'funnels'    => __('Funnels', 'seoproanalytics'),
             'properties' => __('Properties', 'seoproanalytics'),
             'clicks'     => __('Clicks', 'seoproanalytics'),
+            'speed'      => __('Speed', 'seoproanalytics'),
+            'crawlers'   => __('Crawlers', 'seoproanalytics'),
             'ab-tests'   => __('A/B tests', 'seoproanalytics'),
             'changes'    => __('Changes', 'seoproanalytics'),
         );

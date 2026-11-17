@@ -19,6 +19,8 @@ import {
 	CHANGE_GROUPS,
 	CLICK_KINDS,
 	COMPARE_KEYS,
+	CRAWLER_GROUPS,
+	CRAWLER_KINDS,
 	CONTENT_SORTS,
 	INDEXATION_KINDS,
 	LINKS_KINDS,
@@ -40,6 +42,8 @@ import {
 	type ChangeGroup,
 	type ClickKind,
 	type CompareKey,
+	type CrawlerGroup,
+	type CrawlerKind,
 	type ContentSort,
 	type Dimension,
 	type IndexationKind,
@@ -58,10 +62,12 @@ import {
 import { CHART_METRICS, SEARCH_METRICS } from './metrics';
 
 /** The sections in tab order; the first (Search) is the default. `overview` is the Visitors tab (its address stays, so bookmarks and saved reports keep working). */
-export const VIEWS = ['search', 'overview', 'goals', 'funnels', 'properties', 'clicks', 'ab-tests', 'changes'] as const;
+export const VIEWS = ['search', 'overview', 'goals', 'funnels', 'properties', 'clicks', 'speed', 'crawlers', 'ab-tests', 'changes'] as const;
 export type View = (typeof VIEWS)[number];
-/** Every tab but A/B tests (the owner's work in progress) can be shared; Search once per engine. */
-export const SHARE_VIEWS: readonly View[] = VIEWS.filter((view) => view !== 'ab-tests');
+/** Tabs that are never shared: A/B tests (the owner's work in progress), and page speed and crawler visits (the site's own diagnostics). */
+const PRIVATE_VIEWS: readonly View[] = ['speed', 'crawlers', 'ab-tests'];
+/** Every other tab can be shared; Search once per engine. */
+export const SHARE_VIEWS: readonly View[] = VIEWS.filter((view) => !PRIVATE_VIEWS.includes(view));
 /** The Search reports a shared report shows (not Backlinks, Targets, Plan or Experiments: the owner's research, chosen searches, work list and notes). */
 export const SHARE_SEARCH_REPORTS: readonly SearchReport[] = ['rankings', 'opportunities', 'audit', 'content'];
 
@@ -121,7 +127,11 @@ export interface ViewState {
 	 */
 	/** Clicks: the table shown. */
 	kind?: ClickKind;
-	/** Clicks, Search and Changes: only this page (a path; * for any text). */
+	/** Crawlers: the table shown (crawlers when left out). */
+	crawl?: CrawlerKind;
+	/** Crawlers: only this group of crawler (all when left out). */
+	bots?: Exclude<CrawlerGroup, ''>;
+	/** Clicks, Speed, Crawlers, Search and Changes: only this page (a path; * for any text). */
 	page?: string;
 	/** Changes: only this group (all when left out). */
 	group?: ChangeGroup;
@@ -170,7 +180,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'order', 'goal', 'status', 'owner', 'targets', 'backlinks', 'found', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
+const SECTION_VALUES = ['kind', 'crawl', 'bots', 'report', 'engine', 'sort', 'order', 'goal', 'status', 'owner', 'targets', 'backlinks', 'found', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: VIEWS[0],
@@ -321,6 +331,16 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			set('kind', unlessDefault(oneOf(CLICK_KINDS, params.get('kind'), 'elements'), 'elements'));
 			set('page', text(params.get('page')));
 			break;
+		case 'speed':
+			set('page', text(params.get('page')));
+			break;
+		case 'crawlers': {
+			set('crawl', unlessDefault(oneOf(CRAWLER_KINDS, params.get('crawl'), 'bots'), 'bots'));
+			const bots = params.get('bots');
+			set('bots', bots !== null && (CRAWLER_GROUPS as readonly string[]).includes(bots) ? (bots as Exclude<CrawlerGroup, ''>) : undefined);
+			set('page', text(params.get('page')));
+			break;
+		}
 		case 'changes':
 			set('page', text(params.get('page')));
 			set('group', oneOf([...CHANGE_GROUPS, ''] as const, params.get('group'), '') || undefined);

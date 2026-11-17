@@ -17,6 +17,7 @@ import { rangeText } from './dates';
 import type { ViewProps } from './App';
 import { BreakdownCard } from './components/BreakdownCard';
 import { BusinessProfilesCard } from './components/BusinessProfilesCard';
+import { CampaignBuilder } from './components/CampaignBuilder';
 import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { Vitals } from './Vitals';
@@ -100,6 +101,7 @@ export function Overview({ state, update }: Readonly<ViewProps>) {
 						{ dimension: 'source', title: __('Sources', 'seoproanalytics') },
 						{ dimension: 'utm_campaign', title: __('Campaigns', 'seoproanalytics') },
 					]}
+					action={<CampaignBuilder state={state} />}
 				/>
 				<BusinessProfilesCard state={state} update={update} />
 				<BreakdownCard

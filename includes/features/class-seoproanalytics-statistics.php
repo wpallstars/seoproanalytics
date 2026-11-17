@@ -170,7 +170,31 @@ final class SEOProAnalytics_Statistics extends SEOProAnalytics_Feature {
                 'default'     => true,
                 'parent'      => self::KEY,
                 'label'       => __('Count clicks and form submits', 'seoproanalytics'),
-                'description' => __('What people click (links, buttons, images), clicks that do nothing, and forms sent. Never what is typed or chosen in a form; emails and long numbers in labels are hidden. Add data-sps-mask to an element to leave out its text.', 'seoproanalytics'),
+                'description' => __('What people click (links, buttons, images), clicks that do nothing, and forms sent, with where on the page each click was for the click heatmap. Never what is typed or chosen in a form; emails and long numbers in labels are hidden. Add data-sps-mask to an element to leave out its text.', 'seoproanalytics'),
+            ),
+            'tracking_speed'          => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'parent'      => self::KEY,
+                'label'       => __('Measure page speed for visitors', 'seoproanalytics'),
+                'description' => __('The browser reports how fast each page loaded and responded for real visitors (time to first byte, first and largest contentful paint, interaction to next paint and layout shift), sent with the visit\'s last hit when the page is left: no extra request, and nothing runs before the page has loaded. Kept like clicks.', 'seoproanalytics'),
+            ),
+            'tracking_speed_sample'   => array(
+                'type'        => 'int',
+                'default'     => 100,
+                'min'         => 1,
+                'max'         => 100,
+                'unit'        => __('% of page loads', 'seoproanalytics'),
+                'parent'      => self::KEY,
+                'label'       => __('Page speed sample', 'seoproanalytics'),
+                'description' => __('Measure only this share of page loads, for a busy site that needs fewer rows. Applies while page speed is measured.', 'seoproanalytics'),
+            ),
+            'tracking_crawlers'       => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'parent'      => self::KEY,
+                'label'       => __('Count crawler visits', 'seoproanalytics'),
+                'description' => __('Which search engines, AI crawlers and SEO tools fetch which pages, and the answer each got. Bots do not run the tracker, so the server notes their requests after the page\'s output, with one database write that only the bot waits for; visitors\' pages only check the browser name. Pages a page cache serves without WordPress are not seen.', 'seoproanalytics'),
             ),
             'tracking_search'         => array(
                 'type'        => 'bool',
@@ -314,8 +338,18 @@ final class SEOProAnalytics_Statistics extends SEOProAnalytics_Feature {
                 'max'         => 120,
                 'unit'        => __('months', 'seoproanalytics'),
                 'parent'      => 'retention',
-                'label'       => __('Clicks and form submits', 'seoproanalytics'),
+                'label'       => __('Clicks, form submits and page speed', 'seoproanalytics'),
                 'description' => __('Many rows, most useful while a page is new or changing. Never kept longer than their visits.', 'seoproanalytics'),
+            ),
+            'retention_crawlers'      => array(
+                'type'        => 'int',
+                'default'     => 13,
+                'min'         => 1,
+                'max'         => 120,
+                'unit'        => __('months', 'seoproanalytics'),
+                'parent'      => 'retention',
+                'label'       => __('Crawler visits', 'seoproanalytics'),
+                'description' => __('One row per day, crawler, page and answer. 13 months allows a comparison with the same month last year.', 'seoproanalytics'),
             ),
             'retention_search'        => array(
                 'type'        => 'int',
@@ -402,6 +436,13 @@ final class SEOProAnalytics_Statistics extends SEOProAnalytics_Feature {
                 'tab'         => 'data',
                 'label'       => __('Let other roles see the statistics', 'seoproanalytics'),
                 'description' => __('Administrators always see them. People with the roles below see the SEO Pro Analytics menu, the Dashboard widget and the read API, but not these settings.', 'seoproanalytics'),
+            ),
+            'toolbar'                 => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'tab'         => 'data',
+                'label'       => __('Page statistics in the toolbar', 'seoproanalytics'),
+                'description' => __('On the site, people who can see the statistics get an Analytics menu in the toolbar with the current page\'s last 30 days, its click and scroll heatmap, and a link to its report. The numbers are fetched only when the menu is opened; visitors who are not logged in get nothing.', 'seoproanalytics'),
             ),
             'viewer_roles'            => array(
                 'type'        => 'multi',
@@ -667,18 +708,19 @@ final class SEOProAnalytics_Statistics extends SEOProAnalytics_Feature {
      * Months visits, events, clicks and search data by page and query are
      * kept; 0 keeps them forever.
      *
-     * @return array{visits:int,events:int,clicks:int,search:int,crawl:int}
+     * @return array{visits:int,events:int,clicks:int,search:int,crawl:int,crawlers:int}
      */
     public static function retention() {
         if (!SEOProAnalytics_Settings::get('retention')) {
-            return array('visits' => 0, 'events' => 0, 'clicks' => 0, 'search' => 0, 'crawl' => 0);
+            return array('visits' => 0, 'events' => 0, 'clicks' => 0, 'search' => 0, 'crawl' => 0, 'crawlers' => 0);
         }
         return array(
-            'visits' => max(1, (int) SEOProAnalytics_Settings::get('retention_visits')),
-            'events' => max(1, (int) SEOProAnalytics_Settings::get('retention_events')),
-            'clicks' => max(1, (int) SEOProAnalytics_Settings::get('retention_clicks')),
-            'search' => max(1, (int) SEOProAnalytics_Settings::get('retention_search')),
-            'crawl'  => max(1, (int) SEOProAnalytics_Settings::get('retention_crawl')),
+            'visits'   => max(1, (int) SEOProAnalytics_Settings::get('retention_visits')),
+            'events'   => max(1, (int) SEOProAnalytics_Settings::get('retention_events')),
+            'clicks'   => max(1, (int) SEOProAnalytics_Settings::get('retention_clicks')),
+            'search'   => max(1, (int) SEOProAnalytics_Settings::get('retention_search')),
+            'crawl'    => max(1, (int) SEOProAnalytics_Settings::get('retention_crawl')),
+            'crawlers' => max(1, (int) SEOProAnalytics_Settings::get('retention_crawlers')),
         );
     }
 
@@ -689,6 +731,36 @@ final class SEOProAnalytics_Statistics extends SEOProAnalytics_Feature {
      */
     public static function autocapture() {
         return (bool) SEOProAnalytics_Settings::get('tracking_clicks');
+    }
+
+    /**
+     * Percentage of page loads whose speed the tracker measures (0: off).
+     *
+     * @return int
+     */
+    public static function speed_sample() {
+        if (!SEOProAnalytics_Settings::get('tracking_speed')) {
+            return 0;
+        }
+        return min(100, max(1, (int) SEOProAnalytics_Settings::get('tracking_speed_sample')));
+    }
+
+    /**
+     * Whether crawlers' requests are counted.
+     *
+     * @return bool
+     */
+    public static function crawlers() {
+        return (bool) SEOProAnalytics_Settings::get('tracking_crawlers');
+    }
+
+    /**
+     * Whether viewers get the page statistics menu in the toolbar.
+     *
+     * @return bool
+     */
+    public static function toolbar() {
+        return (bool) SEOProAnalytics_Settings::get('toolbar');
     }
 
     /**

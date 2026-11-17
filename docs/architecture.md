@@ -386,12 +386,53 @@ tracker uses the REST route.
 
 ### Server-side capture
 
-Crawlers rarely run JavaScript. On front-end requests that reach PHP, a
-`template_redirect` hook matches the user agent against the bot list (one
-regular expression, no lookups) and appends a bot hit to the buffer. Page
-caches hide repeat visits, so the plugin asks the caches it can (LiteSpeed,
-WP Rocket) not to cache bot requests, and lists the bot user agents for
-the others.
+Crawlers rarely run JavaScript (`SEOProAnalytics_Crawlers`; Settings →
+Tracking → Count crawler visits, on by default). On every non-admin
+request that reaches WordPress, the plugin's setup matches the user agent against
+`SEOProAnalytics_UA::BOT_PATTERN` (one regular expression, no lookups);
+people's requests stop there. A bot's front-end request (also
+`robots.txt`; not admin, AJAX, REST or cron) is added at `shutdown`,
+after the page's output, to the `bots` row of its site-local day,
+crawler, page and HTTP status: two dictionary lookups and one upsert by
+primary key, which only the bot's request waits for. Crawlers are named
+from `CRAWLERS` (first match wins) in six groups (search, ai, seo,
+social, monitor, other); unknown bots count as "Other bot", and a page
+not found is kept by address only for search engines and AI crawlers
+(scanners' made-up addresses count as one page), so the dictionary
+cannot grow with junk. Pages a page cache serves without WordPress are
+not seen. GET `/crawlers` and the Crawlers view read it.
+
+### Real visitors' page speed
+
+For a sample of page loads (Settings → Tracking → Measure page speed for
+visitors, on; Page speed sample, 100% by default), the tracker reads the
+browser's own performance entries with buffered `PerformanceObserver`s:
+TTFB (the navigation entry), FCP, LCP, CLS (the largest burst of shifts)
+and INP (the slowest interaction, leaving out one in 50), counted from
+activation for a prerendered page, with paint times skipped for a page
+opened in the background. No timers, polling or extra request: the
+figures ride on the page's engagement hit (`v`) when the page is hidden
+or left. The processor writes one `speed` row per page load (its `pkey`,
+unique), with the visit's device. GET `/speed` and the Speed view give
+each metric's 75th percentile and good / needs improvement / poor
+shares (Google's thresholds, `SEOProAnalytics_Speed::METRICS`), by
+device and page. Speed rows go with clicks for retention.
+
+### Heatmaps and the toolbar
+
+A pointer click's place is kept with the click (`clicks.x`: thousandths
+of the window's width plus 1; `clicks.y`: pixels from the page top plus
+1; 0 for a key press, and for clicks before schema v35). GET `/heatmap`
+groups one page's clicks in cells of 1% of the width by 10 pixels and
+adds the share of pageviews reaching each tenth of the page.
+`SEOProAnalytics_Toolbar` adds, for logged-in people who can see the
+statistics (Settings → Data → Page statistics in the toolbar, on), an
+Analytics menu on the site's pages whose numbers (GET `/page-summary`)
+are fetched only when it is first opened, and a heatmap link
+(`?seoproanalytics_heatmap=1`) that loads `admin/js/seoproanalytics-heatmap.js`
+to draw the cells and scroll depth over the page. Visitors who are not
+logged in get no script, style or request from either; the heatmap
+link from the Clicks view works with the toolbar setting off.
 
 ### Purchases
 
@@ -1633,7 +1674,7 @@ What each plugin keeps sets what can be imported:
 | Statify | A row per pageview: day, page, referrer | Pageviews of the site, each page and each referring host and its channel | Visitors, visits and everything else |
 | WP Statistics | A row per visitor and day (its pageviews, referrer, browser, system, device, country, first and last page), pageviews per page and day, and the day's totals | Each visitor row as one visit: visitors, visits, pageviews, bounces; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems. Days it purged: the site's visitors and pageviews, and its pages' pageviews | Time, scroll, events |
 | Independent Analytics | A row per visit and per pageview (UTC), with the page, referrer, country, device, browser and system in tables of their own; UTM tags with its Pro version | Visitors, visits, pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags (Pro), search landing pages, countries, devices, browsers, systems | Scroll, events |
-| Slimstat | A row per pageview (local time), with its visit, page, referrer, browser, system, device type and country; rows its retention moved to an archive table | Visits (each one visitor), pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, scroll, events |
+| Slimstat | A row per pageview (local time), with its visit, page, referrer, browser, system, device type and country; rows its retention moved to an archive table; the same kept from version 3 (`_3` tables, browser and content type in lookup tables) | Visits (each one visitor), pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, scroll, events, single clicks and outbound links (`slim_events`, `slim_outbound`), its load timings (`server_latency`, `page_performance`: not Core Web Vitals) |
 | Matomo for WordPress | A row per visit (UTC) with its referrer, campaign name, browser, system, device and country codes, a row per action, and report archives | Visits (each one visitor), pageviews, bounces, visit time and time on page; pages, entry and exit pages, sources, channels, campaign name and keyword, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, campaign source and medium, scroll, events |
 | Jetpack Stats | Nothing on the site: WordPress.com keeps views and visitors per day, and per day its top posts and pages, referrers and countries | Pageviews and visitors (and visits = visitors) of the site; pageviews of each post and page, each referring host and its channel, and each country | Visits, bounces, time, entry and exit pages, campaigns, devices, browsers, systems; search terms (mostly hidden) |
 
@@ -1675,9 +1716,18 @@ step of the run), and the dry run estimates from table statistics (see
 Dry run). Slimstat's `dt` is WordPress's legacy local timestamp (Unix
 time plus the site's offset then), so a site day is `dt`'s UTC day; it
 reads `slim_stats` and `slim_stats_archive` (its "Archive Mode" moves
-old rows there), leaves out crawlers (`browser_type` 1) and wp-admin
+old rows there), and `slim_stats_3` and `slim_stats_archive_3`, kept
+from version 3 when 4.0 upgraded, with `browser`, `platform` and
+`browser_type` joined from `slim_browsers` by `browser_id` and
+`content_type` from `slim_content_info` (a day's rows at a time, as a
+derived table); it leaves out crawlers (`browser_type` 1) and wp-admin
 pageviews, and counts each `visit_id` as a visit (a row without one as a
-visit of its own); time on page is to `dt_out`, at most 30 minutes.
+visit of its own); time on page is to `dt_out` (none in version 3), at
+most 30 minutes. Its clicks (`slim_events`, `slim_outbound`) are not
+imported: the daily table has no clicks, and calling them custom events
+would mix them with the site's own; nor are its `server_latency` and
+`page_performance`, which are not the Core Web Vitals the `speed` table
+holds, and `speed` rows belong to real visits.
 Matomo is read from its raw log tables, not its reporting API: that
 loads only while the plugin is active (an import must also work after
 it is switched off or deleted), boots all of Matomo inside the request,
@@ -2062,10 +2112,11 @@ with `dbDelta()` per `SEOProAnalytics_Schema::VERSION`. Times are Unix seconds
 | `pageviews` | page load | `id`, `pkey` (the tracker's page-load ID, unique), `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (1 not found, 2 site search, 4 no results), `search_id` (the search words; 0 when none or not recorded; schema v5) |
 | `events` | custom or automatic event | `id`, `session_id`, `ts`, `seq`, `path_id`, `name_id`, `revenue`, `currency` |
 | `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (reports by period, and retention) |
-| `clicks` | click or form submit (schema v4) | `id`, `session_id`, `ts`, `seq`, `path_id` (the page load's: clicks join it by its ID and never start or extend a visit), `kind` (1 click, 2 form), `selector_id`, `label_id`, `target_id`, `flags` (1 dead, 2 outbound, 4 affiliate, 8 file), `fields` (a form's) |
+| `clicks` | click or form submit (schema v4) | `id`, `session_id`, `ts`, `seq`, `path_id` (the page load's: clicks join it by its ID and never start or extend a visit), `kind` (1 click, 2 form), `selector_id`, `label_id`, `target_id`, `flags` (1 dead, 2 outbound, 4 affiliate, 8 file), `fields` (a form's), `x` (thousandths of the window's width + 1), `y` (pixels from the page top + 1; both 0: no place, such as a key press; schema v35) |
+| `speed` | page load measured in a visitor's browser (schema v35; Real visitors' page speed above) | `id`, `pkey` (the page load's ID, unique), `session_id`, `ts`, `path_id`, `device`, `ttfb`, `fcp`, `lcp`, `inp` (ms), `cls` (thousandths); NULL when not measured |
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
-| `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
+| `bots` | site-local day × crawler × page × HTTP status (schema v35; Server-side capture above) | `ts` (the day's first second), `bot_id` (`DICT_BOT`), `path_id` (0: an address not found, from a bot other than a search engine or AI crawler), `status`, `hits`, `last` (time of the latest); primary key `(ts, bot_id, path_id, status)` |
 | `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProAnalytics_Rollup::DIMS`, or `SEARCH_LANDING` (18): visits from organic search by entry page, for the content report), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views), `import_id` (schema v15: the `imports` row of a day imported from another statistics plugin, 0 for the site's own; a day is one or the other, and the daily summaries never touch imported rows) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | engine × day × page / query / page and query / device and country (schema v7; Connections and the search import, and Bing Webmaster Tools above: Bing's pages, queries and pairs are weekly, on the week's last day, and its totals have no device or country) | `engine` (1 Google, 2 Bing), `day`, `path_id`, `query_id` (dict kind 16), `device` (1 desktop, 2 mobile, 3 tablet), `country` (ISO 3166-1 alpha-3, lower case), `clicks`, `impressions`, `pos_impr` (position × impressions × 100, for weighted averages), `import_id` |
@@ -2111,7 +2162,8 @@ v9); `page_facts` has `post_id`, `checked`, `flags`, `title_hash` and
 (schema v11), and `published`, and `sitemap` `first_seen` and `seen`
 (schema v12); `ab_tests` has `post_id` and `status` (schema v16);
 `ab_exposures` has `(test_id, day, variant_id, session_id)` for a test's
-results and `ts` for retention (schema v17);
+results and `ts` for retention (schema v17); `speed` has `(path_id, ts)`
+and `ts`, and `bots` `(bot_id, ts)` and `(path_id, ts)` (schema v35);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -2137,9 +2189,9 @@ seoproanalytics prune --dry-run` counts them.
 | Visits, pageviews and journeys | 75 months | Quarter-by-quarter comparisons with filters over six years |
 | Events, goals and revenue | 120 months | Low volume, high value |
 | Clicks and forms | 3 months | High volume; most useful while a page is new or changing |
-| Speed measurements | 3 months | Daily percentiles kept |
+| Speed measurements (`speed`) | as clicks (3 months) | One row per measured page load; percentiles are worked out from them |
 | Errors | 3 months | Groups kept 13 months |
-| Crawler requests | 3 months | Daily totals per crawler kept |
+| Crawler requests (`bots`) | 13 months | Already one row per day, crawler, page and status; year-on-year crawl patterns |
 | Search pages, queries and pairs (Google and Bing) | 25 months | Each engine itself keeps 16 |
 | Crawl import history and per-import totals | 13 months | Daily batched pruning with the rollup time budget; always keep the newest import, running imports and any import still referenced by either latest-state crawl table |
 | Daily summaries, search totals, changes | forever | Small; the long-term record |
@@ -2729,7 +2781,9 @@ in the API and in links; the menu lists one only while it is chosen.
   `goals` and `funnels` answer reports on GET and add, change and delete
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
-  `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
+  `changes`, `goals`, `funnels`, `properties`, `clicks`, `speed`,
+  `crawlers`, `heatmap`, `page-summary` (the toolbar's; never cached by
+  the browser), `search`,
   `opportunities`, `audit`, `links`, `indexation`, `inspections`, `crawl-issues`, `backlinks`, `coverage`, `content`,
   `experiments`, `ab-tests` (and `ab-tests/{id}`; A/B tests above),
   `queue`, `targets`, `owners` (who owns the SEO of what, and setting
@@ -2746,7 +2800,7 @@ in the API and in links; the menu lists one only while it is chosen.
   the imports; `/{source}` `POST` for the dry run or to start an import;
   `/{source}/cleanup` `POST` to list, or remove, its leftovers; Moving
   from other statistics plugins above); planned: `pages`,
-  `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`,
+  `page`, `flow`, `journeys`, `vitals`, `errors`,
   `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoproanalytics <command>` with `--format=json|csv|table`:
@@ -3075,7 +3129,13 @@ or native elsewhere).
 ## Performance budgets
 
 - Visitor pages: no database query, option write or remote request added;
-  the inline tracker under 4 KB compressed.
+  the inline tracker under 5 KB compressed (`gzip -9`: 4,974 bytes in
+  1.22.0, of which page speed and click places are 675; 4,299 in
+  1.21.0). Page speed adds observers
+  only (no timers, no request: it rides on the engagement hit); crawler
+  counting adds one user-agent match, and writes only for bots; the
+  toolbar and heatmap load nothing for visitors who are not logged in,
+  and the toolbar's numbers are fetched only when its menu is opened.
 - Collector: under 5 ms on the fast path; no WordPress load.
 - Processor: 5,000 hits per batch, 20-second budget.
 - Dashboard: first answer under 1 second for 30 days on 1 million

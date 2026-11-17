@@ -11,9 +11,20 @@
  * country; content_type; dt_out, when the visitor left the page, 0 when it
  * is not known), and slim_stats_archive, the same rows moved there by its
  * "Retention Period" while "Archive Mode" is on (the default). Both are
- * read. Its rows also hold the IP addresses, the user name and e-mail,
- * the fingerprint and the user agent: those columns are never read, only
- * grouped counts.
+ * read, and so are slim_stats_3 and slim_stats_archive_3, the pageviews
+ * kept from version 3 (renamed when 4.0 upgraded), whose browser,
+ * platform and browser_type are in slim_browsers (by browser_id) and
+ * content_type in slim_content_info (by content_info_id); without those
+ * two they are not read, and rows 4.0 copied into slim_stats (same id
+ * and dt) are read from slim_stats only. Its rows also
+ * hold the IP addresses, the user name and e-mail, the fingerprint and
+ * the user agent: those columns are never read, only grouped counts.
+ *
+ * Not imported: slim_events and slim_outbound (single clicks with their
+ * texts; the daily table has no clicks, and they are not custom events),
+ * and slim_stats's server_latency and page_performance (its own load
+ * timings, not Core Web Vitals, and the speed table holds measurements
+ * of real visits only).
  *
  * dt is not plain Unix time: it is WordPress's legacy "local timestamp"
  * (Unix time plus the site's offset from UTC at that moment), so the
@@ -61,11 +72,22 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
     /** Its settings option. */
     const SETTINGS_OPTION = 'slimstat_options';
 
-    /** Tables read: the pageviews and the ones its retention moved. */
-    const READ = array('slim_stats', 'slim_stats_archive');
+    /**
+     * Tables read: the pageviews and the ones its retention moved, and
+     * the same kept from version 3 (renamed with _3 when 4.0 upgraded:
+     * browser, system and device in slim_browsers by browser_id, the
+     * content type in slim_content_info by content_info_id).
+     */
+    const READ = array('slim_stats', 'slim_stats_archive', 'slim_stats_3', 'slim_stats_archive_3');
 
     /** Its tables on each site, in every layout. */
-    const TABLES = array('slim_stats', 'slim_stats_archive', 'slim_events', 'slim_events_archive', 'slim_outbound', 'slim_stats_3', 'slim_stats_archive_3');
+    const TABLES = array('slim_stats', 'slim_stats_archive', 'slim_events', 'slim_events_archive', 'slim_outbound', 'slim_stats_3', 'slim_stats_archive_3', 'slim_meta', 'slim_user_agents');
+
+    /** Columns read from a table in the current layout. */
+    const COLUMNS = array('id', 'dt', 'visit_id', 'resource', 'referer', 'browser', 'browser_type', 'platform', 'country');
+
+    /** Columns read from a version 3 table (the rest come from slim_browsers). */
+    const COLUMNS_3 = array('id', 'dt', 'visit_id', 'resource', 'referer', 'country', 'browser_id', 'content_info_id');
 
     /** Its tables shared by the network (the base prefix). */
     const SHARED_TABLES = array('slim_browsers', 'slim_screenres', 'slim_content_info');
@@ -120,9 +142,10 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
         global $wpdb;
         list($from, $to) = self::span(self::day_of($start));
         foreach ($this->tables() as $table) {
-            $keep = $this->keep($table);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- another plugin's table, entries of its dt index; $keep is fixed SQL.
-            if ($wpdb->get_var($wpdb->prepare("SELECT 1 FROM %i WHERE dt >= %d AND dt < %d AND $keep LIMIT 1", $table, $from, $to))) {
+            $keep          = $this->keep($table);
+            list($src, $a) = self::source($table, $from, $to);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- another plugin's table, entries of its dt index; $src and $keep are fixed SQL with placeholders, their values in one array.
+            if ($wpdb->get_var($wpdb->prepare("SELECT 1 FROM $src t WHERE dt >= %d AND dt < %d AND $keep LIMIT 1", array_merge($a, array($from, $to))))) {
                 return true;
             }
         }
@@ -141,10 +164,11 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
         $start = self::span($from)[0];
         $end   = self::span($to)[1];
         foreach ($this->tables() as $table) {
-            $keep = $this->keep($table);
+            $keep          = $this->keep($table);
+            list($src, $a) = self::source($table, $start, $end);
             // Its own counts per day, added up: pageviews, and visits (each visitor one, as it keeps no other identity read here).
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- another plugin's table by its dt index; only counts are read; $keep is fixed SQL.
-            $row = $wpdb->get_row($wpdb->prepare("SELECT COALESCE(SUM(d.pv), 0) AS pageviews, COALESCE(SUM(d.v), 0) AS visits FROM (SELECT COUNT(*) AS pv, COUNT(DISTINCT IF(visit_id > 0, visit_id, NULL)) + COALESCE(SUM(visit_id = 0), 0) AS v FROM %i WHERE dt >= %d AND dt < %d AND $keep GROUP BY FLOOR(dt / 86400)) d", $table, $start, $end), ARRAY_A);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- another plugin's table by its dt index; only counts are read; $src and $keep are fixed SQL with placeholders, their values in one array.
+            $row = $wpdb->get_row($wpdb->prepare("SELECT COALESCE(SUM(d.pv), 0) AS pageviews, COALESCE(SUM(d.v), 0) AS visits FROM (SELECT COUNT(*) AS pv, COUNT(DISTINCT IF(visit_id > 0, visit_id, NULL)) + COALESCE(SUM(visit_id = 0), 0) AS v FROM $src t WHERE dt >= %d AND dt < %d AND $keep GROUP BY FLOOR(dt / 86400)) d", array_merge($a, array($start, $end))), ARRAY_A);
             $out['pageviews'] += isset($row['pageviews']) ? (int) $row['pageviews'] : 0;
             $out['visits']    += isset($row['visits']) ? (int) $row['visits'] : 0;
         }
@@ -201,18 +225,21 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
         $keep  = $this->keep($table);
         $time  = in_array('dt_out', $cols, true) ? 'LEAST(GREATEST(CAST(dt_out AS SIGNED) - CAST(dt AS SIGNED), 0), ' . self::PAGE_TIME . ')' : '0';
         $key   = 'IF(visit_id > 0, CAST(visit_id AS SIGNED), -CAST(id AS SIGNED))';
+        // The table, or a version 3 table's day with its joined columns.
+        list($src, $a) = self::source($table, $from, $to);
+        $day           = array_merge($a, array($from, $to));
         // One row per visit: its pageviews, first and last row, and time.
-        $visits = "(SELECT $key AS k, COUNT(*) AS n, MIN(id) AS f, MAX(id) AS l, SUM($time) AS s FROM %i WHERE dt >= %d AND dt < %d AND $keep GROUP BY k) x";
+        $visits = "(SELECT $key AS k, COUNT(*) AS n, MIN(id) AS f, MAX(id) AS l, SUM($time) AS s FROM $src t WHERE dt >= %d AND dt < %d AND $keep GROUP BY k) x";
         $vsums  = 'COUNT(*) AS visitors, COUNT(*) AS visits, COALESCE(SUM(x.n), 0) AS pageviews, COALESCE(SUM(x.n <= 1), 0) AS bounces, COALESCE(SUM(x.s), 0) * 1000 AS engaged_ms';
 
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's table, one day by its dt index, joined by primary key; $visits, $vsums, $key, $time and $keep are fixed SQL. Only grouped names, addresses and counts are read, never its IP, user, fingerprint or user agent columns.
-        $site = $wpdb->get_row($wpdb->prepare("SELECT $vsums FROM $visits", $table, $from, $to), ARRAY_A);
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's table, one day by its dt index, joined by primary key; $src, $visits, $vsums, $key, $time and $keep are fixed SQL with placeholders. Only grouped names, addresses and counts are read, never its IP, user, fingerprint or user agent columns.
+        $site = $wpdb->get_row($wpdb->prepare("SELECT $vsums FROM $visits", $day), ARRAY_A);
         if (!$site || (int) $site['pageviews'] <= 0) {
             return;
         }
         self::add($sums, '', 0, self::metrics($site));
 
-        $pages = $wpdb->get_results($wpdb->prepare("SELECT resource AS v, COUNT(DISTINCT $key) AS visitors, COUNT(DISTINCT $key) AS visits, COUNT(*) AS pageviews, COALESCE(SUM($time), 0) * 1000 AS engaged_ms FROM %i WHERE dt >= %d AND dt < %d AND $keep GROUP BY resource ORDER BY pageviews DESC LIMIT %d", $table, $from, $to, self::ROWS), ARRAY_A);
+        $pages = $wpdb->get_results($wpdb->prepare("SELECT resource AS v, COUNT(DISTINCT $key) AS visitors, COUNT(DISTINCT $key) AS visits, COUNT(*) AS pageviews, COALESCE(SUM($time), 0) * 1000 AS engaged_ms FROM $src t WHERE dt >= %d AND dt < %d AND $keep GROUP BY resource ORDER BY pageviews DESC LIMIT %d", array_merge($day, array(self::ROWS))), ARRAY_A);
         foreach ((array) $pages as $row) {
             self::add($sums, 'page', self::path((string) $row['v']), self::metrics($row));
         }
@@ -227,14 +254,14 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
             'country' => array('country', 'f'),
         );
         foreach ($dims as $dimension => $pick) {
-            $found = $wpdb->get_results($wpdb->prepare("SELECT r.%i AS v, $vsums FROM $visits INNER JOIN %i r ON r.id = x.%i GROUP BY r.%i ORDER BY visits DESC LIMIT %d", $pick[0], $table, $from, $to, $table, $pick[1], $pick[0], self::ROWS), ARRAY_A);
+            $found = $wpdb->get_results($wpdb->prepare("SELECT r.%i AS v, $vsums FROM $visits INNER JOIN $src r ON r.id = x.%i GROUP BY r.%i ORDER BY visits DESC LIMIT %d", array_merge(array($pick[0]), $day, $a, array($pick[1], $pick[0], self::ROWS))), ARRAY_A);
             foreach ((array) $found as $row) {
                 self::add($sums, $dimension, self::value($dimension, (string) $row['v']), self::metrics($row));
             }
         }
 
         // Referrer with the first page (its campaign tags and the landing).
-        $mixed = $wpdb->get_results($wpdb->prepare("SELECT COALESCE(r.referer, '') AS r, COALESCE(r.resource, '') AS e, $vsums FROM $visits INNER JOIN %i r ON r.id = x.f GROUP BY r.referer, r.resource ORDER BY visits DESC LIMIT %d", $table, $from, $to, $table, self::ROWS * 5), ARRAY_A);
+        $mixed = $wpdb->get_results($wpdb->prepare("SELECT COALESCE(r.referer, '') AS r, COALESCE(r.resource, '') AS e, $vsums FROM $visits INNER JOIN $src r ON r.id = x.f GROUP BY r.referer, r.resource ORDER BY visits DESC LIMIT %d", array_merge($day, $a, array(self::ROWS * 5))), ARRAY_A);
         // phpcs:enable
         $own = self::host(home_url());
         foreach ((array) $mixed as $row) {
@@ -430,13 +457,61 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
     private function tables() {
         global $wpdb;
         $out = array();
+        // A version 3 row's crawler and wp-admin marks are in the shared
+        // tables: without them its rows cannot be told from visitors'.
+        $classified = self::table_exists($wpdb->base_prefix . 'slim_browsers') && self::table_exists($wpdb->base_prefix . 'slim_content_info');
         foreach (self::READ as $name) {
             $table = $wpdb->prefix . $name;
-            if (!array_diff(array('id', 'dt', 'visit_id', 'resource', 'referer', 'browser', 'browser_type', 'platform', 'country'), self::columns($table))) {
+            if (self::old($table) && !$classified) {
+                continue;
+            }
+            if (!array_diff(self::old($table) ? self::COLUMNS_3 : self::COLUMNS, self::columns($table))) {
                 $out[] = $table;
             }
         }
         return $out;
+    }
+
+    /**
+     * Whether a table is in the version 3 layout.
+     *
+     * @param string $table Full name.
+     * @return bool
+     */
+    private static function old($table) {
+        return substr($table, -2) === '_3';
+    }
+
+    /**
+     * A table read, as SQL to select from (alias it) and its placeholders'
+     * values: the table itself, or a version 3 table's rows of a dt range
+     * with browser, platform and browser_type from slim_browsers and
+     * content_type from slim_content_info (rows without both are left
+     * out, as 4.0's own copy did). 4.0 copied slim_stats_3's rows into
+     * slim_stats with the same id and dt: a row found there (or in the
+     * archive its retention moved it to) is read from there only.
+     *
+     * @param string $table Full name.
+     * @param int    $from  First dt.
+     * @param int    $to    dt after the range.
+     * @return array{0:string,1:array<int,int|string>}
+     */
+    private static function source($table, $from, $to) {
+        global $wpdb;
+        if (!self::old($table)) {
+            return array('%i', array($table));
+        }
+        // slim_browsers and slim_content_info: shared by the network in version 3, so under the base prefix.
+        $args = array($table, $wpdb->base_prefix . 'slim_browsers', $wpdb->base_prefix . 'slim_content_info', $from, $to);
+        $copied = '';
+        foreach (array('slim_stats', 'slim_stats_archive') as $name) {
+            $current = $wpdb->prefix . $name;
+            if (self::table_exists($current)) {
+                $copied .= ' AND NOT EXISTS (SELECT 1 FROM %i n WHERE n.id = s.id AND n.dt = s.dt)';
+                $args[]  = $current;
+            }
+        }
+        return array("(SELECT s.id, s.dt, s.visit_id, s.resource, s.referer, s.country, b.browser, b.platform, b.type AS browser_type, c.content_type FROM %i s INNER JOIN %i b ON b.browser_id = s.browser_id INNER JOIN %i c ON c.content_info_id = s.content_info_id WHERE s.dt >= %d AND s.dt < %d$copied)", $args);
     }
 
     /**
@@ -447,7 +522,7 @@ final class SEOProAnalytics_Migrate_Slimstat extends SEOProAnalytics_Migrate_Sou
      */
     private function keep($table) {
         $sql = '(browser_type IS NULL OR browser_type <> 1)';
-        if (in_array('content_type', self::columns($table), true)) {
+        if (self::old($table) || in_array('content_type', self::columns($table), true)) {
             $sql .= " AND (content_type IS NULL OR content_type <> 'admin')";
         }
         return $sql;

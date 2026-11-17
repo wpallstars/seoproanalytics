@@ -82,14 +82,17 @@ final class SEOProAnalytics_Rollup {
     /**
      * Default retention in months (0 keeps forever): visits with their
      * pageviews; events; clicks and form submits; search data by page and
-     * query (SEOProAnalytics_Search_Import prunes it; its totals are kept).
+     * query (SEOProAnalytics_Search_Import prunes it; its totals are kept);
+     * crawl import history; crawler requests (the bots table). Page speed
+     * goes with clicks.
      */
     const RETENTION = array(
-        'visits' => 75,
-        'events' => 120,
-        'clicks' => 3,
-        'search' => 25,
-        'crawl'  => 13,
+        'visits'   => 75,
+        'events'   => 120,
+        'clicks'   => 3,
+        'search'   => 25,
+        'crawl'    => 13,
+        'crawlers' => 13,
     );
 
     /**
@@ -467,9 +470,11 @@ final class SEOProAnalytics_Rollup {
         $today = new DateTimeImmutable('today', $tz);
         $jobs  = array();
         foreach (self::retention() as $kind => $months) {
-            if ($months > 0 && ($after || $kind === 'crawl')) {
+            // Crawl history and crawler requests are never summarised: no wait for the summaries.
+            $own = $kind === 'crawl' || $kind === 'crawlers';
+            if ($months > 0 && ($after || $own)) {
                 $before = $today->modify("-$months months")->getTimestamp();
-                $jobs[$kind] = $kind === 'crawl' ? $before : min($after, $before);
+                $jobs[$kind] = $own ? $before : min($after, $before);
             }
         }
         return $jobs;
@@ -602,6 +607,11 @@ final class SEOProAnalytics_Rollup {
         $clicks = max(isset($jobs['clicks']) ? $jobs['clicks'] : 0, isset($jobs['visits']) ? $jobs['visits'] : 0);
         if ($clicks) {
             $out[] = array(SEOProAnalytics_Schema::table('clicks'), 'ts', $clicks, 0);
+            // Page speed: one row per page load measured, kept like clicks.
+            $out[] = array(SEOProAnalytics_Schema::table('speed'), 'ts', $clicks, 0);
+        }
+        if (isset($jobs['crawlers'])) {
+            $out[] = array(SEOProAnalytics_Schema::table('bots'), 'ts', $jobs['crawlers'], 0);
         }
         return $out;
     }
@@ -609,17 +619,17 @@ final class SEOProAnalytics_Rollup {
     /**
      * Retention in months per kind of data.
      *
-     * @return array{visits:int,events:int,clicks:int,search:int,crawl:int}
+     * @return array{visits:int,events:int,clicks:int,search:int,crawl:int,crawlers:int}
      */
     public static function retention() {
         /**
          * Filters how many months visits (with their pageviews and
-         * properties), events, clicks and form submits, and search data
-         * by page and query are kept; 0 keeps them forever. Clicks never
-         * outlast their visits. Daily summaries and search totals are
-         * always kept.
+         * properties), events, clicks and form submits (with page speed),
+         * search data by page and query, and crawler requests are kept; 0
+         * keeps them forever. Clicks never outlast their visits. Daily
+         * summaries and search totals are always kept.
          *
-         * @param array{visits:int,events:int,clicks:int,search:int,crawl:int} $months Months by kind, from Settings → Data (crawl import history too).
+         * @param array{visits:int,events:int,clicks:int,search:int,crawl:int,crawlers:int} $months Months by kind, from Settings → Data (crawl import history too).
          */
         $months = apply_filters('seoproanalytics_retention', SEOProAnalytics_Statistics::retention());
         $out    = self::RETENTION;

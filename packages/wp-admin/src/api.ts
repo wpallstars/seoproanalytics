@@ -54,6 +54,8 @@ import {
 	type CrawlIssuesAnswer,
 	type CrawlKind,
 	type CrawlStatus,
+	type CrawlerGroup,
+	type CrawlerKind,
 	type LinksAnswer,
 	type LinksKind,
 	type Marker,
@@ -277,6 +279,86 @@ export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 5
 		queryFn: () => get<ClicksAnswer>('clicks', args),
 		placeholderData: keepPreviousData,
 		enabled,
+	});
+}
+
+/** A page speed metric: the speed table's columns (CLS in thousandths). */
+export type SpeedMetric = 'ttfb' | 'fcp' | 'lcp' | 'inp' | 'cls';
+export type SpeedRating = 'good' | 'ni' | 'poor' | '';
+export interface SpeedFigures {
+	p75: number | null;
+	n: number;
+	good: number;
+	ni: number;
+	poor: number;
+	rating: SpeedRating;
+}
+export type SpeedSummary = { loads: number } & Record<SpeedMetric, SpeedFigures>;
+export type SpeedPageRow = { path: string; loads: number } & Partial<Record<SpeedMetric, number | null>> & Partial<Record<`${SpeedMetric}_rating`, SpeedRating>>;
+/** GET /speed (SEOProAnalytics_Speed::report()). */
+export interface SpeedAnswer {
+	range: { from: string; to: string };
+	page: string;
+	enabled: boolean;
+	sample: number;
+	totals: SpeedSummary;
+	devices: Partial<Record<'desktop' | 'mobile' | 'tablet', SpeedSummary>>;
+	pages: SpeedPageRow[];
+	compare?: { range: { from: string; to: string }; totals: SpeedSummary };
+}
+
+/** Real visitors' page speed (never in shared reports). */
+export function useSpeed(scope: Scope, page = '', limit = 10) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), limit, ...(page ? { page } : {}) }, data);
+	return useQuery({
+		queryKey: ['speed', args],
+		queryFn: () => get<SpeedAnswer>('speed', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && !shareAccess.token,
+	});
+}
+
+export interface CrawlerRow {
+	name?: string;
+	group?: Exclude<CrawlerGroup, ''>;
+	path?: string;
+	not_found?: boolean;
+	status?: number;
+	date?: string;
+	hits: number;
+	pages: number;
+	crawlers: number;
+	failed: number;
+	last: number;
+}
+export interface CrawlerTotals {
+	hits: number;
+	crawlers: number;
+	pages: number;
+	errors: number;
+	redirects: number;
+	not_found: number;
+}
+/** GET /crawlers (SEOProAnalytics_Crawlers::report()). */
+export interface CrawlersAnswer {
+	range: { from: string; to: string };
+	kind: CrawlerKind;
+	enabled: boolean;
+	totals: CrawlerTotals;
+	rows: CrawlerRow[];
+	compare?: { range: { from: string; to: string }; totals: CrawlerTotals; change: Record<string, number | null> };
+}
+
+/** Crawler visits; only the period and page apply (bots have no visits to filter). Never in shared reports. */
+export function useCrawlers(scope: Scope, kind: CrawlerKind, group: CrawlerGroup, page = '', limit = 25) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, filters: [] }), kind, limit, ...(group ? { group } : {}), ...(page ? { page } : {}) }, data);
+	return useQuery({
+		queryKey: ['crawlers', args],
+		queryFn: () => get<CrawlersAnswer>('crawlers', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && !shareAccess.token,
 	});
 }
 

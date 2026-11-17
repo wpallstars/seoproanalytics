@@ -34,6 +34,8 @@ export function viewLabel(view: View): string {
 		funnels: __('Funnels', 'seoproanalytics'),
 		properties: __('Properties', 'seoproanalytics'),
 		clicks: __('Clicks', 'seoproanalytics'),
+		speed: __('Speed', 'seoproanalytics'),
+		crawlers: __('Crawlers', 'seoproanalytics'),
 		'ab-tests': __('A/B tests', 'seoproanalytics'),
 		changes: __('Changes', 'seoproanalytics'),
 	};

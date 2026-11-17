@@ -8,17 +8,16 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect, useId, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, Notice } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClicksAnswer, type ClickTotals, type ClickPageInfo } from '@seoproanalytics/core';
 import { errorMessage, shareAccess, useBreakdown, useClicks } from './api';
 import { locale } from './boot';
 import { usePrintAll } from './printAll';
 import type { ViewProps } from './App';
-import { PeriodLine } from './Overview';
-import { Change } from './components/Change';
 import { EditLink } from './components/EditLink';
+import { KindTiles } from './components/KindTiles';
+import { PageCardHeader, PageFilter } from './components/PageFilter';
 import { TableScroll } from './components/TableScroll';
 
 interface Tile {
@@ -124,6 +123,13 @@ function Flags({ row }: Readonly<{ row: ClickRow }>) {
 	return flags.length ? <span className="seoproan-meta">{flags.join(' · ')}</span> : null;
 }
 
+/** The page with its click and scroll heatmap shown over it (SEOProAnalytics_Toolbar). */
+function heatmapUrl(url: string): string {
+	const address = new URL(url, window.location.href);
+	address.searchParams.set('seoproanalytics_heatmap', '1');
+	return address.toString();
+}
+
 function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url' | 'edit_url'> }>) {
 	return (
 		<span className="seoproan-meta">
@@ -136,6 +142,20 @@ function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url'
 				>
 					<span className="dashicons dashicons-external" aria-hidden="true" /> {__('View page', 'seoproanalytics')}
 				</a>
+			)}
+			{info.url && !shareAccess.token && (
+				<>
+					{' '}
+					·{' '}
+					<a
+						href={heatmapUrl(info.url)}
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label={sprintf(/* translators: %s: page path. */ __('Click and scroll heatmap of %s (opens in a new tab)', 'seoproanalytics'), info.path)}
+					>
+						{__('Heatmap', 'seoproanalytics')}
+					</a>
+				</>
 			)}
 			{info.edit_url && (
 				<>
@@ -151,12 +171,8 @@ function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url'
 export function Clicks({ state, update }: Readonly<ViewProps>) {
 	const kind: ClickKind = state.kind ?? 'elements';
 	const page = state.page ?? '';
-	// The box is a draft until Apply; it follows the address (back button, links).
-	const [typed, setTyped] = useState(page);
-	useEffect(() => setTyped(page), [page]);
 	const query = useClicks(state, kind, page);
 	const pages = useBreakdown(state, 'page', 100);
-	const list = useId();
 	const printAll = usePrintAll();
 	const answer = query.data;
 	const totals = answer?.totals;
@@ -174,72 +190,32 @@ export function Clicks({ state, update }: Readonly<ViewProps>) {
 			)}
 
 			<Card className="seoproan-app-card is-wide seoproan-app-section" size="small">
-				<CardHeader className="seoproan-app-card__header">
-					<div>
-						<h2 className="seoproan-app-card__title">
-							{page ? sprintf(/* translators: %s: a page path. */ __('Clicks on %s', 'seoproanalytics'), page) : __('Clicks', 'seoproanalytics')}
-						</h2>
-						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
-						{pageInfo && <PageLinks info={pageInfo} />}
-					</div>
-					<form
-						className="seoproan-properties__event"
-						onSubmit={(e) => {
-							e.preventDefault();
-							update({ page: typed.trim() });
-						}}
-					>
-						<TextControl
-							__nextHasNoMarginBottom
-							label={__('Only on page', 'seoproanalytics')}
-							value={typed}
-							list={list}
-							autoComplete="off"
-							placeholder={__('Any page; * for any text', 'seoproanalytics')}
-							onChange={setTyped}
+				<PageCardHeader
+					title={page ? sprintf(/* translators: %s: a page path. */ __('Clicks on %s', 'seoproanalytics'), page) : __('Clicks', 'seoproanalytics')}
+					range={answer?.range}
+					compare={answer?.compare?.range}
+					info={pageInfo && <PageLinks info={pageInfo} />}
+					filter={
+						<PageFilter
+							page={page}
+							suggestions={(pages.data?.rows ?? []).map((r) => r.value).filter((value) => value !== '')}
+							onApply={(value) => update({ page: value })}
 						/>
-						<datalist id={list}>
-							{(pages.data?.rows ?? [])
-								.filter((r) => r.value !== '')
-								.map((r) => (
-									<option key={r.value} value={r.value} />
-								))}
-						</datalist>
-						<Button variant="secondary" type="submit">
-							{__('Apply', 'seoproanalytics')}
-						</Button>
-						{page && (
-							<Button
-								variant="link"
-								onClick={() => {
-									setTyped('');
-									update({ page: '' });
-								}}
-							>
-								{__('Any page', 'seoproanalytics')}
-							</Button>
-						)}
-					</form>
-				</CardHeader>
+					}
+				/>
 
-				<div className="seoproan-tiles" role="group" aria-label={__('Show', 'seoproanalytics')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
-					{all.map((t) => (
-						<button
-							key={t.kind}
-							type="button"
-							className={`seoproan-tile${kind === t.kind ? ' is-selected' : ''}`}
-							aria-pressed={kind === t.kind}
-							onClick={() => update({ kind: t.kind })}
-						>
-							<span className="seoproan-tile__label">{t.label}</span>
-							<span className="seoproan-tile__value">{totals ? formatNumber(totals[t.total], locale) : '–'}</span>
-							<span className="seoproan-tile__foot">
-								<span className="seoproan-muted">{totals ? t.foot(totals) : ''}</span>
-								{change && <Change change={change[t.total]} better={t.better} />}
-							</span>
-						</button>
-					))}
-				</div>
+				<KindTiles
+					selected={kind}
+					onPick={(picked) => update({ kind: picked })}
+					tiles={all.map((t) => ({
+						kind: t.kind,
+						label: t.label,
+						value: totals ? formatNumber(totals[t.total], locale) : '–',
+						foot: totals ? t.foot(totals) : '',
+						change: change ? change[t.total] : undefined,
+						better: t.better,
+					}))}
+				/>
 
 				<CardBody className="seoproan-app-card__body">
 					{printAll ? (

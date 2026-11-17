@@ -409,7 +409,25 @@ Visits from the link count in the **Business profiles** channel, and a **Busines
 
 ### Clicks
 
-**Clicks**: what people click and the forms they send, on the whole site or one page: clicks, dead clicks (nothing happened, usually something that looks clickable but is not), link destinations (outbound and affiliate marked), file links and forms, against the previous period. Choose a total to list its rows. **Pages** lists where clicks happened, with dead-click rates, link clicks, forms sent and visits. Choose a page to narrow this section, and choose it again to clear it. **View page** opens its address; **Edit** appears only when you can edit the matching post. A page pattern (`*`) has no View or Edit links.
+**Clicks**: what people click and the forms they send, on the whole site or one page: clicks, dead clicks (nothing happened, usually something that looks clickable but is not), link destinations (outbound and affiliate marked), file links and forms, against the previous period. Choose a total to list its rows. **Pages** lists where clicks happened, with dead-click rates, link clicks, forms sent and visits. Choose a page to narrow this section, and choose it again to clear it. **View page** opens its address; **Heatmap** opens it with its click and scroll heatmap drawn over it; **Edit** appears only when you can edit the matching post. A page pattern (`*`) has no View, Heatmap or Edit links.
+
+**Click and scroll heatmap**: one page's clicks, in cells of 1% of the width by 10 pixels, warmer where more people clicked (dead clicks counted apart), and how far its visitors scrolled, drawn over the page itself; choose a device and a period in its bar. Clicks keep their place from version 1.22.0; key presses have none. Only people who can see the statistics get it. REST: `GET /heatmap?page=/pricing/`.
+
+### Speed
+
+**Speed**: how fast pages load and respond for real visitors, measured in their browsers: time to first byte (TTFB), first and largest contentful paint (FCP, LCP), interaction to next paint (INP) and cumulative layout shift (CLS). Each shows its 75th percentile, the figure Google's Core Web Vitals use, and the shares of good, needs-improvement and poor page loads, for the site, each device and each page with at least 3 page loads. The tracker uses the browser's performance observers (no timers) and sends the figures with the page's engagement, so there is no extra request. **Settings → Tracking → Measure page speed for visitors** (on) and **Page speed sample** (100% of page loads; lower it for a busy site). Kept as long as clicks. REST: `GET /speed`. Page experience (above) shows Chrome's own field data, from Google; Speed is your own visitors'.
+
+### Crawlers
+
+**Crawlers**: which search engines, AI crawlers (GPTBot, ClaudeBot, PerplexityBot and others), SEO tools, social previews and monitors request which pages, how often, when last, and what they got back: list by crawler, page, HTTP status or day, or narrow to a group, a crawler or a page. Bots do not run the tracker, so the server notes them: one user-agent check on each request, and for a bot one database write after the page's output; people's requests do nothing more. Pages a page cache serves without WordPress are not seen. Pages not found are kept by address only for search engines and AI crawlers; other bots' made-up addresses count together. **Settings → Tracking → Count crawler visits** (on); **Settings → Data → Crawler visits** keeps them 13 months. REST: `GET /crawlers`.
+
+### Toolbar
+
+People who can see the statistics get an **Analytics** menu in the toolbar on the site's pages: the page's last 30 days (visitors and pageviews with their change, scroll depth, top sources, clicks, real visitors' speed and crawler visits), its heatmap and its report. The numbers load only when the menu is first opened, and visitors who are not logged in get no script or request. **Settings → Data → Page statistics in the toolbar** (on). REST: `GET /page-summary?page=/pricing/`.
+
+### Campaign links
+
+**Campaign link** on the Overview's **Sources** card builds a link with campaign tags for a page: a source and a campaign are needed, the medium groups it into a channel, and term and content are optional. Presets fill in common sources (newsletter, social networks, YouTube, Google and Microsoft Ads, partners, QR codes and print). **Copy link** copies it; the last links copied stay in this browser only. Visits from the links show under Sources → Campaigns.
 
 ### Changes
 
@@ -884,6 +902,18 @@ are stored. Doctor includes the latest email result. Nothing is scheduled by
 this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
+
+### Unreleased
+
+- New: **real visitors' page speed**. The tracker reads the browser's own TTFB, FCP, LCP, INP and CLS with performance observers (no timers, no extra request: sent with the page's engagement). The **Speed** view shows each metric's 75th percentile and good / needs-improvement / poor shares by device and page. Settings → Tracking → **Measure page speed for visitors** (on) and **Page speed sample** (100%) (GH#115).
+- New: **crawler visits**. The server notes search engines', AI crawlers', SEO tools', social previews' and monitors' requests (one user-agent match per request; one database write for a bot only), per day, crawler, page and HTTP status. The **Crawlers** view lists them by crawler, page, status or day. Settings → Tracking → **Count crawler visits** (on); kept 13 months (GH#115).
+- New: **click and scroll heatmap** over the page itself, by device, from the toolbar or Clicks (**Heatmap** next to **View page**); clicks keep their place from this version (GH#115).
+- New: the toolbar's **Analytics** menu on the site's pages for statistics readers: the page's last 30 days, speed, crawler visits, heatmap and report, fetched only when opened; nothing for visitors who are not logged in. Settings → Data → **Page statistics in the toolbar** (on) (GH#115).
+- New: **Campaign link** on the Overview's Sources card builds and copies links with campaign tags, with presets (GH#115).
+- Changed: the Slimstat import also reads its version 3 pageviews (`slim_stats_3`, `slim_stats_archive_3`); its clean-up also removes `slim_meta` and `slim_user_agents`. Its clicks and load timings are not imported (GH#115).
+- Developers: schema 35 (`speed`, `bots`, `clicks.x`/`y`); REST `GET /speed`, `/crawlers`, `/heatmap`, `/page-summary`; the inline tracker is 4,974 bytes gzipped (+675) (GH#115).
+- Fixed: an import's clean-up also removes the old plugin's translation files from `wp-content/languages/plugins` (GH#108).
+- Security: filters' "matches" patterns on names are matched without a regular expression, so many `*`s cannot keep PHP busy (GH#115).
 
 ### 1.21.0
 

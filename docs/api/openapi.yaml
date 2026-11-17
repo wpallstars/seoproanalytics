@@ -1726,6 +1726,207 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NoDemo'
+  /speed:
+    get:
+      operationId: getSpeed
+      summary: Real visitors' page speed (TTFB, FCP, LCP, INP, CLS).
+      description: |
+        Measured in visitors' browsers after the page has loaded (Settings →
+        Tracking → Measure page speed for visitors, on by default; Page
+        speed sample, 100% of page loads by default) and sent with the
+        visit's last hit when the page is left, so no extra request. Each metric's
+        75th percentile with its good, needs-improvement and poor shares
+        (Google's thresholds), for the site and each device; and pages with
+        at least 3 page loads, by most loads (when `page` is empty or has
+        `*`). CLS is in thousandths. Kept as long as clicks (3 months by
+        default).
+      parameters:
+        - name: page
+          in: query
+          description: A path; `*` is any text.
+          schema:
+            type: string
+            examples: [/pricing/]
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Totals, devices and pages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeedAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+  /crawlers:
+    get:
+      operationId: getCrawlers
+      summary: Crawler visits by crawler, page, HTTP status or day.
+      description: |
+        Requests for the site's pages by known crawlers (search engines, AI
+        crawlers, SEO tools, social previews, monitors) and other bots,
+        recorded by the server after the page's output, as bots never run the
+        tracker (Settings → Tracking → Count crawler visits; on by default).
+        Counted per site day, crawler, page and status; visitors' requests
+        only have their browser name checked. Pages a page cache serves
+        without WordPress are not seen. Filters other than the range do not
+        apply. Kept 13 months by default (Settings → Data).
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [bots, pages, statuses, days]
+            default: bots
+        - name: group
+          in: query
+          schema:
+            type: string
+            enum: ['', search, ai, seo, social, monitor, other]
+            default: ''
+        - name: bot
+          in: query
+          description: One crawler, by its name as listed.
+          schema:
+            type: string
+            examples: [Googlebot]
+        - name: page
+          in: query
+          description: A path; `*` is any text.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Totals and rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrawlersAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+  /heatmap:
+    get:
+      operationId: getHeatmap
+      summary: One page's click and scroll heatmap.
+      description: |
+        Clicks on the page in cells (columns: 1% of the window's width;
+        rows: 10 pixels of the page), busiest first (at most 4,000), with
+        dead clicks; and the share of pageviews that scrolled at least each
+        tenth of the page. Drawn over the page itself by the heatmap
+        overlay (`?seoproanalytics_heatmap=1`, for statistics readers).
+        From the clicks table, so 3 months by default.
+      parameters:
+        - name: page
+          in: query
+          required: true
+          description: One local path, without `*`.
+          schema:
+            type: string
+            examples: [/pricing/]
+        - name: device
+          in: query
+          schema:
+            type: string
+            enum: ['', desktop, mobile, tablet]
+            default: ''
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Cells and scroll depth.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatmapAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+  /page-summary:
+    get:
+      operationId: getPageSummary
+      summary: One page's last 30 days, for the admin bar's statistics menu.
+      description: |
+        Fetched only when the admin bar's menu is first opened on a page,
+        never on page load. Visitors, pageviews and their change from the
+        30 days before, average scroll depth, top three sources, clicks,
+        real visitors' speed (75th percentiles) and crawler visits.
+        Never cached by the browser.
+      parameters:
+        - name: page
+          in: query
+          required: true
+          description: One local path, without `*`.
+          schema:
+            type: string
+            examples: [/pricing/]
+      responses:
+        '200':
+          description: The page's summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /search:
     get:
       operationId: getSearch
@@ -7431,6 +7632,287 @@ components:
                   description: (now − then) ÷ then per total; null when then is 0.
                   additionalProperties:
                     type: [number, 'null']
+
+    SpeedMetric:
+      type: object
+      required: [p75, n, good, ni, poor, rating]
+      description: One metric over the page loads that measured it.
+      properties:
+        p75:
+          type: [integer, 'null']
+          description: 75th percentile; milliseconds, CLS in thousandths. Null without measurements.
+        n:
+          type: integer
+          description: Page loads that measured it.
+        good:
+          type: number
+        ni:
+          type: number
+          description: Share needing improvement.
+        poor:
+          type: number
+        rating:
+          type: string
+          enum: ['', good, ni, poor]
+          description: The 75th percentile's rating by Google's thresholds ('' without measurements).
+
+    SpeedSummary:
+      type: object
+      required: [loads, ttfb, fcp, lcp, inp, cls]
+      properties:
+        loads:
+          type: integer
+        ttfb:
+          $ref: '#/components/schemas/SpeedMetric'
+        fcp:
+          $ref: '#/components/schemas/SpeedMetric'
+        lcp:
+          $ref: '#/components/schemas/SpeedMetric'
+        inp:
+          $ref: '#/components/schemas/SpeedMetric'
+        cls:
+          $ref: '#/components/schemas/SpeedMetric'
+
+    SpeedAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, page, enabled, sample, totals, devices, pages]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            page:
+              type: string
+            enabled:
+              type: boolean
+              description: Whether page speed is measured now.
+            sample:
+              type: integer
+              description: Percentage of page loads measured (0 when off).
+            totals:
+              $ref: '#/components/schemas/SpeedSummary'
+            devices:
+              type: object
+              description: desktop, mobile and tablet, each when it has page loads.
+              additionalProperties:
+                $ref: '#/components/schemas/SpeedSummary'
+            pages:
+              type: array
+              description: Pages with at least 3 page loads; each metric's 75th percentile and its `<metric>_rating`. Empty for one exact page.
+              items:
+                type: object
+                required: [path, loads]
+                properties:
+                  path:
+                    type: string
+                  loads:
+                    type: integer
+                additionalProperties:
+                  type: [integer, string, 'null']
+            compare:
+              type: object
+              required: [range, totals]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                totals:
+                  $ref: '#/components/schemas/SpeedSummary'
+
+    CrawlerTotals:
+      type: object
+      required: [hits, crawlers, pages, errors, redirects, not_found]
+      properties:
+        hits:
+          type: integer
+          description: Requests.
+        crawlers:
+          type: integer
+        pages:
+          type: integer
+        errors:
+          type: integer
+          description: Requests answered 5xx.
+        redirects:
+          type: integer
+          description: Requests answered 3xx.
+        not_found:
+          type: integer
+          description: Requests answered 4xx.
+
+    CrawlersAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, kind, page, group, bot, enabled, totals, rows]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            kind:
+              type: string
+              enum: [bots, pages, statuses, days]
+            page:
+              type: string
+            group:
+              type: string
+            bot:
+              type: string
+            enabled:
+              type: boolean
+              description: Whether crawler visits are counted now.
+            totals:
+              $ref: '#/components/schemas/CrawlerTotals'
+            rows:
+              type: array
+              description: |
+                Each row has hits, pages, crawlers, failed (4xx and 5xx) and
+                last (Unix time), and by kind: name and group (bots); path
+                and not_found (pages; path '' with not_found true is
+                addresses that were not found, from bots other than search
+                engines and AI crawlers); status (statuses); date (days).
+              items:
+                type: object
+                required: [hits, pages, crawlers, failed, last]
+                properties:
+                  name:
+                    type: string
+                  group:
+                    type: string
+                    enum: [search, ai, seo, social, monitor, other]
+                  path:
+                    type: string
+                  not_found:
+                    type: boolean
+                  status:
+                    type: integer
+                  date:
+                    type: string
+                    format: date
+                  hits:
+                    type: integer
+                  pages:
+                    type: integer
+                  crawlers:
+                    type: integer
+                  failed:
+                    type: integer
+                  last:
+                    type: integer
+            compare:
+              type: object
+              required: [range, totals, change]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                totals:
+                  $ref: '#/components/schemas/CrawlerTotals'
+                change:
+                  $ref: '#/components/schemas/Change'
+
+    HeatmapAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, page, device, cell, clicks, cells, scroll, devices]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            page:
+              type: string
+            device:
+              type: string
+              enum: ['', desktop, mobile, tablet]
+            cell:
+              type: object
+              description: Cell size; x in percent of the window's width, y in pixels.
+              required: [x, y]
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+            clicks:
+              type: integer
+              description: Clicks in the cells returned.
+            cells:
+              type: array
+              description: '[column (0–100), row, clicks, dead clicks], busiest first, at most 4,000.'
+              items:
+                type: array
+                minItems: 4
+                maxItems: 4
+                items:
+                  type: integer
+            scroll:
+              type: object
+              required: [views, reached]
+              properties:
+                views:
+                  type: integer
+                reached:
+                  type: array
+                  description: Share of pageviews that scrolled at least 10%, 20% … 100% of the page.
+                  minItems: 10
+                  maxItems: 10
+                  items:
+                    type: number
+            devices:
+              type: object
+              description: Clicks by device.
+              additionalProperties:
+                type: integer
+
+    PageSummary:
+      type: object
+      required: [page, metrics, change, scroll, sources, clicks, speed, ratings, crawlers]
+      properties:
+        page:
+          type: string
+        metrics:
+          $ref: '#/components/schemas/Metrics'
+        change:
+          oneOf:
+            - $ref: '#/components/schemas/Change'
+            - type: 'null'
+        scroll:
+          type: integer
+          description: Average deepest scroll of its pageviews, in percent.
+        sources:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            required: [value, visitors]
+            properties:
+              value:
+                type: string
+              visitors:
+                type: integer
+        clicks:
+          type: integer
+        speed:
+          type: object
+          description: loads, and each metric's 75th percentile (null without measurements).
+          additionalProperties:
+            type: [integer, 'null']
+        ratings:
+          type: object
+          description: Each metric's [good up to, poor from].
+          additionalProperties:
+            type: array
+            items:
+              type: integer
+        crawlers:
+          type: object
+          required: [hits, ai, search, last]
+          properties:
+            hits:
+              type: integer
+            ai:
+              type: integer
+            search:
+              type: integer
+            last:
+              type: integer
 
     SearchMetrics:
       type: object
