@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: core files synced again, with WP Plugin Starter commit 40762c0: STANDARDS.md says an update channel's icon and banner must load from other sites; scripts/preflight-release.sh checks the shipped icon for every update channel; scripts/lib/deploy-remote-cron.sh keeps a retried cron event's PHP or database error as a failure. The version is unchanged (GH#118).
+
 = 1.22.0 =
 * New: real visitors' page speed. The tracker reads the browser's own measurements of time to first byte, first and largest contentful paint, interaction to next paint and layout shift with performance observers (no timers, no extra request: they are sent with the page's engagement when it is left). The new Speed view shows each one's 75th percentile with its good, needs-improvement and poor shares, by device and page. Settings → Tracking → Measure page speed for visitors (on) and Page speed sample (100% of page loads); kept as long as clicks (GH#115).
 * New: crawler visits. Search engines, AI crawlers, SEO tools, social previews and monitors rarely run JavaScript, so the server notes their requests: one user-agent match on every front-end request, and for a bot one database write after the page's output, counted per day, crawler, page and HTTP status. The new Crawlers view lists them by crawler, page, status or day, with failed answers. Pages not found are kept by address only for search engines and AI crawlers. Settings → Tracking → Count crawler visits (on); Settings → Data → Crawler visits keeps them 13 months (GH#115).

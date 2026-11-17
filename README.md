@@ -903,6 +903,10 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Developers: core files synced again, with WP Plugin Starter commit 40762c0: update channel icons and banners must load from other sites (`STANDARDS.md`), the release preflight checks the shipped icon for every update channel, and a retried cron event's PHP or database error stays a failure in the deploy script. The version is unchanged (GH#118).
+
 ### 1.22.0
 
 - New: **real visitors' page speed**. The tracker reads the browser's own TTFB, FCP, LCP, INP and CLS with performance observers (no timers, no extra request: sent with the page's engagement). The **Speed** view shows each metric's 75th percentile and good / needs-improvement / poor shares by device and page. Settings → Tracking → **Measure page speed for visitors** (on) and **Page speed sample** (100%) (GH#115).
