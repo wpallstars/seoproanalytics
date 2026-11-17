@@ -73,7 +73,10 @@ final class SEOProAnalytics_Schema {
     // v32: owners (who is responsible for a page, target, Plan item or experiment, SEOProAnalytics_Owners).
     // v33: links.classes and links.unclasses are bigint (35 classes; bits from 2^32).
     // v34: change_sets (full-value backups of reviewed page changes).
-    const VERSION = 34;
+    // v35: speed (real visitors' page speed, SEOProAnalytics_Speed), bots
+    //      (crawler requests by day, SEOProAnalytics_Crawlers) and clicks.x/y
+    //      (where on the page, for heatmaps: 4 bytes a click).
+    const VERSION = 35;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -106,6 +109,7 @@ final class SEOProAnalytics_Schema {
     const DICT_AB_VARIANT = 19;
     const DICT_URL        = 20;
     const DICT_COVERAGE   = 21;
+    const DICT_BOT        = 22;
 
     /** Search engines of the gsc_* rows (and of the serp rows, with the serp-only ones below). */
     const ENGINE_GOOGLE = 1;
@@ -164,7 +168,7 @@ final class SEOProAnalytics_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners', 'change_sets');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners', 'change_sets', 'speed', 'bots');
     }
 
     /**
@@ -512,6 +516,9 @@ final class SEOProAnalytics_Schema {
             // load: session_id, seq and path_id are the pageview's, so
             // clicks never start or extend a visit. flags: 1 dead, 2
             // outbound, 4 affiliate, 8 download. fields: a form's fields.
+            // x, y: where the click was, in thousandths of the page's
+            // width and height, plus 1 (0: not known, as for keyboard
+            // presses, forms and clicks before v35), for heatmaps.
             'clicks' => "CREATE TABLE {$t['clicks']} (
   id bigint unsigned NOT NULL AUTO_INCREMENT,
   session_id bigint unsigned NOT NULL,
@@ -524,6 +531,8 @@ final class SEOProAnalytics_Schema {
   target_id int unsigned NOT NULL DEFAULT 0,
   flags tinyint unsigned NOT NULL DEFAULT 0,
   fields tinyint unsigned NOT NULL DEFAULT 0,
+  x smallint unsigned NOT NULL DEFAULT 0,
+  y smallint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   KEY path_ts (path_id,ts),
   KEY ts (ts)
@@ -1101,6 +1110,45 @@ final class SEOProAnalytics_Schema {
   assigned_by bigint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (kind,ref),
   KEY user_kind (user_id,kind)
+) $charset;",
+
+            // Real visitors' page speed (SEOProAnalytics_Speed): one row per
+            // page load measured, on its pageview's visit (session_id and
+            // path_id are the pageview's, as for clicks). Milliseconds, cls
+            // in thousandths; NULL: not measured (the browser cannot, or the
+            // page was left first). device: SEOProAnalytics_UA's code.
+            'speed' => "CREATE TABLE {$t['speed']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  pkey binary(8) NOT NULL,
+  session_id bigint unsigned NOT NULL,
+  ts int unsigned NOT NULL,
+  path_id int unsigned NOT NULL,
+  device tinyint unsigned NOT NULL DEFAULT 0,
+  ttfb mediumint unsigned DEFAULT NULL,
+  fcp mediumint unsigned DEFAULT NULL,
+  lcp mediumint unsigned DEFAULT NULL,
+  inp mediumint unsigned DEFAULT NULL,
+  cls smallint unsigned DEFAULT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY pkey (pkey),
+  KEY path_ts (path_id,ts),
+  KEY ts (ts)
+) $charset;",
+
+            // Crawlers' requests for the site's pages (SEOProAnalytics_Crawlers),
+            // counted per site-local day (ts: its first second), crawler
+            // (DICT_BOT), page (DICT_PATH, no query) and HTTP status. Bots
+            // never run the tracker: these come from the server.
+            'bots' => "CREATE TABLE {$t['bots']} (
+  ts int unsigned NOT NULL,
+  bot_id int unsigned NOT NULL,
+  path_id int unsigned NOT NULL,
+  status smallint unsigned NOT NULL DEFAULT 0,
+  hits int unsigned NOT NULL DEFAULT 0,
+  last int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (ts,bot_id,path_id,status),
+  KEY bot_ts (bot_id,ts),
+  KEY path_ts (path_id,ts)
 ) $charset;",
         );
     }

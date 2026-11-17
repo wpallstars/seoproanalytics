@@ -6,7 +6,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { type KeyboardEvent } from 'react';
+import { type KeyboardEvent, type ReactNode } from 'react';
 import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, hasFilterValue, toggleFilterValue, type Dimension, type ViewCard, type ViewState } from '@seoproanalytics/core';
@@ -28,6 +28,8 @@ interface Props {
 	update: (patch: Partial<ViewState>) => void;
 	/** Span the grid's full width. */
 	wide?: boolean;
+	/** A control after the tabs, such as the campaign link builder (not on paper). */
+	action?: ReactNode;
 }
 
 const PAGE_DIMENSIONS: ReadonlySet<Dimension> = new Set<Dimension>(['page', 'entry', 'exit', 'not_found']);
@@ -162,7 +164,7 @@ function Rows({ dimension, state, update }: Readonly<{ dimension: Dimension; sta
 	);
 }
 
-export function BreakdownCard({ card, title, tabs: all, state, update, wide = false }: Readonly<Props>) {
+export function BreakdownCard({ card, title, tabs: all, state, update, wide = false, action = null }: Readonly<Props>) {
 	const printAll = usePrintAll();
 	// A shared report that hides some breakdowns shows no tab for them (and no card when none are left).
 	const tabs = all.filter((tab) => !shareAccess.hidden.includes(tab.dimension));
@@ -238,6 +240,7 @@ export function BreakdownCard({ card, title, tabs: all, state, update, wide = fa
 						))}
 					</div>
 				)}
+				{action}
 			</CardHeader>
 			<CardBody className="seoproan-app-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${active}`}>
 				<Rows dimension={active} state={state} update={update} />

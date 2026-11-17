@@ -124,6 +124,13 @@ function Flags({ row }: Readonly<{ row: ClickRow }>) {
 	return flags.length ? <span className="seoproan-meta">{flags.join(' · ')}</span> : null;
 }
 
+/** The page with its click and scroll heatmap shown over it (SEOProAnalytics_Toolbar). */
+function heatmapUrl(url: string): string {
+	const address = new URL(url, window.location.href);
+	address.searchParams.set('seoproanalytics_heatmap', '1');
+	return address.toString();
+}
+
 function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url' | 'edit_url'> }>) {
 	return (
 		<span className="seoproan-meta">
@@ -136,6 +143,20 @@ function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url'
 				>
 					<span className="dashicons dashicons-external" aria-hidden="true" /> {__('View page', 'seoproanalytics')}
 				</a>
+			)}
+			{info.url && !shareAccess.token && (
+				<>
+					{' '}
+					·{' '}
+					<a
+						href={heatmapUrl(info.url)}
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label={sprintf(/* translators: %s: page path. */ __('Click and scroll heatmap of %s (opens in a new tab)', 'seoproanalytics'), info.path)}
+					>
+						{__('Heatmap', 'seoproanalytics')}
+					</a>
+				</>
 			)}
 			{info.edit_url && (
 				<>

@@ -258,9 +258,10 @@ final class SEOProAnalytics_Clicks {
      * @param array<string,mixed>                                           $range   From SEOProAnalytics_Query::range().
      * @param array<int,array{dimension:string,op:string,values:string[]}> $filters Filters.
      * @param string                                                        $page    Page path, or ''.
+     * @param string                                                        $table   A fact table with ts, path_id and session_id, as c: clicks, speed (SEOProAnalytics_Speed) or pageviews (SEOProAnalytics_Heatmap's scroll depth).
      * @return array{sql:string,args:array<int,mixed>}|null Null when no page matches.
      */
-    private static function scope(array $range, array $filters, $page) {
+    public static function scope(array $range, array $filters, $page, $table = 'clicks') {
         $compiled = SEOProAnalytics_Query::compile($filters, $range);
         $pages    = $compiled['pages'];
         if ($page !== '') {
@@ -276,7 +277,7 @@ final class SEOProAnalytics_Clicks {
         }
         $on   = $pages === null ? '' : ' AND c.path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
         $args = array_merge(
-            array(SEOProAnalytics_Schema::table('clicks'), SEOProAnalytics_Schema::table('sessions')),
+            array(SEOProAnalytics_Schema::table(in_array($table, array('speed', 'pageviews'), true) ? $table : 'clicks'), SEOProAnalytics_Schema::table('sessions')),
             SEOProAnalytics_Query::fact_window($range),
             $pages === null ? array() : array_map('intval', $pages),
             array($range['from'], $range['to']),

@@ -3,7 +3,9 @@
  * navigation), engagement (visible time, deepest scroll), events
  * (seoproanalytics('Name', {props, revenue}), data-sps-event, outbound,
  * affiliate and file links) and, with autocapture, clicks (dead when the
- * page does not react within a second) and form submits to the collector,
+ * page does not react within a second, with where on the page for
+ * heatmaps) and form submits, and, for a sample of page loads, the page's
+ * speed (sent with its engagement) to the collector,
  * batched, as text/plain so there is no CORS preflight. Clicks in form
  * fields and what is typed or picked in a form are never sent; labels
  * mask emails and long numbers, and data-sps-mask hides them.
@@ -47,6 +49,8 @@ interface Config {
 	a?: string[];
 	/** ThriveCart is connected: its checkout links carry the page load's ID, so its order webhook joins the visit. */
 	tc?: boolean;
+	/** Page speed: the percentage of page loads measured (absent or 0: none). */
+	v?: number;
 }
 
 type Scalar = string | number | boolean;
@@ -177,6 +181,11 @@ let reactions = 0;
 /** Clicks waiting to see whether the page reacts. */
 let waiting: { hit: Hit; seen: number; at: number }[] = [];
 let observer: MutationObserver | undefined;
+/** Page speed of the page as loaded (b TTFB, f FCP, l LCP, i INP ms; c CLS thousandths), while it is measured. */
+let speed: Record<string, number> | undefined;
+/** Its page-load ID: SPA pages and pages from the back-forward cache are not measured. */
+let speedPage = '';
+let speedSent = '';
 
 /** A random 16-hex-digit ID for a page load. */
 function newId(): string {
@@ -285,15 +294,101 @@ function measureScroll(): void {
 	}
 }
 
-/** Engagement of the current page, when it changed since the last one sent. */
+/** Engagement of the current page, when it changed since the last one sent; the page as loaded adds its speed. */
 function engagement(): void {
 	const ms = Math.round(visibleTime());
-	if (!pageId || (ms === sentMs && scroll === sentScroll)) {
+	const v = speed && pageId === speedPage ? JSON.stringify(speed) : '';
+	if (!pageId || (ms === sentMs && scroll === sentScroll && v === speedSent)) {
 		return;
 	}
 	sentMs = ms;
 	sentScroll = scroll;
-	push({ t: 'eng', p: pageId, s: ms, sc: scroll });
+	const hit: Hit = { t: 'eng', p: pageId, s: ms, sc: scroll };
+	if (v && v !== '{}') {
+		hit.v = speed;
+		speedSent = v;
+	}
+	push(hit);
+}
+
+/**
+ * Page speed of the page as loaded, from the browser's own performance
+ * entries: observers only (buffered, so nothing is missed by starting
+ * late), no timers or polling; what they find is sent with the engagement
+ * when the page is hidden or left. Browsers without an entry type skip it.
+ */
+function measureSpeed(): void {
+	speed = {};
+	speedPage = pageId;
+	const s = speed;
+	const perf = win.performance;
+	const nav0 = perf.getEntriesByType('navigation')[0] as (PerformanceNavigationTiming & { activationStart?: number }) | undefined;
+	// A prerendered page counts from when it was shown.
+	const start = (nav0 && nav0.activationStart) || 0;
+	const at = (time: number): number => Math.max(0, Math.round(time - start));
+	if (nav0 && nav0.responseStart > 0) {
+		s.b = at(nav0.responseStart);
+	}
+	// A page opened in the background paints when shown: its paint times say nothing.
+	const shown = doc.visibilityState === 'visible';
+	/** Interactions' longest durations by ID, for INP. */
+	const inputs: Record<number, number> = {};
+	let shift = 0;
+	let windowStart = 0;
+	let windowEnd = 0;
+	let windowSum = 0;
+	const watch = (type: string, read: (entry: PerformanceEntry & Record<string, unknown>) => void, more?: Record<string, unknown>): void => {
+		try {
+			new PerformanceObserver((list) => {
+				for (const entry of list.getEntries()) {
+					read(entry as PerformanceEntry & Record<string, unknown>);
+				}
+			}).observe({ type, buffered: true, ...more } as PerformanceObserverInit);
+		} catch {
+			// Not supported by this browser.
+		}
+	};
+	watch('paint', (entry) => {
+		if (shown && entry.name === 'first-contentful-paint') {
+			s.f = at(entry.startTime);
+		}
+	});
+	watch('largest-contentful-paint', (entry) => {
+		if (shown && doc.visibilityState === 'visible') {
+			s.l = at(entry.startTime);
+		}
+	});
+	// CLS: the largest burst of shifts (gaps under 1 s, up to 5 s), not caused by input.
+	watch('layout-shift', (entry) => {
+		if (entry.hadRecentInput) {
+			return;
+		}
+		const time = entry.startTime;
+		if (windowSum && time - windowEnd < 1000 && time - windowStart < 5000) {
+			windowSum += entry.value as number;
+		} else {
+			windowStart = time;
+			windowSum = entry.value as number;
+		}
+		windowEnd = time;
+		shift = Math.max(shift, windowSum);
+		s.c = Math.round(shift * 1000);
+	});
+	// INP: the slowest interaction, leaving out one in 50 on long visits.
+	watch(
+		'event',
+		(entry) => {
+			const id = entry.interactionId as number;
+			if (id) {
+				inputs[id] = Math.max(inputs[id] || 0, entry.duration);
+				const all = Object.keys(inputs)
+					.map((key) => inputs[Number(key)] || 0)
+					.sort((a, b) => b - a);
+				s.i = Math.round(all[Math.min(all.length - 1, Math.floor(all.length / 50))] || 0);
+			}
+		},
+		{ durationThreshold: 40 },
+	);
 }
 
 /** A new page: its pageview, and fresh engagement counters. The page as loaded also sends its properties and context. */
@@ -513,6 +608,11 @@ function clicked(e: MouseEvent): void { // NOSONAR: one function on purpose: the
 	const el = cfg.c ? clickable(e.target) : null;
 	if (el && pageId) {
 		const hit: Hit = { t: 'c', p: pageId, s: selector(el), l: text(el), h: to.to, f: to.flags };
+		// Where, for heatmaps: a pointer's click (a key press has no place).
+		if (e.detail > 0 && win.innerWidth > 0) {
+			hit.x = Math.min(1000, Math.max(0, Math.round((e.clientX / win.innerWidth) * 1000))) + 1;
+			hit.y = Math.min(65534, Math.max(0, Math.round(e.pageY))) + 1;
+		}
 		// Inside an A/B test variant: which one.
 		const test = el.closest<HTMLElement>(AB);
 		if (test) {
@@ -571,6 +671,9 @@ function submitted(e: Event): void {
 function begin(): void {
 	startPage(bare(doc.referrer), pageProps, pageContext);
 	const loadedKey = pageKey;
+	if (cfg.v && !pageSkipped && typeof PerformanceObserver === 'function' && Math.random() * 100 < cfg.v) {
+		measureSpeed();
+	}
 	for (const args of queued) {
 		api(args[0] as string, args[1] as EventOptions | undefined);
 	}

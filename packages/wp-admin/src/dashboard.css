@@ -1986,6 +1986,70 @@ code.seoproan-meta {
 	gap: 4px;
 }
 
+/* Speed: a value in its rating's colour, and the good / needs improvement / poor bar. */
+.seoproan-speed-value.is-good {
+	color: var(--seoproan-good);
+}
+
+.seoproan-speed-value.is-ni {
+	color: #8a5a00;
+}
+
+.seoproan-speed-value.is-poor {
+	color: var(--seoproan-bad);
+}
+
+.seoproan-speed-bar {
+	display: flex;
+	height: 6px;
+	overflow: hidden;
+	border-radius: 3px;
+	background: var(--seoproan-divider, #f0f0f1);
+}
+
+.seoproan-speed-bar .is-good {
+	background: #00a32a;
+}
+
+.seoproan-speed-bar .is-ni {
+	background: #dba617;
+}
+
+.seoproan-speed-bar .is-poor {
+	background: #d63638;
+}
+
+/* Crawlers: a crawler's group beside its name. */
+.seoproan-crawler-group {
+	margin-inline-start: 6px;
+}
+
+/* Campaign links: the built address and its presets. */
+.seoproan-campaign {
+	display: grid;
+	gap: 12px;
+}
+
+.seoproan-campaign__fields {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 12px 16px;
+}
+
+.seoproan-campaign__presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.seoproan-campaign__url {
+	display: block;
+	padding: 8px;
+	overflow-wrap: anywhere;
+	background: var(--seoproan-divider, #f0f0f1);
+	border-radius: 2px;
+}
+
 @media (width <= 600px) {
 	.seoproan-step-fields {
 		grid-template-columns: 1fr;

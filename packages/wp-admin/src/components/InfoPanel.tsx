@@ -143,6 +143,24 @@ function info(key: InfoKey): Info {
 					__('Add a clear next step to pages with many visits but few clicks.', 'seoproanalytics'),
 				],
 			};
+		case 'speed':
+			return {
+				data: __('How fast pages are for your real visitors, in every browser that measures it: time to first byte, first and largest contentful paint, interaction to next paint and layout shift. Each figure is the 75th percentile, as Google judges a page: three in four page loads were at least this fast.', 'seoproanalytics'),
+				improve: [
+					__('Start with the pages that have the most page loads and a poor largest contentful paint: they cost the most visitors.', 'seoproanalytics'),
+					__('A slow time to first byte points to the server or caching; slow paints with a fast first byte point to images, fonts and scripts.', 'seoproanalytics'),
+					__('Filter by device: phones are often much slower than computers on the same page.', 'seoproanalytics'),
+				],
+			};
+		case 'crawlers':
+			return {
+				data: __('Which search engines, AI crawlers, SEO tools and other bots ask for your pages, which pages they ask for most, and which answers fail. Bots are never counted as visitors; this is their own count, by day. Pages served by a page cache without WordPress are not seen.', 'seoproanalytics'),
+				improve: [
+					__('Fix pages that answer search engines and AI crawlers with errors or "not found", or redirect them.', 'seoproanalytics'),
+					__('If an AI crawler you do not want takes many pages, block it in robots.txt.', 'seoproanalytics'),
+					__('Pages that matter but are rarely crawled may need more internal links or a place in the sitemap.', 'seoproanalytics'),
+				],
+			};
 		case 'ab-tests':
 			return {
 				data: __('Which version of a block works better: each variant\'s visits, conversions, uplift over Variant A and chance to beat it. A test is called once each side has enough visits, conversions and days; until then a lead may be chance.', 'seoproanalytics'),

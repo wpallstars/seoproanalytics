@@ -15,10 +15,15 @@
  *        w screen width, tz time zone, l language, d properties,
  *        x context (SEOProAnalytics_Tracker::context(): n not found, q site
  *        search, s its words, r its results, i the item shown, l logged in)
- *   eng: p page-load id, s visible milliseconds so far, sc deepest scroll %
+ *   eng: p page-load id, s visible milliseconds so far, sc deepest scroll %,
+ *        v page speed of a sampled page load (b TTFB, f FCP, l LCP, i INP
+ *        in ms, c CLS in thousandths; each optional), stored by
+ *        SEOProAnalytics_Speed's table
  *   e:   p page-load id, n name, u path, d properties, rv {a amount, c currency}
  *   c:   p page-load id, s selector (tag#id.class), l label, h link target,
- *        f flags (1 dead, 2 outbound, 4 affiliate, 8 download)
+ *        f flags (1 dead, 2 outbound, 4 affiliate, 8 download), x, y where
+ *        (thousandths of the window's width, pixels from the page's top;
+ *        both plus 1)
  *   f:   p page-load id, s selector, l form name, h form target, n fields
  *
  * Clicks and form submits join their page load's visit (looked up by its
@@ -279,7 +284,7 @@ final class SEOProAnalytics_Processor { // NOSONAR: single processing lifecycle 
         $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
 
         // 1. Flatten to hits with their line's context; bots out.
-        $batch = array('hits' => array(), 'eng' => array(), 'clicks' => array());
+        $batch = array('hits' => array(), 'eng' => array(), 'clicks' => array(), 'speed' => array());
         foreach ($lines as $line) {
             self::flatten_line($line, $batch, $done);
         }
@@ -312,6 +317,7 @@ final class SEOProAnalytics_Processor { // NOSONAR: single processing lifecycle 
         // 5. Engagement onto its pageviews.
         $touched = array_values($session_ids);
         $touched = array_merge($touched, self::write_engagement($eng));
+        self::write_speed($batch['speed']);
 
         // 6. Recount the touched visits from their rows.
         self::recount(array_unique($touched));
@@ -364,6 +370,9 @@ final class SEOProAnalytics_Processor { // NOSONAR: single processing lifecycle 
         if ($type === 'eng') {
             if ($pkey !== '') {
                 $batch['eng'][$pkey] = self::engagement($batch['eng'], $pkey, $hit);
+                if (isset($hit['v']) && is_array($hit['v'])) {
+                    $batch['speed'][$pkey] = self::speed(isset($batch['speed'][$pkey]) ? $batch['speed'][$pkey] : null, $hit['v'], (int) $line['ts'], (int) $ua['device']);
+                }
             }
             return;
         }
@@ -397,6 +406,30 @@ final class SEOProAnalytics_Processor { // NOSONAR: single processing lifecycle 
             max($prev[0], self::int_in($hit, 's', 0, 86400000)),
             max($prev[1], self::int_in($hit, 'sc', 0, 100)),
         );
+    }
+
+    /**
+     * A page load's speed with a further report merged in. LCP, INP and
+     * CLS only grow while the page is open, so the larger value wins; TTFB
+     * and FCP are measured once.
+     *
+     * @param array<string,int|null>|null $prev   Speed so far, or null.
+     * @param array<string,mixed>         $v      The hit's v.
+     * @param int                         $ts     Time.
+     * @param int                         $device SEOProAnalytics_UA's device code.
+     * @return array<string,int|null>
+     */
+    private static function speed($prev, array $v, $ts, $device) {
+        // Milliseconds up to ten minutes; layout shift in thousandths up to 65.
+        $max  = array('b' => 600000, 'f' => 600000, 'l' => 600000, 'i' => 600000, 'c' => 65535);
+        $out  = $prev ? $prev : array('ts' => $ts, 'device' => $device, 'b' => null, 'f' => null, 'l' => null, 'i' => null, 'c' => null);
+        foreach ($max as $key => $limit) {
+            if (isset($v[$key]) && is_numeric($v[$key]) && $v[$key] >= 0) {
+                $value     = min($limit, (int) round((float) $v[$key]));
+                $out[$key] = $out[$key] === null ? $value : max($out[$key], $value);
+            }
+        }
+        return $out;
     }
 
     /**
@@ -1289,6 +1322,9 @@ final class SEOProAnalytics_Processor { // NOSONAR: single processing lifecycle 
             'target'   => $target,
             'flags'    => $type === 'f' ? 0 : self::int_in($hit, 'f', 0, 15),
             'fields'   => $type === 'f' ? self::int_in($hit, 'n', 0, 255) : 0,
+            // Where (heatmaps): thousandths of the window's width and pixels from the top, plus 1; 0 not known.
+            'x'        => $type === 'c' ? self::int_in($hit, 'x', 0, 1001) : 0,
+            'y'        => $type === 'c' ? self::int_in($hit, 'y', 0, 65535) : 0,
             // The A/B test variant it was inside (clicks only).
             'ab'       => $type === 'c' && isset($hit['ab']) ? self::ab_pairs($hit['ab'], 1) : array(),
         );
@@ -1332,10 +1368,56 @@ final class SEOProAnalytics_Processor { // NOSONAR: single processing lifecycle 
                     self::id($ids, SEOProAnalytics_Schema::DICT_TARGET, $c['target']),
                     $c['flags'],
                     $c['fields'],
+                    $c['x'],
+                    $c['y'],
                 );
             }
         }
-        return self::insert_rows('INSERT INTO %i (session_id, ts, seq, path_id, kind, selector_id, label_id, target_id, flags, fields) VALUES ', SEOProAnalytics_Schema::table('clicks'), '(%d, %d, %d, %d, %d, %d, %d, %d, %d, %d)', $rows);
+        return self::insert_rows('INSERT INTO %i (session_id, ts, seq, path_id, kind, selector_id, label_id, target_id, flags, fields, x, y) VALUES ', SEOProAnalytics_Schema::table('clicks'), '(%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)', $rows);
+    }
+
+    /**
+     * Page speed onto its page loads' visits, one row per page load (a
+     * later report raises LCP, INP and CLS); those whose page load is not
+     * stored are dropped.
+     *
+     * @param array<string,array<string,int|null>> $speed Page-load id => from speed().
+     */
+    private static function write_speed(array $speed) {
+        global $wpdb;
+        if (!$speed) {
+            return;
+        }
+        $table = SEOProAnalytics_Schema::table('speed');
+        // prepare() has no NULL placeholder: -1 stands for not measured, and NULLIF() turns it back.
+        $n = static function ($value) {
+            return $value === null ? -1 : (int) $value;
+        };
+        foreach (array_chunk(array_keys($speed), SEOProAnalytics_Dict::CHUNK) as $chunk) {
+            $holders = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(pkey)) AS k, session_id, path_id FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProAnalytics_Schema::table('pageviews')), array_map('strval', $chunk))));
+            foreach ((array) $found as $row) {
+                $s = $speed[$row->k];
+                // A repeat report: TTFB and FCP keep the first; LCP, INP and CLS the larger (GREATEST() with a NULL is NULL, so COALESCE() takes the other).
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its unique key.
+                $wpdb->query($wpdb->prepare(
+                    'INSERT INTO %i (pkey, session_id, ts, path_id, device, ttfb, fcp, lcp, inp, cls) VALUES (UNHEX(%s), %d, %d, %d, %d, NULLIF(%d, -1), NULLIF(%d, -1), NULLIF(%d, -1), NULLIF(%d, -1), NULLIF(%d, -1))'
+                    . ' ON DUPLICATE KEY UPDATE ttfb = COALESCE(ttfb, VALUES(ttfb)), fcp = COALESCE(fcp, VALUES(fcp)), lcp = COALESCE(GREATEST(lcp, VALUES(lcp)), lcp, VALUES(lcp)), inp = COALESCE(GREATEST(inp, VALUES(inp)), inp, VALUES(inp)), cls = COALESCE(GREATEST(cls, VALUES(cls)), cls, VALUES(cls))',
+                    $table,
+                    (string) $row->k,
+                    (int) $row->session_id,
+                    (int) $s['ts'],
+                    (int) $row->path_id,
+                    (int) $s['device'],
+                    $n($s['b']),
+                    $n($s['f']),
+                    $n($s['l']),
+                    $n($s['i']),
+                    $n($s['c'])
+                ));
+            }
+        }
     }
 
     /**

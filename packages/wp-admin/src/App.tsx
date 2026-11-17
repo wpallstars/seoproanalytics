@@ -27,6 +27,8 @@ import { Goals } from './Goals';
 import { Funnels } from './Funnels';
 import { Properties } from './Properties';
 import { Clicks } from './Clicks';
+import { Speed } from './Speed';
+import { Crawlers } from './Crawlers';
 import { AbTests } from './AbTests';
 import { Changes } from './Changes';
 import { boot } from './boot';
@@ -113,6 +115,10 @@ export function App() {
 		section = <Properties {...props} />;
 	} else if (state.view === 'clicks') {
 		section = <Clicks {...props} />;
+	} else if (state.view === 'speed') {
+		section = <Speed {...props} />;
+	} else if (state.view === 'crawlers') {
+		section = <Crawlers {...props} />;
 	} else if (state.view === 'ab-tests') {
 		section = <AbTests {...props} />;
 	} else if (state.view === 'changes') {

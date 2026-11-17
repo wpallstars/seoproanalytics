@@ -112,16 +112,17 @@ final class SEOProAnalytics_Tracker {
      * - a:   affiliate link paths (* matches any characters)
      * - tc:  ThriveCart is connected: its checkout links carry the page
      *        load's ID (SEOProAnalytics_Purchases)
+     * - v:   page speed: the percentage of page loads measured (0: none)
      * - t:   explicit test mode: show hits locally and never send them
      *
-     * @return array{u:string,h:string[],q:string[],dnt:bool,x:string[],c:bool,a:string[],tc:bool,t:bool}
+     * @return array{u:string,h:string[],q:string[],dnt:bool,x:string[],c:bool,a:string[],tc:bool,v:int,t:bool}
      */
     public static function config() {
         /**
          * Filters the tracker's config, after the settings (Tracking and
          * Privacy) have set it.
          *
-         * @param array<string,mixed> $config u, h, q, dnt, x, c, a and tc (see above).
+         * @param array<string,mixed> $config u, h, q, dnt, x, c, a, tc and v (see above).
          */
         $config = apply_filters('seoproanalytics_tracker_config', array(
             'u'   => SEOProAnalytics_Collection::endpoint(),
@@ -132,6 +133,7 @@ final class SEOProAnalytics_Tracker {
             'c'   => SEOProAnalytics_Statistics::autocapture(),
             'a'   => SEOProAnalytics_Statistics::affiliate_paths(),
             'tc'  => SEOProAnalytics_Purchases::thrivecart_secret() !== '',
+            'v'   => SEOProAnalytics_Statistics::speed_sample(),
         ));
         $config = is_array($config) ? $config : array();
         $list   = static function ($key) use ($config) {
@@ -154,6 +156,7 @@ final class SEOProAnalytics_Tracker {
             'c'   => !empty($config['c']),
             'a'   => $list('a'),
             'tc'  => !empty($config['tc']),
+            'v'   => isset($config['v']) && is_numeric($config['v']) ? max(0, min(100, (int) $config['v'])) : 0,
             // Not filter-controlled: only an authorized user or signed token opts in.
             't'   => SEOProAnalytics_Test_Mode::active(),
         );
@@ -229,7 +232,7 @@ final class SEOProAnalytics_Tracker {
         }
         // Smaller attribute: leave out what is empty or off.
         $config = array_filter($config, static function ($value) {
-            return $value !== array() && $value !== false;
+            return $value !== array() && $value !== false && $value !== 0;
         });
         $attributes = array(
             'id'       => 'seoproanalytics-tracker',
