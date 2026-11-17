@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.22.0
+Stable tag: 1.21.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,16 +117,13 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.22.0 =
-* Added: Speed, real visitors' TTFB, FCP, LCP, INP and CLS (75th percentile, by device and page), measured with no extra request; Crawlers, which search engines, AI crawlers and SEO tools fetch which pages and what they got; a click and scroll heatmap over the page; the toolbar's Analytics menu for the current page; and a campaign link builder on the Sources card.
-* Changed: the Slimstat import also reads its version 3 pageviews, and its clean-up removes two more of its tables.
+= 1.21.0 =
+* Added: Search → Targets shows the Oxylabs and cloro paid providers' data from the SEO Pro Analytics Connect add-on: Oxylabs web search places, and whether ChatGPT, Gemini, Google AI Mode, Google's AI Overview and Bing AI Mode cite your pages.
+* Fixed: the tracker sends clicks on same-page links and base-target new-tab links at once; the padlock on the Connect buttons sits level with the label.
 
 Every change: changelog.txt.
 
 == Upgrade Notice ==
-
-= 1.22.0 =
-Page speed and crawler visits are counted from now on (Settings → Tracking turns each off), and logged-in statistics readers get an Analytics menu in the toolbar (Settings → Data).
 
 = 1.20.0 =
 Google Search Console, Chrome UX Report, the paid providers and the crawler server now need the SEO Pro Analytics Connect add-on. Their saved settings and imported data stay.

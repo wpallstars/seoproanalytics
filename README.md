@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.22.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.21.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.22.0
+Version: 1.21.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -903,7 +903,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### 1.22.0
+### Unreleased
 
 - New: **real visitors' page speed**. The tracker reads the browser's own TTFB, FCP, LCP, INP and CLS with performance observers (no timers, no extra request: sent with the page's engagement). The **Speed** view shows each metric's 75th percentile and good / needs-improvement / poor shares by device and page. Settings → Tracking → **Measure page speed for visitors** (on) and **Page speed sample** (100%) (GH#115).
 - New: **crawler visits**. The server notes search engines', AI crawlers', SEO tools', social previews' and monitors' requests (one user-agent match per request; one database write for a bot only), per day, crawler, page and HTTP status. The **Crawlers** view lists them by crawler, page, status or day. Settings → Tracking → **Count crawler visits** (on); kept 13 months (GH#115).
@@ -912,6 +912,7 @@ this feature; no tracking pixels or tracked links are added.
 - New: **Campaign link** on the Overview's Sources card builds and copies links with campaign tags, with presets (GH#115).
 - Changed: the Slimstat import also reads its version 3 pageviews (`slim_stats_3`, `slim_stats_archive_3`); its clean-up also removes `slim_meta` and `slim_user_agents`. Its clicks and load timings are not imported (GH#115).
 - Developers: schema 35 (`speed`, `bots`, `clicks.x`/`y`); REST `GET /speed`, `/crawlers`, `/heatmap`, `/page-summary`; the inline tracker is 4,886 bytes gzipped (+587) (GH#115).
+- Fixed: an import's clean-up also removes the old plugin's translation files from `wp-content/languages/plugins` (GH#108).
 
 ### 1.21.0
 
