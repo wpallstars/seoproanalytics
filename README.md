@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.20.10-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.21.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.20.10
+Version: 1.21.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -885,7 +885,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.21.0
 
 - New: **cloro** and **Oxylabs** as paid providers in the SEO Pro Analytics Connect add-on (shown as "(subscription needed)" without it). cloro tracks whether ChatGPT, Gemini, Google AI Mode, Google's AI Overview and Bing AI Mode cite the site's pages when they answer each search target; Oxylabs tracks the targets' places in its Web API's live web search, by country. Search → Targets shows each one's newest place; entering or leaving an AI answer's sources is an `ai_source` change. New `tracked_engines` keys: `oxylabs`, `chatgpt_ai`, `gemini_ai`, `aimode_ai`, `aio_ai` and `bing_ai` (GH#109).
 - Fixed: the tracker sends a click at once when a link opens in a new tab only through the page's base target, and when a link goes to the same page (a fragment); before they waited 1.5 seconds. "One request per page left" in 1.20.9 holds only when the page is left within 0.8 seconds; a page stayed on longer sends its pageview first, so at least two (GH#106).
