@@ -22,6 +22,11 @@
 #                      to each WordPress folder. {name} is each install's name
 #                      (as for --skip) and {name_} the same with . as _, for
 #                      hosts with one log per site: '~/.logs/error_log_{name_}'.
+#                      {host} is the host of each site in the install (every
+#                      site of a network; no leading www.) and {host_} the
+#                      same with . as _: one log is watched per site. For
+#                      Hostinger, which names the log after the site's domain
+#                      (not its folder): '~/.logs/error_log_{host_}'.
 #   --dry-run          List the installs found, with their version and whether
 #                      each is a multisite network, and change nothing (the
 #                      default).
@@ -608,7 +613,7 @@ stream_filter() {
 
 dry_run() {
 	local command status=0
-	command="$(remote_words env "DEPLOY_WP_CLI=$WP_CLI" "DEPLOY_CDN_PURGE=$([[ -n "$CF_TOKEN" ]] && printf 1 || printf 0)" bash -s -- list "$SLUG" "$PARENT" "--version=$VERSION" ${DOWNGRADE_ARGS[@]+"${DOWNGRADE_ARGS[@]}"} ${SKIPS[@]+"${SKIPS[@]}"})"
+	command="$(remote_words env "DEPLOY_WP_CLI=$WP_CLI" "DEPLOY_WEB_ERROR_LOG=$WEB_ERROR_LOG" "DEPLOY_CDN_PURGE=$([[ -n "$CF_TOKEN" ]] && printf 1 || printf 0)" bash -s -- list "$SLUG" "$PARENT" "--version=$VERSION" ${DOWNGRADE_ARGS[@]+"${DOWNGRADE_ARGS[@]}"} ${SKIPS[@]+"${SKIPS[@]}"})"
 	printf '\nInstalls of %s on %s (name, version, kind, folder):\n' "$SLUG" "$HOST"
 	set +e
 	remote_bundle | remote "$command" | stream_filter
@@ -753,8 +758,10 @@ main() {
 	cd "$root"
 	plugin_identity HEAD || die "cannot tell which plugin this is"
 	SLUG="$PLUGIN_SLUG"
-	REPO="$PLUGIN_REPO"
-	[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "the main file has no GitHub Plugin URI header (owner/repo)"
+	# A licensed add-on has no GitHub Plugin URI; its releases are still
+	# built and signed in its own repository (the origin remote).
+	REPO="$PLUGIN_GITHUB"
+	[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "the main file has no GitHub Plugin URI header (owner/repo) and origin is not on github.com"
 
 	trap cleanup EXIT
 	TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/$SLUG-deploy.XXXXXX")"

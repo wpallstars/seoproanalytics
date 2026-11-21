@@ -127,6 +127,24 @@ How changes are made and checked: `DEVELOPMENT.md`. Releases: `RELEASING.md`.
   only. `scripts/preflight-release.sh` checks their sizes, that the icon,
   View details banner and screenshot copies ship, and that each
   `screenshot-N` has a caption.
+- Every plugin has an icon (`.wordpress-org/icon.svg`) and ships its copy,
+  `admin/images/icon.svg`, whatever its update channel: WordPress shows
+  it beside the plugin's update on Dashboard → Updates, and without one
+  its grey plug. Any updater a plugin has, the shared GitHub updater or
+  its own (such as a licensed add-on's updates from a shop), gives
+  WordPress the installed plugin's own icon and banner
+  (`admin/images/icon.svg`, `banner-details.svg`), as addresses in the
+  plugin's folder without a scheme (`//host/...`), never images on
+  another site. The site's browser loads them, and shops and CDNs often
+  refuse images linked from other sites (hotlink protection): the Updates
+  screen then shows a broken image. Check a new update channel's icon on
+  the Updates screen of a site on another domain. Installs made before a
+  plugin did this still show the images its update server names (such as
+  a shop product's icon and banner fields), so those must load from other
+  sites too: keep them where hotlink protection allows (on a Hostinger CDN,
+  a folder named `hotlink-ok`), and have the release script fetch them
+  with another site's `Referer` and stop unless each answers 200 with an
+  image.
 - A wpallstars-branded banner keeps the starter's two words layouts, so
   every plugin's banners match. `banner.svg` holds the same four lines on
   the left twice, at sizes 27 (WPALLSTARS), 104 (the name), 72 (the gold
@@ -603,6 +621,54 @@ administrator's approval:
 - `README.md` → Report a problem tells site owners and their assistants
   about it: the release zip leaves out `AGENTS.md` and `docs/`, so the
   Read Me is what an assistant looking at an installed product finds.
+
+## Licensed updates
+
+A plugin or theme sold through the wpallstars.com shop (FluentCart Pro
+licensing) gets its updates from the shop with a licence key, not from
+GitHub: sites get the built zip and never the repository. The shared
+licence library in `includes/wpallstars-licence/` does it:
+
+- Every plugin made from the starter, and every theme made from the child
+  theme starter, carries a copy. Each copy registers its version from
+  `load.php`; on `after_setup_theme` only the newest copy loads, once, and
+  serves every installed plugin or theme whose header has
+  `Update URI: https://www.wpallstars.com/` and `Licence Item: <id>` (the
+  shop's product ID). Such a plugin has no `GitHub Plugin URI`, so the
+  release scripts treat it as a licensed add-on: one zip, its `Update URI`
+  kept, no WordPress.org build, and `scripts/preflight-release.sh` checks
+  that the zip ships the library and names its product.
+- A product moving from GitHub to the shop adds `Licence Item` first, in a
+  normal GitHub release. The library lists it (`wp wpallstars licence
+  status` shows `updates: elsewhere`), so its licence can be activated on
+  every site while the GitHub updater still serves it. Keep `GitHub Plugin
+  URI` in that first release. A later release switches its `Update URI` to
+  the shop and removes the `GitHub Plugin URI` header in the same release:
+  while it stays, the release scripts keep `PLUGIN_SELF_UPDATING=0` and
+  `scripts/preflight-release.sh` rejects the shop `Update URI`. Updates and
+  View details come from the shop only when the Update URI is the shop's.
+- One key per product for the site, or for the whole network on multisite
+  (a network option; the shop's activation is for the main site's address).
+  Keys go in **Settings → Licences** (Network Admin on multisite) or
+  `wp wpallstars licence activate --item=<id>`, which reads the key from
+  `WPALLSTARS_LICENCE_KEY` or standard input, never an argument. They are
+  stored encrypted (sodium, keyed from `WPALLSTARS_LICENCE_ENCRYPTION_KEY`
+  or the site's `AUTH_KEY` and `AUTH_SALT`) and never printed: only their
+  last four characters. A copy of the site with new security keys shows
+  them as unreadable until each is activated again.
+- The licence gates updates only. Without one the product keeps working and
+  is offered nothing; nothing is asked of the shop before a key is entered,
+  visitor pages never read the licences, and each licence is checked once a
+  day from WP-Cron. Version answers are cached for 12 hours (an hour after a
+  failure).
+- `scripts/shop-release.sh` publishes a release's zip to its product (dry
+  run without `--apply`, with a backup and a read-back) and, with
+  `--check-site`, shows what a licensed site is offered.
+- It is the same in every product apart from its text domain and
+  `@package`. Change it in the starter, raise the version in its
+  `load.php`, and copy it to each plugin and theme. Products never call its
+  class: another product's copy may be the one that runs. The WordPress.org
+  build leaves the folder out (`.distignore-wporg`).
 
 ## Releases
 
