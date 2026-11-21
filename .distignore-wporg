@@ -5,6 +5,8 @@
 # scripts/build-release.sh also removes the Git Updater header lines
 # (GitHub Plugin URI, Primary Branch, Release Asset) from seoproanalytics.php.
 /includes/github-updater/
+# Licensed updates from the wpallstars.com shop: also updates from elsewhere.
+/includes/wpallstars-licence/
 # The fast collector endpoint is requested directly, without WordPress, so
 # it cannot have the ABSPATH guard WordPress.org asks of every PHP file.
 # That build posts hits to the REST route instead (SEOProAnalytics_Collection).

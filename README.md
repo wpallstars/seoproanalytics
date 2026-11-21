@@ -905,7 +905,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ### Unreleased
 
-- Developers: core files synced again, with WP Plugin Starter commit 40762c0: update channel icons and banners must load from other sites (`STANDARDS.md`), the release preflight checks the shipped icon for every update channel, and a retried cron event's PHP or database error stays a failure in the deploy script. The version is unchanged (GH#118).
+- Developers: core files synced again, with WP Plugin Starter commit b6f8eeb: the shared licence library for licensed updates from the wpallstars.com shop (`includes/wpallstars-licence/`; it adds Settings → Licences only when a plugin or theme with a `Licence Item` header is installed, and the WordPress.org build leaves it out through `.distignore-wporg`), `scripts/shop-release.sh`, update channel icons and banners must load from other sites (`STANDARDS.md`), the release preflight checks the shipped icon for every update channel and a licensed add-on's library, `scripts/deploy-sites.sh` takes `{host}` placeholders in `--web-error-log`, a retried cron event's PHP or database error stays a failure in the deploy script, and CI keeps build zips one day, only for pull requests and failures. The version is unchanged (GH#118).
 
 ### 1.22.0
 
