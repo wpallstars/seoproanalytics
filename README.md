@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.22.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.22.1-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.22.0
+Version: 1.22.1
 
 <!-- github-only:start -->
 ## Screenshots
@@ -903,9 +903,9 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.22.1
 
-- Developers: core files synced again, with WP Plugin Starter commit b6f8eeb: the shared licence library for licensed updates from the wpallstars.com shop (`includes/wpallstars-licence/`; it adds Settings → Licences only when a plugin or theme with a `Licence Item` header is installed, and the WordPress.org build leaves it out through `.distignore-wporg`), `scripts/shop-release.sh`, update channel icons and banners must load from other sites (`STANDARDS.md`), the release preflight checks the shipped icon for every update channel and a licensed add-on's library, `scripts/deploy-sites.sh` takes `{host}` placeholders in `--web-error-log`, a retried cron event's PHP or database error stays a failure in the deploy script, and CI keeps build zips one day, only for pull requests and failures. The version is unchanged (GH#118).
+- Developers: core files synced again, with WP Plugin Starter commit b6f8eeb: the shared licence library for licensed updates from the wpallstars.com shop (`includes/wpallstars-licence/`; it adds Settings → Licences only when a plugin or theme with a `Licence Item` header is installed, and the WordPress.org build leaves it out through `.distignore-wporg`), `scripts/shop-release.sh`, update channel icons and banners must load from other sites (`STANDARDS.md`), the release preflight checks the shipped icon for every update channel and a licensed add-on's library, `scripts/deploy-sites.sh` takes `{host}` placeholders in `--web-error-log`, a retried cron event's PHP or database error stays a failure in the deploy script, and CI keeps build zips one day, only for pull requests and failures (GH#118).
 
 ### 1.22.0
 
