@@ -267,7 +267,7 @@ final class SEOProAnalytics_Schema {
     /**
      * While another request upgrades: whether it finishes within WAIT
      * seconds. Reads the stored version from the database, as the options
-     * cache keeps the value from before. Admin requests, WP-CLI and a site's first cron request only.
+     * cache keeps the value from before. Admin, cron and WP-CLI requests only.
      *
      * @return bool Whether the tables are at VERSION.
      */
@@ -290,8 +290,9 @@ final class SEOProAnalytics_Schema {
 
     /**
      * Whether the tables are at VERSION (no query: the option is autoloaded).
-     * Cron and the API check this, as older tables are upgraded on admin
-     * requests only (a site's first cron or WP-CLI request makes them new).
+     * Jobs and the API check this: older tables are upgraded on admin, cron
+     * and WP-CLI requests (SEOProAnalytics_Collection::set_up_outside_admin()
+     * runs before a cron request's jobs), never on a visitor's page.
      *
      * @return bool
      */

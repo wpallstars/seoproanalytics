@@ -115,8 +115,8 @@ final class SEOProAnalytics_Setup {
                 return $tables;
             }, 10, 2);
         }
-        // Tables are made and upgraded on admin requests, and made on a site's first cron or
-        // WP-CLI request (SEOProAnalytics_Collection::set_up_outside_admin()); never on visitor pages.
+        // Tables are made and upgraded on admin, cron and WP-CLI requests
+        // (SEOProAnalytics_Collection::set_up_outside_admin()); never on visitor pages.
         add_action('admin_init', static function () {
             SEOProAnalytics_Schema::maybe_upgrade();
         });

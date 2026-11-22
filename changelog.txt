@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Fixed: after an update that changes the tables, a site whose admin pages nobody opens, such as a network's template sites, kept its old tables, and its visits, daily summaries, search imports and crawler counts stopped until someone opened its admin. Its next WP-Cron or WP-CLI request now upgrades the tables before its jobs run, so a rollout's WP-CLI load or the next scheduled job brings every site up to date. WP-CLI commands that need the tables upgrade them instead of asking for an admin page. Visitor pages still never set up or upgrade anything (GH#121).
+
 = 1.22.1 =
 * Developers: core files synced again, with WP Plugin Starter commit b6f8eeb: the shared licence library for licensed updates from the wpallstars.com shop (includes/wpallstars-licence/; it adds Settings → Licences only when a plugin or theme with a Licence Item header is installed, and the WordPress.org build leaves it out through .distignore-wporg); scripts/shop-release.sh; STANDARDS.md says an update channel's icon and banner must load from other sites; scripts/preflight-release.sh checks the shipped icon for every update channel and a licensed add-on's library and Licence Item; scripts/deploy-sites.sh takes {host} placeholders in --web-error-log; scripts/lib/deploy-remote-cron.sh keeps a retried cron event's PHP or database error as a failure; CI keeps build zips one day and only for pull requests and failures (GH#118).
 

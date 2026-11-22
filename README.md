@@ -903,6 +903,10 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Fixed: after an update that changes the tables, a site whose admin pages nobody opens, such as a network's template sites, kept its old tables, and its visits, daily summaries, search imports and crawler counts stopped until someone opened its admin. Its next WP-Cron or WP-CLI request now upgrades the tables before its jobs run. WP-CLI commands that need the tables upgrade them instead of asking for an admin page. Visitor pages still never set up or upgrade anything (GH#121).
+
 ### 1.22.1
 
 - Developers: core files synced again, with WP Plugin Starter commit b6f8eeb: the shared licence library for licensed updates from the wpallstars.com shop (`includes/wpallstars-licence/`; it adds Settings → Licences only when a plugin or theme with a `Licence Item` header is installed, and the WordPress.org build leaves it out through `.distignore-wporg`), `scripts/shop-release.sh`, update channel icons and banners must load from other sites (`STANDARDS.md`), the release preflight checks the shipped icon for every update channel and a licensed add-on's library, `scripts/deploy-sites.sh` takes `{host}` placeholders in `--web-error-log`, a retried cron event's PHP or database error stays a failure in the deploy script, and CI keeps build zips one day, only for pull requests and failures (GH#118).

@@ -164,19 +164,20 @@ final class SEOProAnalytics_Collection {
     }
 
     /**
-     * Cron and WP-CLI requests: schedule the jobs as an admin page does, so
-     * a site whose admin pages nobody opens, such as a network site, is set
-     * up too. A site with no hourly job has never been set up: make its
-     * tables first. Older tables still wait for an admin request. Never on a
-     * visitor's page or an AJAX or REST request; no query once set up.
+     * Cron and WP-CLI requests: make or upgrade the tables and schedule the
+     * jobs as an admin page does, so a site whose admin pages nobody opens,
+     * such as a network site, is set up and stays current too. Every job
+     * stops while the tables are older than the plugin, so after an update
+     * the site's next cron or WP-CLI request upgrades them before its jobs
+     * run. Never on a visitor's page or an AJAX or REST request; no query
+     * once set up and current (the table version and the schedule are
+     * autoloaded).
      */
     public static function set_up_outside_admin() {
         if (wp_installing() || !(wp_doing_cron() || (defined('WP_CLI') && WP_CLI))) {
             return;
         }
-        if (!wp_next_scheduled(self::CRON_HOOK)) {
-            SEOProAnalytics_Schema::maybe_upgrade();
-        }
+        SEOProAnalytics_Schema::maybe_upgrade();
         self::schedule();
     }
 
