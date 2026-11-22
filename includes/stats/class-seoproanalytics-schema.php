@@ -81,6 +81,54 @@ final class SEOProAnalytics_Schema {
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
 
+    /**
+     * Columns and keys the newest versions (v29 on) added to tables that
+     * already existed: table => columns and keys. install() records VERSION
+     * only when they are there, as dbDelta() does not report an ALTER that
+     * failed (a lock wait, a full disk). Add the columns and keys of each
+     * new VERSION that changes an existing table; new tables are checked by
+     * names(). Columns are name => type, or '' for any type; a type is
+     * lower case without a display width (the server may report
+     * bigint(20) unsigned or bigint unsigned), and is given where a version
+     * changed the type of a column, so a failed widening is caught too.
+     */
+    const REQUIRED = array(
+        'clicks'      => array(
+            'columns' => array(
+                'x' => '',
+                'y' => '',
+            ),
+            'keys'    => array(),
+        ),
+        'links'       => array(
+            'columns' => array(
+                'classes'   => 'bigint unsigned',
+                'unclasses' => 'bigint unsigned',
+            ),
+            'keys'    => array(),
+        ),
+        'crawl_pages' => array(
+            'columns' => array(
+                'depth'            => '',
+                'response_ms'      => '',
+                'prev_response_ms' => '',
+                'bytes'            => '',
+                'title_hash'       => '',
+                'desc_hash'        => '',
+                'title_id'         => '',
+                'desc_id'          => '',
+                'h1'               => '',
+                'links_in'         => '',
+                'links_in_body'    => '',
+            ),
+            'keys'    => array('h1', 'links_in', 'depth', 'response_ms', 'bytes'),
+        ),
+        'crawl_links' => array(
+            'columns' => array('redirect_id' => ''),
+            'keys'    => array(),
+        ),
+    );
+
     /** Option holding the version the tables were last made with. */
     const OPTION = 'seoproanalytics_schema_version';
 
@@ -303,7 +351,8 @@ final class SEOProAnalytics_Schema {
     /**
      * Make or change every table with dbDelta(), then record VERSION.
      *
-     * @return bool Whether every table exists afterwards.
+     * @return bool Whether every table exists afterwards with the columns
+     *              and keys of REQUIRED (the version is then recorded).
      */
     public static function install() {
         global $wpdb;
@@ -319,6 +368,11 @@ final class SEOProAnalytics_Schema {
                 return false;
             }
         }
+        // dbDelta() does not report an ALTER that failed: leave the stored
+        // version alone, so the next request tries again.
+        if (!self::has_required_structure()) {
+            return false;
+        }
         self::drop_old_keys();
         if ($before > 0 && $before < 5) {
             self::add_login_days();
@@ -326,6 +380,36 @@ final class SEOProAnalytics_Schema {
         // Live: autoloaded like the settings version, as maybe_upgrade()
         // reads it on every admin request. Demo: read only when shown.
         update_option(self::option(self::OPTION), self::VERSION, self::$set === 'live');
+        return true;
+    }
+
+    /**
+     * Whether every column and key in REQUIRED is in the current data
+     * set's tables.
+     *
+     * @return bool
+     */
+    private static function has_required_structure() {
+        global $wpdb;
+        foreach (self::REQUIRED as $name => $need) {
+            $table = self::table($name);
+            foreach ($need['columns'] as $column => $type) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- checking our own table after dbDelta(); not cached on purpose.
+                $found = $wpdb->get_row($wpdb->prepare('SHOW COLUMNS FROM %i WHERE Field = %s', $table, $column), ARRAY_A);
+                if (!is_array($found) || !isset($found['Type'])) {
+                    return false;
+                }
+                if ($type !== '' && trim((string) preg_replace('/\(\d+\)/', '', strtolower((string) $found['Type']))) !== $type) {
+                    return false;
+                }
+            }
+            foreach ($need['keys'] as $key) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- checking our own table after dbDelta(); not cached on purpose.
+                if (!$wpdb->get_var($wpdb->prepare('SHOW INDEX FROM %i WHERE Key_name = %s', $table, $key))) {
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
