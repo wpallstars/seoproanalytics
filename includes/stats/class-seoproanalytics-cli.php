@@ -5089,13 +5089,13 @@ final class SEOProAnalytics_CLI { // NOSONAR: WP-CLI discovers the public comman
     }
 
     /**
-     * Stop when the tables are older than the plugin (an admin page
-     * upgrades them).
+     * Upgrade tables older than the plugin, or stop when they cannot be
+     * (another request may still be upgrading them).
      */
     private function need_tables() {
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-rollup.php';
-        if (!SEOProAnalytics_Schema::is_current()) {
-            WP_CLI::error(__('The tables need an upgrade: open any admin page, then try again.', 'seoproanalytics'));
+        if (!SEOProAnalytics_Schema::maybe_upgrade()) {
+            WP_CLI::error(__('The tables could not be upgraded. Another request may be upgrading them: try again in a minute.', 'seoproanalytics'));
         }
     }
 
