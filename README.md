@@ -906,6 +906,7 @@ this feature; no tracking pixels or tracked links are added.
 ### Unreleased
 
 - Fixed: after an update that changes the tables, a site whose admin pages nobody opens, such as a network's template sites, kept its old tables, and its visits, daily summaries, search imports and crawler counts stopped until someone opened its admin. Its next WP-Cron or WP-CLI request now upgrades the tables before its jobs run. WP-CLI commands that need the tables upgrade them instead of asking for an admin page. Visitor pages still never set up or upgrade anything (GH#121).
+- Developers: core files synced again, with WP Plugin Starter commit f3c249d: the shared licence library fixes, `scripts/shop-release.sh` write checks, the deploy cron check keeps a retried event's PHP or database error as a failure, and the `DEVELOPMENT.md` and `RELEASING.md` updates. No plugin behavior changes; the version is unchanged (GH#125).
 - Fixed: an upgrade whose table change failed part way (a lock wait timeout, a full disk, a host's limits) was still recorded as done, so later requests skipped it and jobs ran against the old structure. The table version is now recorded only once the columns and keys the newest versions added are there; otherwise the next admin, WP-Cron or WP-CLI request tries again (GH#123).
 
 ### 1.22.1
