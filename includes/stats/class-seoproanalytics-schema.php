@@ -87,23 +87,44 @@ final class SEOProAnalytics_Schema {
      * only when they are there, as dbDelta() does not report an ALTER that
      * failed (a lock wait, a full disk). Add the columns and keys of each
      * new VERSION that changes an existing table; new tables are checked by
-     * names().
+     * names(). Columns are name => type, or '' for any type; a type is
+     * lower case without a display width (the server may report
+     * bigint(20) unsigned or bigint unsigned), and is given where a version
+     * changed the type of a column, so a failed widening is caught too.
      */
     const REQUIRED = array(
         'clicks'      => array(
-            'columns' => array('x', 'y'),
+            'columns' => array(
+                'x' => '',
+                'y' => '',
+            ),
             'keys'    => array(),
         ),
         'links'       => array(
-            'columns' => array('classes', 'unclasses'),
+            'columns' => array(
+                'classes'   => 'bigint unsigned',
+                'unclasses' => 'bigint unsigned',
+            ),
             'keys'    => array(),
         ),
         'crawl_pages' => array(
-            'columns' => array('depth', 'response_ms', 'prev_response_ms', 'bytes', 'title_hash', 'desc_hash', 'title_id', 'desc_id', 'h1', 'links_in', 'links_in_body'),
+            'columns' => array(
+                'depth'            => '',
+                'response_ms'      => '',
+                'prev_response_ms' => '',
+                'bytes'            => '',
+                'title_hash'       => '',
+                'desc_hash'        => '',
+                'title_id'         => '',
+                'desc_id'          => '',
+                'h1'               => '',
+                'links_in'         => '',
+                'links_in_body'    => '',
+            ),
             'keys'    => array('h1', 'links_in', 'depth', 'response_ms', 'bytes'),
         ),
         'crawl_links' => array(
-            'columns' => array('redirect_id'),
+            'columns' => array('redirect_id' => ''),
             'keys'    => array(),
         ),
     );
@@ -372,9 +393,13 @@ final class SEOProAnalytics_Schema {
         global $wpdb;
         foreach (self::REQUIRED as $name => $need) {
             $table = self::table($name);
-            foreach ($need['columns'] as $column) {
+            foreach ($need['columns'] as $column => $type) {
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- checking our own table after dbDelta(); not cached on purpose.
-                if (!$wpdb->get_var($wpdb->prepare('SHOW COLUMNS FROM %i WHERE Field = %s', $table, $column))) {
+                $found = $wpdb->get_row($wpdb->prepare('SHOW COLUMNS FROM %i WHERE Field = %s', $table, $column), ARRAY_A);
+                if (!is_array($found) || !isset($found['Type'])) {
+                    return false;
+                }
+                if ($type !== '' && trim((string) preg_replace('/\(\d+\)/', '', strtolower((string) $found['Type']))) !== $type) {
                     return false;
                 }
             }
