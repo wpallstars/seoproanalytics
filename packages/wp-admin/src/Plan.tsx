@@ -28,11 +28,14 @@ import {
 	formatNumber,
 	formatPlaces,
 	AUDIT_FINDINGS,
+	GBP_FINDINGS,
 	INDEXATION_KINDS,
 	LINKS_KINDS,
 	QUEUE_FILTERS,
 	REFRESH_PROPOSALS,
 	type AuditFinding,
+	type GbpField,
+	type GbpFinding,
 	type IndexationKind,
 	type LinksKind,
 	type QueueAction,
@@ -130,10 +133,19 @@ function refreshProposal(item: QueueItem): RefreshProposal | null {
 	return item.kind === 'refresh' && item.finding && (REFRESH_PROPOSALS as readonly string[]).includes(item.finding) ? (item.finding as RefreshProposal) : null;
 }
 
+/** A Google Business Profile item's finding, or null. */
+function gbpFinding(item: QueueItem): GbpFinding | null {
+	return item.kind === 'audit' && item.finding && (GBP_FINDINGS as readonly string[]).includes(item.finding) ? (item.finding as GbpFinding) : null;
+}
+
 /** An audit item's finding, or null. */
-function auditFinding(item: QueueItem): AuditFinding | 'page_experience' | 'clicked_broken' | null {
+function auditFinding(item: QueueItem): AuditFinding | 'page_experience' | 'clicked_broken' | GbpFinding | null {
 	if (item.kind === 'audit' && (item.finding === 'page_experience' || item.finding === 'clicked_broken')) {
 		return item.finding;
+	}
+	const gbp = gbpFinding(item);
+	if (gbp) {
+		return gbp;
 	}
 	return item.kind === 'audit' && item.finding && (AUDIT_FINDINGS as readonly string[]).includes(item.finding) ? (item.finding as AuditFinding) : null;
 }
@@ -586,6 +598,9 @@ function doneQuestion(item: QueueItem): string {
 	if (item.finding === 'clicked_broken') {
 		return __('Mark it done? Search clicks cannot measure a mended link, so no experiment starts. Import a new crawl to check it.', 'seoproanalytics');
 	}
+	if (gbpFinding(item)) {
+		return __('Mark it done? The change is on Google, not the page, so no experiment starts; the item is listed again if the next read of the profile still finds it.', 'seoproanalytics');
+	}
 	const pages = item.figures.pages?.length ? item.figures.pages.map((page) => page.path).join(', ') : item.path;
 	return sprintf(
 		/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
@@ -754,6 +769,14 @@ function potentialNote(answer: QueueAnswer, item: QueueItem): string {
 			if (item.finding === 'clicked_broken') {
 				return __('Potential clicks: the clicks on the link that fails, scaled to 28 days: lost referrals (and commissions), not search clicks.', 'seoproanalytics');
 			}
+			if (gbpFinding(item)) {
+				return sprintf(
+					/* translators: 1: share, e.g. 10%, 2: website clicks. */
+					__('Prioritisation stake: %1$s of the profile’s %2$s website clicks over the newest 28 days Google gave, at least one. Not a predicted gain.', 'seoproanalytics'),
+					percent(answer.rules.gbp_share?.[item.finding as GbpFinding] ?? 0),
+					number(f.website_clicks ?? 0)
+				);
+			}
 			return sprintf(
 				/* translators: 1: share, e.g. 15%. */
 				__('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what this finding puts at stake), scaled to 28 days.', 'seoproanalytics'),
@@ -848,6 +871,9 @@ function doneNote(item: QueueItem): string {
 	if (item.finding === 'clicked_broken') {
 		return __('Done records the link as mended; no experiment starts, as search clicks do not measure it.', 'seoproanalytics');
 	}
+	if (gbpFinding(item)) {
+		return __('Done records the profile as mended; no experiment starts, as the change is on Google, not the page.', 'seoproanalytics');
+	}
 	/* translators: %s: a measure, e.g. "CTR". */
 	return sprintf(__('Done opens an experiment measuring %s.', 'seoproanalytics'), metricLabel(item.metric));
 }
@@ -873,17 +899,102 @@ function ClickedBroken({ figures }: Readonly<{ figures: QueueFigures }>) {
 	);
 }
 
+/** How an item's confidence is worked out. */
+function confidenceNote(answer: QueueAnswer, item: QueueItem): string {
+	if (gbpFinding(item)) {
+		return sprintf(
+			/* translators: %s: confidence. */
+			__('Confidence: %s for every Business Profile finding; they have no search impressions to weigh it by.', 'seoproanalytics'),
+			decimal(answer.rules.gbp_confidence ?? item.parts.confidence)
+		);
+	}
+	if (item.kind === 'index' || item.kind === 'sitemap') {
+		return sprintf(
+			/* translators: %s: the kind's confidence. */
+			__('Confidence: the kind’s %s; with no impressions there is nothing to weigh it by.', 'seoproanalytics'),
+			decimal(answer.rules.confidence[item.kind])
+		);
+	}
+	return sprintf(
+		/* translators: 1: the kind's confidence, 2: impressions for full confidence. */
+		__('Confidence: the kind’s %1$s, less when there are fewer than %2$s impressions per 28 days.', 'seoproanalytics'),
+		decimal(answer.rules.confidence[item.kind]),
+		number(answer.rules.full_impressions)
+	);
+}
+
+/** A Business Profile basic's name (gbp_incomplete). */
+function gbpFieldName(field: GbpField): string {
+	const names: Record<GbpField, string> = {
+		categories: __('categories', 'seoproanalytics'),
+		hours: __('opening hours', 'seoproanalytics'),
+		description: __('description', 'seoproanalytics'),
+		phone: __('phone number', 'seoproanalytics'),
+		website: __('website', 'seoproanalytics'),
+	};
+	return names[field];
+}
+
+/** A Business Profile finding's facts: the location, and what the finding found. */
+function GbpFacts({ finding, figures }: Readonly<{ finding: GbpFinding; figures: QueueFigures }>) {
+	const stars = (value: number | null | undefined) => (value === null || value === undefined ? '–' : formatDecimal(value, locale));
+	return (
+		<ul>
+			<li>
+				{sprintf(
+					/* translators: 1: a Business Profile location's name, 2: its website clicks. */
+					__('%1$s: %2$s website clicks over the newest 28 days Google gave.', 'seoproanalytics'),
+					figures.location ?? '',
+					number(figures.website_clicks ?? 0)
+				)}
+			</li>
+			{finding === 'gbp_reviews' && figures.oldest && (
+				<li>
+					{sprintf(
+						/* translators: 1: number of reviews, 2: a date. */
+						__('Without a reply: %1$s, the oldest written %2$s.', 'seoproanalytics'),
+						number(figures.unanswered ?? 0),
+						longLabel(figures.oldest, 'day')
+					)}
+				</li>
+			)}
+			{finding === 'gbp_rating' && (
+				<li>
+					{sprintf(
+						/* translators: 1: number of reviews, 2: their average stars, 3: overall stars. */
+						__('The last 30 days: %1$s reviews averaging %2$s stars; overall %3$s.', 'seoproanalytics'),
+						number(figures.recent_count ?? 0),
+						stars(figures.recent_rating),
+						stars(figures.rating)
+					)}
+				</li>
+			)}
+			{finding === 'gbp_incomplete' && (figures.absent ?? []).length > 0 && (
+				<li>{sprintf(/* translators: %s: profile fields, comma-separated. */ __('Missing: %s', 'seoproanalytics'), (figures.absent ?? []).map(gbpFieldName).join(', '))}</li>
+			)}
+			{finding === 'gbp_link' && (
+				<>
+					<li>{sprintf(/* translators: %s: a link. */ __('Website link now: %s', 'seoproanalytics'), figures.website ?? '')}</li>
+					<li>{sprintf(/* translators: %s: a link. */ __('Set it to: %s', 'seoproanalytics'), figures.link ?? '')}</li>
+				</>
+			)}
+		</ul>
+	);
+}
+
 /** The score's parts, the item's figures, and (administrators) its effort and note. */
 function Detail({ answer, item, state, goal, onError }: Readonly<{ answer: QueueAnswer } & ActProps>) {
 	const { busy, act } = useAct({ item, state, goal, onError });
 	const [note, setNote] = useState(item.note);
 	const p = item.parts;
 	const proposal = refreshProposal(item);
+	const gbp = gbpFinding(item);
 	const kindEffort = detailEffort(answer.rules, item) ?? answer.rules.effort[item.kind];
 	return (
 		<div className="seoproan-plan__parts">
 			{item.finding === 'page_experience' && <ul>{(item.figures.samples ?? []).map((s) => <li key={`${s.form_factor}-${s.metric}`}>{s.form_factor} {s.metric.toUpperCase()}: {s.p75}{s.metric === 'cls' ? '' : ' ms'} · {s.status.replace('_', ' ')} · {s.day}</li>)}</ul>}
 			{item.finding === 'clicked_broken' && <ClickedBroken figures={item.figures} />}
+			{gbp && <GbpFacts finding={gbp} figures={item.figures} />}
 			<p>
 				{sprintf(
 					/* translators: 1: potential clicks, 2: value, 3: confidence, 4: effort, 5: score. */
@@ -902,20 +1013,7 @@ function Detail({ answer, item, state, goal, onError }: Readonly<{ answer: Queue
 						? __('Value: the page’s conversion rate of visits from search against the site’s, from 1 to 5.', 'seoproanalytics')
 						: __('Value: 1, as there is no goal or no visits from search.', 'seoproanalytics')}
 				</li>
-				<li>
-					{item.kind === 'index' || item.kind === 'sitemap'
-						? sprintf(
-								/* translators: %s: the kind's confidence. */
-								__('Confidence: the kind’s %s; with no impressions there is nothing to weigh it by.', 'seoproanalytics'),
-								decimal(answer.rules.confidence[item.kind])
-							)
-						: sprintf(
-								/* translators: 1: the kind's confidence, 2: impressions for full confidence. */
-								__('Confidence: the kind’s %1$s, less when there are fewer than %2$s impressions per 28 days.', 'seoproanalytics'),
-								decimal(answer.rules.confidence[item.kind]),
-								number(answer.rules.full_impressions)
-							)}
-				</li>
+				<li>{confidenceNote(answer, item)}</li>
 				<li>
 					{item.effort_set
 						? sprintf(/* translators: %s: the kind's effort. */ __('Effort: set by hand (the kind’s is %s).', 'seoproanalytics'), number(kindEffort))

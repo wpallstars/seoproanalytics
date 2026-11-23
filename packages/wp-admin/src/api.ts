@@ -40,6 +40,7 @@ import {
 	type ExperimentsAnswer,
 	type Funnel,
 	type FunnelsAnswer,
+	type GbpAnswer,
 	type Goal,
 	type GoalStep,
 	type GoalsAnswer,
@@ -242,6 +243,18 @@ export function useBusinessProfiles(scope: Omit<Scope, 'compare'>) {
 	return useQuery({
 		queryKey: ['business-profiles', args],
 		queryFn: () => get<BusinessProfilesAnswer>('business-profiles', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && !shareAccess.token,
+	});
+}
+
+/** Google Business Profile as the Connect add-on's read kept it; not in shared reports (the route is not shared). */
+export function useGoogleBusiness(scope: Omit<Scope, 'compare' | 'filters'>) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs({ ...scope, filters: [] }), data);
+	return useQuery({
+		queryKey: ['google-business', args],
+		queryFn: () => get<GbpAnswer>('google-business', args),
 		placeholderData: keepPreviousData,
 		enabled: enabled && !shareAccess.token,
 	});

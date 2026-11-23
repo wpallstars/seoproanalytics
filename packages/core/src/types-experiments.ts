@@ -8,7 +8,7 @@
  * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
  */
 
-import type { Answer, Range, Marker, Revenue, GoalKind, VitalSample } from './types-traffic';
+import type { Answer, Range, Marker, Revenue, GoalKind, VitalSample, GbpFinding, GbpField } from './types-traffic';
 import type { SearchEngine, SearchEngineAnswer, OpportunityPage, OpportunityKind, DecayCause, CoverageMatch, AuditFinding, AuditFacts, LinksKind, LinksMissingQuery, SitemapSource, DecayRival, IndexationKind, Owner } from './types-search';
 import type { BacklinkNeedRow } from './types-backlinks';
 
@@ -548,7 +548,23 @@ export interface QueueFigures {
 	/** overlap: the pages sharing the query; refresh, merge: this page and the one that overtook it (with its share of the query). */
 	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number | null; share: number | null }[];
 	/** audit: the finding, its share of the page's expected clicks, the page's facts and the other pages with the same title or description. */
-	finding?: AuditFinding | 'page_experience' | 'clicked_broken';
+	finding?: AuditFinding | 'page_experience' | 'clicked_broken' | GbpFinding;
+	/** Google Business Profile findings: the location's name and its website clicks over the newest 28 days kept. */
+	location?: string;
+	website_clicks?: number;
+	/** gbp_reviews: reviews of the last 90 days without a reply, and when the oldest was written. */
+	unanswered?: number;
+	oldest?: string;
+	/** gbp_rating: the overall rating, and the last 30 days' reviews' average and count. */
+	rating?: number;
+	recent_rating?: number | null;
+	recent_count?: number;
+	/** gbp_incomplete: the basics the profile lacks. */
+	absent?: GbpField[];
+	/** gbp_link: untagged or another site, the website link as set, and the tagged link to set. */
+	problem?: 'untagged' | 'other_site';
+	website?: string;
+	link?: string;
 	samples?: VitalSample[];
 	/** audit, clicked_broken: the destination, its crawl status (0: no answer), what kind of link, the pages it was clicked on and those linking to it. */
 	target?: string;
@@ -622,7 +638,7 @@ export interface QueueItem extends OpportunityPage {
 	found: boolean;
 	query: string | null;
 	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; target: wrong_page or striking; sitemap: the problem; backlinks: needs; else null. */
-	finding: AuditFinding | 'page_experience' | 'clicked_broken' | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | 'needs' | null;
+	finding: AuditFinding | 'page_experience' | 'clicked_broken' | GbpFinding | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | 'needs' | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -676,7 +692,7 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		scale_days: number;
 		effort: Record<QueueKind, number>;
 		/** Audit findings whose effort is not the audit kind's. */
-		audit_effort: Partial<Record<AuditFinding | 'page_experience' | 'clicked_broken', number>>;
+		audit_effort: Partial<Record<AuditFinding | 'page_experience' | 'clicked_broken' | GbpFinding, number>>;
 		/** Internal links lists whose effort is not the links kind's, and each list's share of the expected clicks. */
 		links_effort: Partial<Record<LinksKind, number>>;
 		links_share: Record<LinksKind, number>;
@@ -686,6 +702,9 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		/** Sitemap problems whose effort is not the sitemap kind's, and each problem's share of a typical page's clicks. */
 		sitemap_effort: Partial<Record<QueueSitemapProblem, number>>;
 		sitemap_share: Record<QueueSitemapProblem, number>;
+		/** Google Business Profile findings: each one's share of the location's website clicks, and their confidence. */
+		gbp_share: Record<GbpFinding, number>;
+		gbp_confidence: number;
 		/** Refresh proposals' effort and share of the clicks lost, and the planner's thresholds. */
 		refresh_effort: Record<RefreshProposal, number>;
 		refresh_share: Record<RefreshProposal, number>;
