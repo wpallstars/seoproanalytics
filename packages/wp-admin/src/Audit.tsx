@@ -32,6 +32,7 @@ import {
 	type AuditFinding,
 	type AuditRow,
 	type CrawlIssue,
+	type GbpFinding,
 	singleEngine,
 	type SearchEngine,
 	type SearchSort,
@@ -58,8 +59,8 @@ const percent = (value: number) => formatPercent(value, locale);
 const place = (value: number | null) => (value === null ? '–' : formatDecimal(value, locale));
 
 /** A finding's name, short enough for a list. */
-export function findingName(finding: AuditFinding | 'page_experience' | 'clicked_broken'): string {
-	const names: Record<AuditFinding | 'page_experience' | 'clicked_broken', string> = {
+export function findingName(finding: AuditFinding | 'page_experience' | 'clicked_broken' | GbpFinding): string {
+	const names: Record<AuditFinding | 'page_experience' | 'clicked_broken' | GbpFinding, string> = {
 		noindex: __('Not indexed', 'seoproanalytics'),
 		canonical: __('Canonical is another page', 'seoproanalytics'),
 		crawl_error: __('Crawl error', 'seoproanalytics'),
@@ -89,6 +90,10 @@ export function findingName(finding: AuditFinding | 'page_experience' | 'clicked
 		rich_errors: __('Rich result errors', 'seoproanalytics'),
 		images_alt: __('Images without alt text', 'seoproanalytics'),
 		page_experience: __('Poor Core Web Vitals', 'seoproanalytics'),
+		gbp_reviews: __('Business Profile reviews without a reply', 'seoproanalytics'),
+		gbp_rating: __('Business Profile rating falling', 'seoproanalytics'),
+		gbp_incomplete: __('Business Profile missing basics', 'seoproanalytics'),
+		gbp_link: __('Business Profile website link', 'seoproanalytics'),
 	};
 	return names[finding];
 }

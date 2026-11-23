@@ -165,12 +165,13 @@ final class SEOProAnalytics_Business_Profiles {
 
     /**
      * The page a profile represents, as a path of this site ('/' for the
-     * home page): a path, or an address on this site.
+     * home page): a path, or an address on this site. Also the page a
+     * Google Business Profile location stands for (SEOProAnalytics_GBP).
      *
      * @param string $text Text.
      * @return string
      */
-    private static function page($text) {
+    public static function page($text) {
         $text = trim($text);
         if ($text === '') {
             return '/';

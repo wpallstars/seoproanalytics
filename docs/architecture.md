@@ -557,7 +557,7 @@ customer whose order sold the last item is not named).
 | content | `published`, `unpublished` (draft, private, pending, trash, deleted), `address` (old and new path), `title`, `content` (words added and removed, word count before and after), `links` (internal links added, removed, or with new anchor text), `external_links` (hosts gained and lost) | `pre_post_update` keeps the published address; `transition_post_status` (also scheduled posts going live); `post_updated` (before and after); `before_delete_post`. Links from `post_content` (`<a href>`; internal: no host or one of the collector's hosts) |
 | seo | `seo_title`, `meta_description`, `robots`, `canonical` | Post meta of Yoast SEO, Rank Math, SEOPress and The SEO Framework (`SEOProAnalytics_Changes::SEO_META`), before and after |
 | product | `out_of_stock`, `back_in_stock`, `price_up`, `price_down` (regular, sale or active price, with the currency), `sale_started`, `sale_ended`, `coupon_published`, `coupon_changed`, `coupon_removed` | `woocommerce_before_product_object_save` and its variation hook (stored values from `get_data()`, new from `get_changes()`; a sale scheduled for later starts when WooCommerce's cron sets the price); `woocommerce_before_coupon_object_save` and coupon status; Easy Digital Downloads `edd_price` meta |
-| site | `plugin_installed`, `plugin_updated`, `plugin_activated`, `plugin_deactivated`, `plugin_deleted`, `theme_switched`, `theme_updated`, `core_updated`, `search_visibility` (`blog_public`), `permalinks`, `site_address` (`home`, `siteurl`), `front_page`, `business_profile` (code 53: a profile in Settings → Data → Business profiles added, changed or removed; matched by campaign, so a renamed profile is one removed and one added) | `upgrader_pre_install` keeps the version before; `upgrader_process_complete`; `activated_plugin`, `deactivated_plugin`, `delete_plugin`/`deleted_plugin`; `switch_theme`; `_core_updated_successfully`; `update_option_{name}`; `seoproanalytics_settings_changed` (business profiles, while the setting is on) |
+| site | `plugin_installed`, `plugin_updated`, `plugin_activated`, `plugin_deactivated`, `plugin_deleted`, `theme_switched`, `theme_updated`, `core_updated`, `search_visibility` (`blog_public`), `permalinks`, `site_address` (`home`, `siteurl`), `front_page`, `business_profile` (code 53: a profile in Settings → Data → Business profiles added, changed or removed; matched by campaign, so a renamed profile is one removed and one added), `gbp_profile`, `gbp_reviews`, `gbp_rating` (codes 54–56: a Google Business Profile location's profile edited, new reviews, its last 30 days' reviews averaging half a star or more below its overall rating; recorded by `SEOProAnalytics_GBP` when the Connect add-on's read stores them; object type `gbp`) | `upgrader_pre_install` keeps the version before; `upgrader_process_complete`; `activated_plugin`, `deactivated_plugin`, `delete_plugin`/`deleted_plugin`; `switch_theme`; `_core_updated_successfully`; `update_option_{name}`; `seoproanalytics_settings_changed` (business profiles, while the setting is on) |
 | search | `search_update` (kind 60), `index_status` (16), `rank_move` (17: a tracked place in a search engine moved; meta `engine`), `ai_source` (19: the site entered or left an AI answer service's sources for a target; meta `engine`) | The daily job, when switched on (Search engine updates below); URL Inspection and the paid providers' weekly reads (the add-on's, Integrations below) |
 
 Changes only reach the page they affect (`path_id`, the post's permalink
@@ -2181,8 +2181,12 @@ summaries are up to date, cron deletes old rows in batches of 5,000 with a
 time budget, from site-local midnight back, and never from a day that is
 not summarised. Search data by page, query and pair has its own setting
 (25 months); the import job deletes older days once a day, by the
-primary key's `(engine, day)` prefix, and keeps `gsc_totals`. `wp
-seoproanalytics prune --dry-run` counts them.
+primary key's `(engine, day)` prefix, and keeps `gsc_totals`. The same
+setting and run delete Google Business Profile's older daily figures
+(`gbp_metrics`, by key `day`) and keyword months (`gbp_keywords`, by key
+`month`); `gbp_locations` and `gbp_reviews` mirror each linked profile as
+Google shows it now and stay until it is unlinked or disconnected with its
+data. `wp seoproanalytics prune --dry-run` counts them.
 
 | Data | Default | Why |
 |---|---|---|
@@ -2193,6 +2197,7 @@ seoproanalytics prune --dry-run` counts them.
 | Errors | 3 months | Groups kept 13 months |
 | Crawler requests (`bots`) | 13 months | Already one row per day, crawler, page and status; year-on-year crawl patterns |
 | Search pages, queries and pairs (Google and Bing) | 25 months | Each engine itself keeps 16 |
+| Google Business Profile daily figures and keyword months | as search data (25 months) | Google's own performance history is shorter; locations and reviews mirror the profile now and stay while it is linked |
 | Crawl import history and per-import totals | 13 months | Daily batched pruning with the rollup time budget; always keep the newest import, running imports and any import still referenced by either latest-state crawl table |
 | Daily summaries, search totals, changes | forever | Small; the long-term record |
 | Page snapshots | last 10 per page | Enough for before and after |
@@ -3063,7 +3068,7 @@ The add-on also adds its own REST routes in the `seoproanalytics/v1`
 namespace (the Lighthouse lab test) and its own WP-CLI commands under
 `wp seoproanalytics`. The data it reads lives in the free plugin's tables
 (`gsc_*`, `vitals`, `inspections`, `serp`, `spend`, `link_metrics`,
-`links`), so reports, exports, retention and uninstall treat it as the
+`links`, `gbp_*`), so reports, exports, retention and uninstall treat it as the
 plugin's own. Two of those tables exist only for the add-on's writes:
 
 - `serp` (`SEOProAnalytics_Serp` reads it): one row per engine, search

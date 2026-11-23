@@ -115,7 +115,16 @@ final class SEOProAnalytics_Queue {
     const MAX_EFFORT = 5;
 
     /** Effort of audit findings, links and indexation lists and sitemap problems other than their kind's. */
-    const AUDIT_EFFORT   = array('slow' => 3, 'thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'bing_crawl' => 2, 'crawl_error' => 2, 'served_noindex' => 2, 'served_canonical' => 2, 'broken_links' => 2, 'rich_errors' => 2, 'page_experience' => 2, 'clicked_broken' => 1);
+    const AUDIT_EFFORT   = array('slow' => 3, 'thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'bing_crawl' => 2, 'crawl_error' => 2, 'served_noindex' => 2, 'served_canonical' => 2, 'broken_links' => 2, 'rich_errors' => 2, 'page_experience' => 2, 'clicked_broken' => 1, 'gbp_reviews' => 1, 'gbp_rating' => 3, 'gbp_incomplete' => 1, 'gbp_link' => 1);
+
+    /**
+     * Google Business Profile findings (SEOProAnalytics_GBP): the share of
+     * the location's website clicks per 28 days each puts at stake, and
+     * the confidence. Rough stakes to rank work by: Google does not say
+     * what a reply or a complete profile is worth.
+     */
+    const GBP_SHARE      = array('gbp_reviews' => 0.1, 'gbp_rating' => 0.2, 'gbp_incomplete' => 0.1, 'gbp_link' => 0.05);
+    const GBP_CONFIDENCE = 0.4;
 
     /** Confidence of imported speed evidence: crawl only, or agreeing field data. */
     const SLOW_CONFIDENCE = array('crawl' => 0.4, 'field' => 0.7);
@@ -338,6 +347,10 @@ final class SEOProAnalytics_Queue {
         unset($row);
         $items   = array();
         self::add_slow($items, $ask, $engine, $goal);
+        if ($engine === 'google') {
+            // A Business Profile's work needs no search days: Google's own figures score it.
+            self::add_gbp($items, $value);
+        }
         if ($days > 0) {
             self::add_found($items, $found, $facts, $engine, $days, $curve, $value);
             self::add_audit($items, $audit, $engine, $days, $curve, $value);
@@ -623,6 +636,99 @@ final class SEOProAnalytics_Queue {
     }
 
     /**
+     * Add an audit item for each Google Business Profile finding
+     * (SEOProAnalytics_GBP::findings()): reviews without a reply, a falling
+     * rating, a profile missing its basics, a website link untagged or
+     * going elsewhere. Potential clicks: GBP_SHARE of the location's
+     * website clicks per 28 days, at least one; value: its linked page;
+     * the key's query names the finding and the location. Done opens no
+     * experiment (no_change()): search clicks do not measure it.
+     *
+     * @param array<array<string,mixed>> $items Items by key, added to.
+     * @param array<string,mixed>        $value From values().
+     */
+    private static function add_gbp(array &$items, array $value) {
+        require_once __DIR__ . '/class-seoproanalytics-gbp.php';
+        foreach (SEOProAnalytics_GBP::findings() as $loc) {
+            foreach ($loc['findings'] as $finding => $figures) {
+                $parts = array(
+                    'clicks'     => max(1.0, round($loc['website_clicks'] * self::GBP_SHARE[$finding], 1)),
+                    'value'      => round(self::worth((int) $loc['path_id'], $value), 2),
+                    'confidence' => self::GBP_CONFIDENCE,
+                    'effort'     => self::effort_of('audit', $finding),
+                );
+                list($why, $todo) = self::gbp_text($finding, $loc['title'], $figures);
+                self::add($items, array(
+                    'key' => self::key('audit', 'google', (string) $loc['path'], $finding . ' ' . $loc['location']), 'kind' => 'audit', 'engine' => 'google', 'status' => 'new', 'found' => true,
+                    'path_id' => (int) $loc['path_id'], 'path' => (string) $loc['path'], 'url' => home_url((string) $loc['path']),
+                    'post_id' => 0, 'edit_url' => null, 'query' => null,
+                    'finding' => $finding, 'metric' => 'clicks', 'parts' => $parts, 'score' => self::score($parts),
+                    'why' => $why, 'todo' => $todo,
+                    'figures' => array('finding' => $finding, 'location' => (string) $loc['title'], 'website_clicks' => (int) $loc['website_clicks'], 'clicks' => 0, 'impressions' => 0, 'position' => null) + $figures,
+                ));
+            }
+        }
+    }
+
+    /**
+     * Why a Business Profile finding is listed and what to do, in the
+     * site's language.
+     *
+     * @param string              $finding Finding.
+     * @param string              $title   The location's title.
+     * @param array<string,mixed> $f       Its figures.
+     * @return array{0:string,1:string}
+     */
+    private static function gbp_text($finding, $title, array $f) {
+        $names = array(
+            'categories'  => __('categories', 'seoproanalytics'),
+            'hours'       => __('opening hours', 'seoproanalytics'),
+            'description' => __('description', 'seoproanalytics'),
+            'phone'       => __('phone number', 'seoproanalytics'),
+            'website'     => __('website', 'seoproanalytics'),
+        );
+        switch ($finding) {
+            case 'gbp_reviews':
+                return array(
+                    /* translators: 1: number of reviews, 2: location name, 3: days */
+                    sprintf(_n('%1$s review of %2$s from the last %3$d days has no reply.', '%1$s reviews of %2$s from the last %3$d days have no reply.', (int) $f['unanswered'], 'seoproanalytics'), number_format_i18n((int) $f['unanswered']), $title, SEOProAnalytics_GBP::UNANSWERED_DAYS),
+                    __('Reply to each in Google Business Profile: thank people for good reviews, and answer a complaint with what you did about it. Replies show to everyone who reads the reviews.', 'seoproanalytics'),
+                );
+            case 'gbp_rating':
+                return array(
+                    /* translators: 1: location name, 2: number of reviews, 3: days, 4: their average stars, 5: overall stars */
+                    sprintf(__('The %2$s reviews of %1$s in the last %3$d days average %4$s stars, against %5$s overall.', 'seoproanalytics'), $title, number_format_i18n((int) $f['recent_count']), SEOProAnalytics_GBP::RATING_DAYS, number_format_i18n((float) $f['recent_rating'], 1), number_format_i18n((float) $f['rating'], 1)),
+                    __('Read the recent reviews for a shared cause, such as service, waiting times or a product, and reply to each. Fix the cause before asking customers for reviews.', 'seoproanalytics'),
+                );
+            case 'gbp_incomplete':
+                $absent = array();
+                foreach ((array) $f['absent'] as $field) {
+                    $absent[] = $names[$field] ?? (string) $field;
+                }
+                return array(
+                    /* translators: 1: location name, 2: profile fields, as a list (e.g. "description and phone number") */
+                    sprintf(__('The Business Profile of %1$s is missing its %2$s.', 'seoproanalytics'), $title, wp_sprintf('%l', $absent)),
+                    __('Add them in Google Business Profile, so people who find it in Search and Maps see them before they visit or call.', 'seoproanalytics'),
+                );
+            default:
+                if ($f['problem'] === 'other_site') {
+                    return array(
+                        /* translators: 1: location name, 2: its website link */
+                        sprintf(__('The website link of %1$s goes to %2$s, not this site.', 'seoproanalytics'), $title, (string) $f['website']),
+                        /* translators: %s: tagged link */
+                        sprintf(__('If this site is the location\'s website, set the profile\'s website to %s.', 'seoproanalytics'), (string) $f['link']),
+                    );
+                }
+                return array(
+                    /* translators: %s: location name */
+                    sprintf(__('The website link of %s has no campaign tags, so its visits count as Google search visits, not as the profile\'s.', 'seoproanalytics'), $title),
+                    /* translators: %s: tagged link */
+                    sprintf(__('Set the profile\'s website to %s, and list the profile under Settings → Data → Business profiles to see its visits and conversions.', 'seoproanalytics'), (string) $f['link']),
+                );
+        }
+    }
+
+    /**
      * Add an item for each internal links row.
      *
      * @param array<array<string,mixed>>                   $items  Items by key, added to.
@@ -728,6 +834,8 @@ final class SEOProAnalytics_Queue {
                 'index_share'      => self::INDEX_SHARE,
                 'sitemap_effort'   => self::SITEMAP_EFFORT,
                 'sitemap_share'    => SEOProAnalytics_Inspections::SITEMAP_SHARE,
+                'gbp_share'        => self::GBP_SHARE,
+                'gbp_confidence'   => self::GBP_CONFIDENCE,
                 'refresh_effort'   => SEOProAnalytics_Refresh::EFFORT,
                 'refresh_share'    => SEOProAnalytics_Refresh::SHARE,
                 'refresh'          => array(
@@ -2229,15 +2337,16 @@ final class SEOProAnalytics_Queue {
      * Whether doing an item changes nothing search measures on its pages
      * (a refresh proposal to leave the page as it is, a sitemap fixed,
      * which is about the whole site, or a clicked destination mended,
-     * which is about clicks away, not search clicks): done opens no
-     * experiment, and holds back no other item on the page.
+     * which is about clicks away, not search clicks, or a Business Profile
+     * mended, which is on Google, not the page): done opens no experiment,
+     * and holds back no other item on the page.
      *
      * @param array<string,mixed> $item Item.
      * @return bool
      */
     private static function no_change(array $item) {
         if ($item['kind'] === 'audit') {
-            return (string) $item['finding'] === 'clicked_broken';
+            return (string) $item['finding'] === 'clicked_broken' || strpos((string) $item['finding'], 'gbp_') === 0;
         }
         return $item['kind'] === 'sitemap' || ($item['kind'] === 'refresh' && in_array((string) $item['finding'], self::NO_CHANGE, true));
     }
@@ -2263,12 +2372,17 @@ final class SEOProAnalytics_Queue {
      * The pages whose running experiment holds a new item back: those it
      * is about, except for a refresh item, which is about its losing page
      * only (a merge's other page running an experiment does not hide the
-     * loss, as its decay item would not have been hidden).
+     * loss, as its decay item would not have been hidden), and a Business
+     * Profile item, which none holds back: it is mended on Google, not on
+     * its page.
      *
      * @param array<string,mixed> $item Item.
      * @return int[]
      */
     private static function held_by(array $item) {
+        if ($item['kind'] === 'audit' && strpos((string) $item['finding'], 'gbp_') === 0) {
+            return array();
+        }
         return $item['kind'] === 'refresh' ? array((int) $item['path_id']) : self::page_ids($item);
     }
 

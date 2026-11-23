@@ -817,6 +817,91 @@ final class SEOProAnalytics_CLI { // NOSONAR: WP-CLI discovers the public comman
     }
 
     /**
+     * Google Business Profile, as the SEO Pro Analytics Connect add-on's
+     * read kept it: each location's Search and Maps views, website clicks,
+     * calls and direction requests in the range, its rating, new and
+     * unanswered reviews and its Plan findings.
+     *
+     * ## OPTIONS
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoproanalytics google-business --range=90d
+     *     wp seoproanalytics google-business --format=json
+     *
+     * @subcommand google-business
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function google_business($args, $assoc) {
+        unset($args);
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-gbp.php';
+        $req    = $this->request($assoc);
+        $answer = $this->on_data($assoc, static function () use ($req) {
+            return SEOProAnalytics_GBP::report($req);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->range_line($answer['range']);
+        if (!$answer['locations']) {
+            WP_CLI::line($answer['connected'] ? __('No Business Profile location is linked yet. Choose the locations under Settings → Connections → Google Business Profile.', 'seoproanalytics') : __('Google Business Profile is not connected. It is read by the SEO Pro Analytics Connect add-on (Settings → Connections).', 'seoproanalytics'));
+            return;
+        }
+        if ($answer['through']) {
+            /* translators: %s: a day */
+            WP_CLI::log(sprintf(__('Figures through %s.', 'seoproanalytics'), $answer['through']));
+        }
+        $items = array();
+        foreach ($answer['locations'] as $loc) {
+            $items[] = array(
+                'location'    => $loc['title'],
+                'page'        => (string) $loc['page'],
+                'search'      => $loc['totals']['search'],
+                'maps'        => $loc['totals']['maps'],
+                'website'     => $loc['totals']['website'],
+                'calls'       => $loc['totals']['calls'],
+                'directions'  => $loc['totals']['directions'],
+                'rating'      => $loc['rating'] === null ? '–' : number_format_i18n((float) $loc['rating'], 1),
+                'reviews'     => $loc['reviews'],
+                'new_reviews' => $loc['new_reviews']['count'],
+                'unanswered'  => $loc['unanswered'],
+                'findings'    => implode(', ', $loc['findings']),
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $items, array_keys($items[0]));
+    }
+
+    /**
      * Custom properties sent with events and pages: the keys, or the
      * values of one key, with counts, visits and event revenue.
      *

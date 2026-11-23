@@ -88,6 +88,9 @@ function seoproanalytics_uninstall_site() {
     delete_option('seoproanalytics_migrate_jetpack');
     delete_option('seoproanalytics_imported');
     delete_option('seoproanalytics_imported_demo');
+    // Google Business Profile's report version (SEOProAnalytics_GBP::VERSION_OPTION), live and demo; its tables go with the others.
+    delete_option('seoproanalytics_gbp_version');
+    delete_option('seoproanalytics_gbp_version_demo');
     // The move from the plugin's old name: its notes and lock (SEOProAnalytics_Rename).
     delete_option('seoproanalytics_rename_report');
     delete_option('seoproanalytics_rename_lock');

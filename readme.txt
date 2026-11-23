@@ -37,6 +37,7 @@ Connect Bing Webmaster Tools (Settings → Connections), or Google Search Consol
 * **Audit**: titles, descriptions, headings, thin content, internal links, indexation, sitemaps and URL Inspection (Google's, with the add-on).
 * **Site crawl**: imports, LibreCrawl or an opt-in built-in crawl; findings verify Plan fixes.
 * **Page experience**: Core Web Vitals (Chrome UX Report, with the add-on) by page, against search clicks and visits.
+* **Google Business Profile** (with the add-on): Search and Maps views, actions, keywords, reviews and profile edits per location.
 * **Backlinks**: visits, CSV imports, classes, DR/LD, link value, needs, impact, spam review and local disavow. Nothing submitted.
 * **Targets**: focus keywords, reports or a list, with research links, Keyword Golden Ratio, tracked places and AI answer sources (with the add-on).
 * **IndexNow**: tell search engines when pages change (opt-in).

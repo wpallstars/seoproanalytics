@@ -1117,13 +1117,24 @@ paths:
           to `rules.max_value`; 1 without goals;
         - confidence: the kind's own × √(impressions per 28 days ÷
           `rules.full_impressions`), the root at most 1; index and sitemap
-          items have no impressions, so theirs is the kind's own;
+          items have no impressions, so theirs is the kind's own, and
+          Business Profile findings' is `rules.gbp_confidence`;
         - effort: the kind's (`rules.effort`; an audit finding's in
           `rules.audit_effort`, a links list's in `rules.links_effort`, an
           indexation list's in `rules.index_effort`, a refresh
           proposal's in `rules.refresh_effort` and a sitemap problem's in
           `rules.sitemap_effort` when it differs) unless someone set
           another.
+
+        Google Business Profile items (`audit`, Google, findings
+        `gbp_reviews`, `gbp_rating`, `gbp_incomplete`, `gbp_link`) come
+        from the profiles the Connect add-on reads (`/google-business`):
+        one per location and finding, on the location's linked page (the
+        home page when none). Their potential clicks are the finding's
+        share in `rules.gbp_share` of the location's website clicks over
+        the newest 28 days kept, at least one: a prioritisation stake, not
+        search clicks. Done records the fix and opens no experiment; the
+        item is listed again while the next read still finds it.
 
         Sitemap items (`sitemap`, Google only) come from Search Console's
         sitemaps (`/inspections`): one per sitemap and problem (`errors`,
@@ -1605,6 +1616,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BusinessProfilesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /google-business:
+    get:
+      operationId: getGoogleBusiness
+      summary: Google Business Profile locations, as the Connect add-on's read kept them.
+      description: |
+        The free plugin never asks Google: the SEO Pro Analytics Connect
+        add-on reads the locations the owner chose (read-only) and stores
+        them. Each location has its Search and Maps views by device,
+        website clicks, calls and direction requests summed over the range,
+        its rating and review count as Google gives them, the reviews
+        written in the range, those of the last 90 days without a reply,
+        the searches that showed it in its newest month (Google reports
+        them by month, some only as "fewer than" a threshold: `below`),
+        its five newest reviews and its findings. Findings are also Plan
+        items (`/queue`, kind audit): `gbp_reviews` (reviews without a
+        reply), `gbp_rating` (the last 30 days' reviews average half a
+        star or more below the overall rating), `gbp_incomplete` (no
+        categories, hours, description, phone or website) and `gbp_link`
+        (the website link has no campaign tags or goes to another site).
+        Google gives daily figures a few days late: `through` is the
+        newest day kept. `connected` is false while the add-on or its
+        connection is missing; data already read stays readable.
+        Reviewers' names are never stored.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Google Business Profile locations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleBusinessAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4779,7 +4832,15 @@ components:
         search_visibility, permalinks, site_address, front_page,
         business_profile (a business profile added, changed or removed in
         Settings → Data; meta action, name, platform, campaign and the
-        fields changed; see /business-profiles);
+        fields changed; see /business-profiles); gbp_profile (a Google
+        Business Profile location's profile edited, read by the Connect
+        add-on; old and new the field's values when one changed, else new
+        lists the fields; meta name and fields), gbp_reviews (new reviews
+        of a location; new their count; meta name, count, average,
+        lowest), gbp_rating (a location's last 30 days' reviews average
+        half a star or more below its overall rating; old the overall
+        rating, new the 30 days' average; meta name, count, days); see
+        /google-business;
         search_update (search engine updates, when switched on under
         Settings → Data), index_status (a page's verdict in Google's
         URL Inspection changed; old and new are Google's coverage states;
@@ -5996,6 +6057,9 @@ components:
                 - $ref: '#/components/schemas/AuditFinding'
                 - type: string
                   enum: [page_experience, clicked_broken]
+                - type: string
+                  enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link]
+                  description: A Google Business Profile location's finding (/google-business), engine google; one item per location and finding, on its linked page. Done opens no experiment.
                 - $ref: '#/components/schemas/LinksKind'
                 - $ref: '#/components/schemas/IndexationKind'
                 - $ref: '#/components/schemas/RefreshProposal'
@@ -6132,6 +6196,43 @@ components:
                   anyOf:
                     - $ref: '#/components/schemas/AuditFinding'
                     - {type: string, enum: [page_experience, clicked_broken]}
+                    - {type: string, enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link]}
+                location:
+                  type: string
+                  description: Google Business Profile findings; the location's name. Their score uses a share of its website clicks over the newest 28 days kept (reviews 10%, rating 20%, incomplete 10%, link 5%), at least one.
+                website_clicks:
+                  type: integer
+                  description: Google Business Profile findings; the location's website clicks over the newest 28 days kept.
+                unanswered:
+                  type: integer
+                  description: gbp_reviews; reviews of the last 90 days without a reply.
+                oldest:
+                  type: string
+                  format: date-time
+                  description: gbp_reviews; when the oldest of them was written.
+                rating:
+                  type: number
+                  description: gbp_rating; Google's overall rating.
+                recent_rating:
+                  type: [number, 'null']
+                  description: gbp_rating; the last 30 days' reviews' average.
+                recent_count:
+                  type: integer
+                  description: gbp_rating; the last 30 days' reviews.
+                absent:
+                  type: array
+                  description: gbp_incomplete; the basics the profile lacks.
+                  items: {type: string, enum: [categories, hours, description, phone, website]}
+                problem:
+                  type: string
+                  enum: [untagged, other_site]
+                  description: gbp_link; the website link has no campaign tags, or goes to another site.
+                website:
+                  type: string
+                  description: gbp_link; the profile's website link as set.
+                link:
+                  type: string
+                  description: gbp_link; the tagged link to set instead (a listed Google profile's for the page, under Settings → Data → Business profiles, else one tagged the same way).
                 samples:
                   type: array
                   description: Page-experience field evidence; the item's score uses 10% of observed clicks scaled to 28 days, not the expected-CTR audit formula.
@@ -7308,6 +7409,121 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/BusinessProfileRow'
+
+    GoogleBusinessFigures:
+      type: object
+      description: Sums of Google's daily figures. search and maps add up both devices.
+      required: [search, maps, search_desktop, search_mobile, maps_desktop, maps_mobile, website, calls, directions]
+      properties:
+        search: {type: integer, description: Views in Google Search.}
+        maps: {type: integer, description: Views in Google Maps.}
+        search_desktop: {type: integer}
+        search_mobile: {type: integer}
+        maps_desktop: {type: integer}
+        maps_mobile: {type: integer}
+        website: {type: integer, description: Clicks on the website link.}
+        calls: {type: integer, description: Clicks on the call button.}
+        directions: {type: integer, description: Direction requests.}
+
+    GoogleBusinessLocation:
+      type: object
+      required: [id, location, title, page, url, rating, reviews, checked, profile, campaign, tagged, totals, new_reviews, recent, unanswered, falling, keywords, latest, findings]
+      properties:
+        id: {type: integer, description: The location's row here.}
+        location: {type: string, description: Google's location ID (digits).}
+        title: {type: string}
+        page:
+          type: [string, 'null']
+          description: The page it stands for (a path), chosen with the location.
+        url: {type: [string, 'null']}
+        rating:
+          type: [number, 'null']
+          description: Google's average rating (1-5); null without reviews.
+        reviews: {type: integer, description: Google's review count.}
+        checked:
+          type: [string, 'null']
+          format: date-time
+          description: The add-on's last read of it.
+        profile:
+          type: object
+          description: title, categories (the primary first), hours ("DAY HH:MM-HH:MM" lines), description, website (as set), phone and address.
+        campaign: {type: string, description: The website link's utm_campaign, or empty.}
+        tagged: {type: boolean, description: The website link has utm_source and utm_medium.}
+        totals:
+          $ref: '#/components/schemas/GoogleBusinessFigures'
+        new_reviews:
+          type: object
+          description: Reviews written in the range, and their average.
+          properties:
+            count: {type: integer}
+            rating: {type: [number, 'null']}
+        recent:
+          type: object
+          description: Reviews of the last 30 days, and their average.
+          properties:
+            count: {type: integer}
+            rating: {type: [number, 'null']}
+        unanswered: {type: integer, description: Reviews of the last 90 days without a reply.}
+        falling: {type: boolean, description: The last 30 days' reviews average half a star or more below the rating.}
+        keywords:
+          type: object
+          description: The searches that showed it in its newest month, most shown first (20).
+          properties:
+            month: {type: [string, 'null'], description: YYYY-MM.}
+            rows:
+              type: array
+              items:
+                type: object
+                properties:
+                  keyword: {type: string}
+                  impressions: {type: integer}
+                  below: {type: boolean, description: Google gave only a "fewer than" threshold, impressions.}
+        latest:
+          type: array
+          description: Its five newest reviews (the text's start; no reviewer names).
+          items:
+            type: object
+            properties:
+              rating: {type: integer}
+              created: {type: string, format: date-time}
+              replied: {type: boolean}
+              comment: {type: string}
+        findings:
+          type: array
+          items:
+            type: string
+            enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link]
+
+    GoogleBusinessAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [connected, source, range, through, totals, series, locations]
+          properties:
+            connected: {type: boolean}
+            source: {type: string, enum: [gbp]}
+            range:
+              $ref: '#/components/schemas/Range'
+            through:
+              type: [string, 'null']
+              format: date
+              description: The newest day of figures kept (Google's are a few days late).
+            totals:
+              $ref: '#/components/schemas/GoogleBusinessFigures'
+            series:
+              type: array
+              description: All locations' figures by day, oldest first.
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/GoogleBusinessFigures'
+                  - type: object
+                    required: [day]
+                    properties:
+                      day: {type: string, format: date}
+            locations:
+              type: array
+              items:
+                $ref: '#/components/schemas/GoogleBusinessLocation'
 
     GoalsAnswer:
       allOf:

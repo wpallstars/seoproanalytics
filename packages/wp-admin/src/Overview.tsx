@@ -18,6 +18,7 @@ import type { ViewProps } from './App';
 import { BreakdownCard } from './components/BreakdownCard';
 import { BusinessProfilesCard } from './components/BusinessProfilesCard';
 import { CampaignBuilder } from './components/CampaignBuilder';
+import { GoogleBusinessCard } from './components/GoogleBusinessCard';
 import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { Vitals } from './Vitals';
@@ -104,6 +105,7 @@ export function Overview({ state, update }: Readonly<ViewProps>) {
 					action={<CampaignBuilder state={state} />}
 				/>
 				<BusinessProfilesCard state={state} update={update} />
+				<GoogleBusinessCard state={state} update={update} />
 				<BreakdownCard
 					card="pages"
 					title={__('Pages', 'seoproanalytics')}

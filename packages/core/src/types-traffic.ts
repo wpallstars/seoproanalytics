@@ -317,6 +317,70 @@ export interface BusinessProfilesAnswer extends Answer {
 	profiles: BusinessProfileRow[];
 }
 
+/** Google Business Profile findings (also Plan items of kind audit). */
+export const GBP_FINDINGS = ['gbp_reviews', 'gbp_rating', 'gbp_incomplete', 'gbp_link'] as const;
+export type GbpFinding = (typeof GBP_FINDINGS)[number];
+
+/** The basics a complete Business Profile has (gbp_incomplete). */
+export type GbpField = 'categories' | 'hours' | 'description' | 'phone' | 'website';
+
+/** Sums of Google's daily Business Profile figures; search and maps add up both devices. */
+export interface GbpFigures {
+	search: number;
+	maps: number;
+	search_desktop: number;
+	search_mobile: number;
+	maps_desktop: number;
+	maps_mobile: number;
+	website: number;
+	calls: number;
+	directions: number;
+}
+
+export interface GbpLocation {
+	id: number;
+	/** Google's location ID. */
+	location: string;
+	title: string;
+	/** The page it stands for, or null. */
+	page: string | null;
+	url: string | null;
+	/** Google's average rating; null without reviews. */
+	rating: number | null;
+	reviews: number;
+	/** The add-on's last read of it. */
+	checked: string | null;
+	profile: { title: string; categories: string[]; hours: string[]; description: string; website: string; phone: string; address: string };
+	/** utm_campaign of its website link, or ''. */
+	campaign: string;
+	/** Its website link has utm_source and utm_medium. */
+	tagged: boolean;
+	totals: GbpFigures;
+	/** Reviews written in the range, and of the last 30 days, with their averages. */
+	new_reviews: { count: number; rating: number | null };
+	recent: { count: number; rating: number | null };
+	/** Reviews of the last 90 days without a reply. */
+	unanswered: number;
+	falling: boolean;
+	/** The searches that showed it in its newest month (YYYY-MM); below: Google gave only "fewer than" impressions. */
+	keywords: { month: string | null; rows: { keyword: string; impressions: number; below: boolean }[] };
+	/** Its newest reviews, without reviewer names. */
+	latest: { rating: number; created: string; replied: boolean; comment: string }[];
+	findings: GbpFinding[];
+}
+
+export interface GbpAnswer extends Answer {
+	/** Whether the Connect add-on and its Google Business Profile connection are there; data already read stays readable. */
+	connected: boolean;
+	source: 'gbp';
+	range: Range;
+	/** The newest day of figures kept (Google's are a few days late). */
+	through: string | null;
+	totals: GbpFigures;
+	series: (GbpFigures & { day: string })[];
+	locations: GbpLocation[];
+}
+
 export interface FunnelStepRow extends GoalStep {
 	visits: number;
 	/** Of the visits that started the funnel. */

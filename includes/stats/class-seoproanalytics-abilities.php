@@ -43,6 +43,9 @@
  * - seoproanalytics/business-profiles: the business profiles listed in
  *   Settings → Data, with their tagged links and the visits,
  *   conversions and revenue from each (read).
+ * - seoproanalytics/google-business: each Google Business Profile
+ *   location's Search and Maps views, actions, keywords, reviews and
+ *   findings, as the Connect add-on's read kept them (read).
  * - seoproanalytics/migrate: other statistics plugins whose history is on
  *   the site, an import's dry run and what a plugin leaves behind
  *   (administrators; read).
@@ -68,6 +71,12 @@ final class SEOProAnalytics_Abilities {
 
     /** The abilities' category. */
     const CATEGORY = 'site-statistics';
+
+    /** An output schema's list of rows. */
+    const OBJECT_LIST = array(
+        'type'  => 'array',
+        'items' => array('type' => 'object'),
+    );
 
     /**
      * Register hooks.
@@ -630,6 +639,26 @@ final class SEOProAnalytics_Abilities {
                     'idempotent'  => true,
                 ),
             ),
+        ));
+        wp_register_ability('seoproanalytics/google-business', array(
+            'label'               => __('Google Business Profile', 'seoproanalytics'),
+            'description'         => __('Each Google Business Profile location the SEO Pro Analytics Connect add-on reads: its Search and Maps views (by device), website clicks, calls and direction requests in the range (totals and series by day), its rating and review count, new reviews in the range, reviews without a reply in the last 90 days, the searches that showed it in its newest month, its newest reviews, and its findings (gbp_reviews, gbp_rating, gbp_incomplete, gbp_link; Plan items of kind audit). connected false: the add-on or its connection is missing; data already read stays readable. Google gives daily figures a few days late (through).', 'seoproanalytics'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => self::range_input($data),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'connected' => array('type' => 'boolean'),
+                    'range'     => array('type' => 'object'),
+                    'through'   => array('type' => array('string', 'null')),
+                    'totals'    => array('type' => 'object'),
+                    'series'    => self::OBJECT_LIST,
+                    'locations' => self::OBJECT_LIST,
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'google_business'),
+            'permission_callback' => array('SEOProAnalytics_API', 'can_read'),
+            'meta'                => self::read_only_meta(),
         ));
         wp_register_ability('seoproanalytics/indexation', array(
             'label'               => __('Indexation', 'seoproanalytics'),
@@ -2539,6 +2568,24 @@ final class SEOProAnalytics_Abilities {
     }
 
     /**
+     * seoproanalytics/google-business.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function google_business($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProAnalytics_Query::request(array_intersect_key($input, array_flip(array('range', 'from', 'to'))) + array('range' => '30d'));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-gbp.php';
+        return SEOProAnalytics_API::on_data(self::data($input), static function () use ($req) {
+            return SEOProAnalytics_GBP::report((array) $req);
+        });
+    }
+
+    /**
      * seoproanalytics/indexation.
      *
      * @param array<string,mixed>|null $input Input.
@@ -2816,5 +2863,43 @@ final class SEOProAnalytics_Abilities {
      */
     private static function data(array $input) {
         return isset($input['data']) && $input['data'] === 'demo' ? 'demo' : 'live';
+    }
+
+    /**
+     * An input schema of a period only: range, or from and to, and the data set.
+     *
+     * @param array<string,mixed> $data The data property's schema.
+     * @return array<string,mixed>
+     */
+    private static function range_input(array $data) {
+        $day        = array('type' => 'string');
+        $properties = array(
+            'range' => array(
+                'type'        => 'string',
+                'enum'        => SEOProAnalytics_Query::RANGES,
+                'default'     => '30d',
+                'description' => __('Period, in the site time zone.', 'seoproanalytics'),
+            ),
+            'from'  => $day + array('description' => __('First day of a custom range (YYYY-MM-DD).', 'seoproanalytics')),
+            'to'    => $day + array('description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoproanalytics')),
+            'data'  => $data,
+        );
+        return array('type' => 'object', 'default' => array(), 'additionalProperties' => false, 'properties' => $properties);
+    }
+
+    /**
+     * A read-only ability's meta: shown in REST, never changes anything.
+     *
+     * @return array<string,mixed>
+     */
+    private static function read_only_meta() {
+        return array(
+            'show_in_rest' => true,
+            'annotations'  => array(
+                'readonly'    => true,
+                'destructive' => false,
+                'idempotent'  => true,
+            ),
+        );
     }
 }

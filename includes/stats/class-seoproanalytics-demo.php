@@ -574,6 +574,67 @@ final class SEOProAnalytics_Demo {
     /** The demo crawl made by this version of the demo; older is made again. */
     const CRAWL_VERSION = 4;
 
+    /** Google Business Profile data made by this version of the demo; older is made again. */
+    const GBP_VERSION = 1;
+
+    /**
+     * Demo Google Business Profile locations, as the Connect add-on's read
+     * would keep them: Google's location ID, the page it stands for, its
+     * website link's query (on this site; '' untagged), its profile,
+     * rating, typical daily figures (SEOProAnalytics_GBP::FIGURES order)
+     * and reviews (days ago, stars, replied, comment). The head office is
+     * SEOProAnalytics_Business_Profiles::DEMO's profile, its rating
+     * falling; the harbour shop's link is untagged, its profile has no
+     * description and two reviews have no reply.
+     */
+    const GBP_LOCATIONS = array(
+        array(
+            'location' => '1000000000000000001',
+            'page'     => '/',
+            'query'    => '?utm_source=google&utm_medium=business_profile&utm_campaign=head-office',
+            'profile'  => array(
+                'title'       => 'Head office',
+                'categories'  => array('Software company', 'Website designer'),
+                'hours'       => array('MONDAY 09:00-17:30', 'TUESDAY 09:00-17:30', 'WEDNESDAY 09:00-17:30', 'THURSDAY 09:00-17:30', 'FRIDAY 09:00-16:00'),
+                'description' => 'Privacy-friendly analytics and search reports for WordPress sites, with set-up help and support.',
+                'phone'       => '+44 1534 000000',
+                'address'     => '1 Harbour Street, St Helier',
+            ),
+            'rating'   => 4.6,
+            'count'    => 48,
+            'daily'    => array(34, 61, 12, 29, 4, 1, 2),
+            'reviews'  => array(
+                array(3, 3, false, 'Helpful, but the set-up took longer than we hoped.'),
+                array(9, 4, true, 'Clear reports and quick answers to our questions.'),
+                array(17, 3, true, 'Good product; support was slow this month.'),
+                array(26, 4, true, 'Does what we needed without cookies.'),
+                array(41, 5, true, 'Excellent: the Plan told us exactly what to fix first.'),
+                array(63, 5, true, 'Great support and easy to read reports.'),
+            ),
+        ),
+        array(
+            'location' => '1000000000000000002',
+            'page'     => '/contact/',
+            'query'    => '',
+            'profile'  => array(
+                'title'       => 'Harbour shop',
+                'categories'  => array('Computer support and services'),
+                'hours'       => array('MONDAY 10:00-16:00', 'WEDNESDAY 10:00-16:00', 'SATURDAY 10:00-13:00'),
+                'description' => '',
+                'phone'       => '+44 1534 000001',
+                'address'     => '12 Quay Road, St Helier',
+            ),
+            'rating'   => 4.4,
+            'count'    => 17,
+            'daily'    => array(9, 22, 6, 14, 1, 1, 3),
+            'reviews'  => array(
+                array(6, 5, false, 'Fixed our site the same day.'),
+                array(21, 2, false, 'Closed when the hours said open.'),
+                array(52, 5, true, 'Friendly and knew their stuff.'),
+            ),
+        ),
+    );
+
     /** Content audit facts made by this version of the demo; older ones are made again. */
     const AUDIT_VERSION = 2;
 
@@ -1398,6 +1459,10 @@ final class SEOProAnalytics_Demo {
         self::again('crawl', self::CRAWL_VERSION, static function () {
             self::crawl();
         });
+        // Google Business Profile, as the Connect add-on's read keeps it.
+        self::again('gbp', self::GBP_VERSION, static function () {
+            self::gbp();
+        });
         // Chrome UX Report field data, again each day so it ends today.
         $state = self::state();
         if (($state['vitals_day'] ?? '') !== gmdate('Y-m-d')) {
@@ -1724,6 +1789,68 @@ final class SEOProAnalytics_Demo {
                 'source'      => 4,
                 'user_id'     => 0,
             ));
+        }
+    }
+
+    /**
+     * Write the demo's Google Business Profile locations (GBP_LOCATIONS),
+     * replacing any: 120 days of daily figures ending three days ago (as
+     * late as Google's), the last two months' search keywords and the
+     * reviews; on the demo tables (called inside run()).
+     */
+    private static function gbp() {
+        require_once __DIR__ . '/class-seoproanalytics-gbp.php';
+        if (!SEOProAnalytics_Schema::maybe_upgrade()) {
+            return;
+        }
+        SEOProAnalytics_GBP::delete_data();
+        $codes = array_keys(SEOProAnalytics_GBP::FIGURES);
+        foreach (self::GBP_LOCATIONS as $n => $loc) {
+            $id = SEOProAnalytics_GBP::save_location(array(
+                'location' => $loc['location'],
+                'account'  => '1000000000000000000',
+                'page'     => $loc['page'],
+                'profile'  => $loc['profile'] + array('website' => home_url($loc['page'] . $loc['query'])),
+                'rating'   => $loc['rating'],
+                'reviews'  => $loc['count'],
+            ));
+            if (is_wp_error($id)) {
+                continue;
+            }
+            $rows = array();
+            for ($ago = 3; $ago < 123; ++$ago) {
+                $time = time() - $ago * DAY_IN_SECONDS;
+                // Quieter at weekends, a slow wave over the weeks, growing.
+                $scale = (in_array(gmdate('N', $time), array('6', '7'), true) ? 0.6 : 1.0) * (1 + 0.15 * sin($ago / 9)) * (1 - $ago / 600);
+                foreach ($loc['daily'] as $i => $typical) {
+                    $rows[] = array('day' => gmdate('Y-m-d', $time), 'metric' => $codes[$i], 'value' => (int) round($typical * $scale));
+                }
+            }
+            SEOProAnalytics_GBP::store_metrics($id, $rows);
+            foreach (array(1, 2) as $months) {
+                $month = gmdate('Y-m-d', strtotime('first day of -' . $months . ' month'));
+                $words = array('wordpress analytics' => 420, 'seo reports' => 260, 'website support st helier' => 140, 'privacy analytics' => 90, 'cookie free analytics' => 15);
+                $keep  = array();
+                foreach ($words as $keyword => $impressions) {
+                    $shown  = (int) round($impressions * ($n === 0 ? 1 : 0.35) * (1 - 0.1 * $months));
+                    $keep[] = array('keyword' => $keyword, 'impressions' => max(15, $shown), 'below' => $shown < 15);
+                }
+                SEOProAnalytics_GBP::store_keywords($id, $month, $keep);
+            }
+            $reviews = array();
+            foreach ($loc['reviews'] as $r => $review) {
+                $created   = time() - (int) $review[0] * DAY_IN_SECONDS - 3 * HOUR_IN_SECONDS;
+                $reviews[] = array(
+                    'review'  => 'demo-' . $n . '-' . $r,
+                    'rating'  => $review[1],
+                    'created' => $created,
+                    'updated' => $created,
+                    'replied' => $review[2] ? $created + DAY_IN_SECONDS : 0,
+                    'comment' => $review[3],
+                    'reply'   => $review[2] ? 'Thank you for the review.' : '',
+                );
+            }
+            SEOProAnalytics_GBP::store_reviews($id, $reviews);
         }
     }
 

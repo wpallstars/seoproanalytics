@@ -91,6 +91,9 @@ final class SEOProAnalytics_Changes { // NOSONAR: existing public hook/API facad
         51 => array('front_page', 'site'),
         52 => array('vitals_status', 'site'),
         53 => array('business_profile', 'site'),
+        54 => array('gbp_profile', 'site'),
+        55 => array('gbp_reviews', 'site'),
+        56 => array('gbp_rating', 'site'),
         60 => array('search_update', 'search'),
         80 => array('note', 'note'),
         81 => array('experiment', 'note'),
@@ -102,6 +105,19 @@ final class SEOProAnalytics_Changes { // NOSONAR: existing public hook/API facad
      * the source; meta name, engine, url, and ended for rollouts.
      */
     const SEARCH_UPDATE = 60;
+
+    /**
+     * Kind codes of Google Business Profile changes (SEOProAnalytics_GBP,
+     * the Connect add-on's read): a location's profile edited (old and new
+     * the field's values when one changed, else new lists the fields; meta
+     * fields), new reviews (new their count; meta count, average, lowest)
+     * and a falling rating (old the overall rating, new the last 30 days'
+     * average; meta count, days). object_type gbp, object_id the location's
+     * row, path its linked page; meta name the location's title.
+     */
+    const GBP_PROFILE = 54;
+    const GBP_REVIEWS = 55;
+    const GBP_RATING  = 56;
 
     /** Kind code of a note (annotation) added by a person or an agent. */
     const NOTE = 80;
@@ -2304,9 +2320,40 @@ final class SEOProAnalytics_Changes { // NOSONAR: existing public hook/API facad
                 return sprintf(__('Front page setting changed: %1$s (%2$s → %3$s)', 'seoproanalytics'), $v['title'], self::detail_text($meta, 'old_title', $v['old']), self::detail_text($meta, 'new_title', $v['new']));
             case 'business_profile':
                 return self::profile_label($v, $meta);
+            case 'gbp_profile':
+            case 'gbp_reviews':
+            case 'gbp_rating':
+                return self::gbp_label($kind, $v, $meta);
             default:
                 return null;
         }
+    }
+
+    /**
+     * Label of a Google Business Profile change (SEOProAnalytics_GBP).
+     *
+     * @param string               $kind Kind name.
+     * @param array<string,string> $v    Title (the location's), old and new.
+     * @param array<string,mixed>  $meta Details.
+     * @return string
+     */
+    private static function gbp_label($kind, array $v, array $meta) {
+        if ($kind === 'gbp_reviews') {
+            $count = self::meta_int($meta, 'count', (int) $v['new']);
+            return sprintf(
+                /* translators: 1: number of reviews, 2: location name, 3: their average stars */
+                _n('%1$s new Google review of %2$s (%3$s stars)', '%1$s new Google reviews of %2$s (%3$s stars on average)', $count, 'seoproanalytics'),
+                number_format_i18n($count),
+                $v['title'],
+                number_format_i18n((float) self::detail_text($meta, 'average', '0'), 1)
+            );
+        }
+        if ($kind === 'gbp_rating') {
+            /* translators: 1: location name, 2: average stars of the last 30 days, 3: overall stars */
+            return sprintf(__('Google rating falling for %1$s: %2$s stars in the last 30 days, %3$s overall', 'seoproanalytics'), $v['title'], $v['new'], $v['old']);
+        }
+        /* translators: 1: location name, 2: the profile fields edited */
+        return sprintf(__('Google Business Profile edited: %1$s (%2$s)', 'seoproanalytics'), $v['title'], self::list_text(self::meta_value($meta, 'fields')));
     }
 
     /**

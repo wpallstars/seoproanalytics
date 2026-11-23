@@ -49,6 +49,7 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
     const ADDON = array(
         'search-console' => array('name' => 'Google Search Console', 'kind' => 'source'),
         'crux'           => array('name' => 'Chrome UX Report', 'kind' => 'source'),
+        'gbp'            => array('name' => 'Google Business Profile', 'kind' => 'source'),
         'dataforseo'     => array('name' => 'DataForSEO', 'kind' => 'provider'),
         'ahrefs'         => array('name' => 'Ahrefs', 'kind' => 'provider'),
         'semrush'        => array('name' => 'Semrush', 'kind' => 'provider'),
@@ -205,6 +206,7 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
         $what = array(
             'search-console' => __('Clicks, impressions and positions from Google search, with URL inspection and sitemaps.', 'seoproanalytics'),
             'crux'           => __('Real Chrome users\' page experience: LCP, INP, CLS, FCP and TTFB.', 'seoproanalytics'),
+            'gbp'            => __('Your Google Business Profile locations\' Search and Maps views, website clicks, calls, direction requests, search keywords and reviews, with profile edits on the timeline.', 'seoproanalytics'),
             'dataforseo'     => __('Backlinks and the Google positions of your search targets, with your own account.', 'seoproanalytics'),
             'ahrefs'         => __('Domain Rating and backlinks, with your own account.', 'seoproanalytics'),
             'semrush'        => __('Backlinks and the Google positions of your search targets, with your own account.', 'seoproanalytics'),
@@ -365,6 +367,14 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
             return $class::disconnect();
         }
         require_once SEOPROANALYTICS_DIR . self::IMPORT_FILE;
+        // A source with its own read and tables (Chrome UX Report's field
+        // data, Google Business Profile's) deletes them first: on a failure
+        // (WP_Error) the connection stays, so disconnecting again retries.
+        $own     = !self::is_provider($source) && method_exists($class, 'delete_data');
+        $deleted = $delete && $own ? $class::delete_data() : 0;
+        if (is_wp_error($deleted)) {
+            return $deleted;
+        }
         // A sign-in's access is revoked by its adapter, not only forgotten.
         $credentials = self::get($source) ? self::credentials($source) : null;
         if (is_array($credentials) && method_exists($class, 'revoke')) {
@@ -383,10 +393,8 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
             $deleted = $delete && $reader ? (int) $reader::delete_data($source) : 0;
             return self::status($source) + array('deleted' => $deleted);
         }
-        if (method_exists($class, 'delete_data')) {
-            // A source with its own read and table (Chrome UX Report's field data).
-            $deleted = $delete ? (int) $class::delete_data() : 0;
-            return self::status($source) + array('deleted' => $deleted);
+        if ($own) {
+            return self::status($source) + array('deleted' => (int) $deleted);
         }
         $deleted = $delete ? SEOProAnalytics_Search_Import::delete_data($source) : 0;
         return self::status($source) + array('deleted' => $deleted);
@@ -396,12 +404,14 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
      * Disconnect one of the add-on's connections while the add-on is not
      * registered: its saved, encrypted credentials are forgotten, so no
      * one needs the add-on to remove a key. With $delete, Search Console's
-     * imported days go too (the search import's own tables); the add-on's
-     * other tables stay until uninstall or the add-on deletes them, and a
-     * Google sign-in is revoked only by the add-on or the Google account.
+     * imported days go too (the search import's own tables), as does what
+     * Google Business Profile's read kept (SEOProAnalytics_GBP's tables); the
+     * add-on's other tables stay until uninstall or the add-on deletes them,
+     * and a Google sign-in is revoked only by the add-on or the Google
+     * account.
      *
      * @param string $source Source key.
-     * @param bool   $delete Also delete Search Console's imported days.
+     * @param bool   $delete Also delete Search Console's imported days, or what Google Business Profile's read kept.
      * @return array<string,mixed>|WP_Error status(), with deleted (rows).
      */
     private static function forget_kept($source, $delete) {
@@ -410,10 +420,23 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
             return self::needs_addon($source);
         }
         require_once SEOPROANALYTICS_DIR . self::IMPORT_FILE;
+        $deleted = 0;
+        if ($delete && $source === 'gbp') {
+            // Google Business Profile's read keeps its data in the free plugin's
+            // tables. Deleted first: on a failure the connection stays, so
+            // disconnecting again runs the delete again.
+            require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-gbp.php';
+            $deleted = SEOProAnalytics_GBP::delete_data();
+            if (is_wp_error($deleted)) {
+                return $deleted;
+            }
+        }
         self::remove($source);
         SEOProAnalytics_Search_Import::schedule();
-        $deleted = $delete && $source === 'search-console' ? SEOProAnalytics_Search_Import::delete_data($source) : 0;
-        return self::status($source) + array('deleted' => $deleted);
+        if ($delete && $source === 'search-console') {
+            $deleted = SEOProAnalytics_Search_Import::delete_data($source);
+        }
+        return self::status($source) + array('deleted' => (int) $deleted);
     }
 
     /**

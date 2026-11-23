@@ -83,6 +83,7 @@ final class SEOProAnalytics_API {
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-goals.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-conversions.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-business-profiles.php';
+        require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-gbp.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-clicks.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-search.php';
         require_once SEOPROANALYTICS_DIR . 'includes/stats/class-seoproanalytics-opportunities.php';
@@ -288,6 +289,11 @@ final class SEOProAnalytics_API {
         // Business profiles (Settings → Data): visits from their tagged links.
         register_rest_route($ns, '/business-profiles', $read + array(
             'callback' => array(__CLASS__, 'business_profiles'),
+            'args'     => $base,
+        ));
+        // Google Business Profile: what the Connect add-on's read kept.
+        register_rest_route($ns, '/google-business', $read + array(
+            'callback' => array(__CLASS__, 'google_business'),
             'args'     => $base,
         ));
         register_rest_route($ns, '/properties', $read + array(
@@ -2443,6 +2449,18 @@ final class SEOProAnalytics_API {
      */
     public static function business_profiles($request) {
         return self::report($request, array('SEOProAnalytics_Business_Profiles', 'report'));
+    }
+
+    /**
+     * GET /google-business: each Google Business Profile location's Search
+     * and Maps views, actions, search keywords, reviews and findings, as
+     * the Connect add-on's read kept them.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function google_business($request) {
+        return self::report($request, array('SEOProAnalytics_GBP', 'report'));
     }
 
     /**

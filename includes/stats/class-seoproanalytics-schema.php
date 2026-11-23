@@ -76,7 +76,9 @@ final class SEOProAnalytics_Schema {
     // v35: speed (real visitors' page speed, SEOProAnalytics_Speed), bots
     //      (crawler requests by day, SEOProAnalytics_Crawlers) and clicks.x/y
     //      (where on the page, for heatmaps: 4 bytes a click).
-    const VERSION = 35;
+    // v36: gbp_locations, gbp_metrics, gbp_keywords and gbp_reviews (Google
+    //      Business Profile, the Connect add-on's, SEOProAnalytics_GBP).
+    const VERSION = 36;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -216,7 +218,7 @@ final class SEOProAnalytics_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners', 'change_sets', 'speed', 'bots');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews', 'vitals', 'spend', 'serp', 'link_metrics', 'crawl_pages', 'crawl_links', 'owners', 'change_sets', 'speed', 'bots', 'gbp_locations', 'gbp_metrics', 'gbp_keywords', 'gbp_reviews');
     }
 
     /**
@@ -1234,6 +1236,87 @@ final class SEOProAnalytics_Schema {
   PRIMARY KEY  (ts,bot_id,path_id,status),
   KEY bot_ts (bot_id,ts),
   KEY path_ts (path_id,ts)
+) $charset;",
+        ) + self::gbp_definitions($t, $charset);
+    }
+
+    /**
+     * Google Business Profile's four tables (SEOProAnalytics_GBP; the
+     * Connect add-on fills them), for definitions().
+     *
+     * @param array<string,string> $t       Table names by name.
+     * @param string               $charset The charset and collation clause.
+     * @return array<string,string> Name => statement.
+     */
+    private static function gbp_definitions(array $t, $charset) {
+        return array(
+            // One row per location the owner linked.
+            // location and account: Google's IDs (digits); path_id: the
+            // page it stands for (DICT_PATH); profile: JSON of its last
+            // snapshot (SEOProAnalytics_GBP::FIELDS); rating (0-5) and
+            // reviews: Google's average and count; since: its first import
+            // (reviews older than that are history, not timeline changes);
+            // falling: the 30-day average rating is falling.
+            'gbp_locations' => "CREATE TABLE {$t['gbp_locations']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  location varchar(32) NOT NULL,
+  account varchar(32) NOT NULL DEFAULT '',
+  path_id int unsigned NOT NULL DEFAULT 0,
+  title varchar(190) NOT NULL DEFAULT '',
+  profile text NOT NULL,
+  rating decimal(3,2) NOT NULL DEFAULT 0,
+  reviews int unsigned NOT NULL DEFAULT 0,
+  checked int unsigned NOT NULL DEFAULT 0,
+  since int unsigned NOT NULL DEFAULT 0,
+  falling tinyint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY location (location)
+) $charset;",
+
+            // A location's daily performance: one row per location, day
+            // and metric (SEOProAnalytics_GBP::METRICS: impressions on
+            // Search and Maps by device, website clicks, call clicks,
+            // direction requests). day reads a range across locations.
+            'gbp_metrics' => "CREATE TABLE {$t['gbp_metrics']} (
+  location_id int unsigned NOT NULL,
+  day date NOT NULL,
+  metric tinyint unsigned NOT NULL,
+  value int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (location_id,day,metric),
+  KEY day (day)
+) $charset;",
+
+            // The searches that showed a location, by month (its first
+            // day): keyword_id is DICT_QUERY, as search queries are;
+            // impressions, or with below 1 Google's "fewer than" threshold.
+            'gbp_keywords' => "CREATE TABLE {$t['gbp_keywords']} (
+  location_id int unsigned NOT NULL,
+  month date NOT NULL,
+  keyword_id int unsigned NOT NULL,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  below tinyint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (location_id,month,keyword_id),
+  KEY month (month)
+) $charset;",
+
+            // A location's reviews: Google's review ID, the stars (1-5),
+            // when it was written and last changed, and the reply's time
+            // (0: none). The review's and reply's text are kept (the
+            // owner's own customers' words about them); reviewers' names
+            // never are. created reads a range across locations.
+            'gbp_reviews' => "CREATE TABLE {$t['gbp_reviews']} (
+  location_id int unsigned NOT NULL,
+  review varchar(190) NOT NULL,
+  rating tinyint unsigned NOT NULL DEFAULT 0,
+  created int unsigned NOT NULL DEFAULT 0,
+  updated int unsigned NOT NULL DEFAULT 0,
+  replied int unsigned NOT NULL DEFAULT 0,
+  comment text NOT NULL,
+  reply text NOT NULL,
+  PRIMARY KEY  (location_id,review),
+  KEY location_created (location_id,created),
+  KEY location_replied (location_id,replied,created),
+  KEY created (created)
 ) $charset;",
         );
     }
