@@ -903,6 +903,12 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- Changed: Settings → Connections keeps each connection in one place whether or not the SEO Pro Analytics Connect add-on registers it: IndexNow, Bing Webmaster Tools, Google Search Console, Google Business Profile, Chrome UX Report, the LibreCrawl server, then the paid providers (GH#133).
+- Fixed: with an older SEO Pro Analytics Connect active and licensed, a connection it does not have yet said "(subscription needed)" and offered to buy the add-on. It now says "(update needed)", names the version active and links to Plugins (GH#133).
+- Fixed: on Settings → Connections, the add-on's Licence section now has space above it (GH#133).
+
 ### 1.23.0
 
 - New: **Google Business Profile** data from the SEO Pro Analytics Connect add-on, which reads it through Google's API. The Overview's **Google Business Profile** card lists each location's Search and Maps views, website clicks, calls, direction requests, rating and reviews without a reply. The **Plan** lists reviews without a reply, a falling rating, a profile missing its basics and an untagged or off-site website link, on the page each location stands for; Done opens no experiment. The timeline gains a profile edited, new reviews and a falling rating. Daily figures and search keywords follow the search data's retention (GH#127).

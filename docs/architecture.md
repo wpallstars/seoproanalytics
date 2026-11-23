@@ -3088,7 +3088,11 @@ plugin's own. Two of those tables exist only for the add-on's writes:
 
 While one of the add-on's connections (`SEOProAnalytics_Connections::ADDON`) is
 not registered, Settings → Connections shows it as a "(subscription
-needed)" card, the dashboard's Search setup and Page experience say so,
+needed)" card, or "(update needed)" with a link to Plugins while an older
+licensed add-on runs (it registers others, not this one; without a valid
+licence it registers none), in the same place as its real card (`in_order()`: Bing,
+then `ADDON`'s order, sources before paid providers), the dashboard's
+Search setup and Page experience say so,
 and its REST routes and WP-CLI commands answer `seoproanalytics_needs_addon`
 (HTTP 402), each linking to the add-on's page: `connect_url()`,
 `SEOPROANALYTICS_CONNECT_URL` or the `seoproanalytics_connect_url` filter. Nothing
@@ -3106,6 +3110,9 @@ What each of the add-on's connections adds, in one line:
 
 - **Google Search Console**: clicks, impressions and positions from Google
   search, with URL inspection and sitemaps.
+- **Google Business Profile**: the locations' Search and Maps views,
+  website clicks, calls, direction requests, search keywords and reviews,
+  with profile edits on the timeline.
 - **Chrome UX Report**: real Chrome users' page experience (LCP, INP, CLS,
   FCP, TTFB), and a Lighthouse lab test on request.
 - **Paid providers** (the owner's own accounts, within monthly and weekly
