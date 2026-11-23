@@ -72,6 +72,12 @@ final class SEOProAnalytics_Abilities {
     /** The abilities' category. */
     const CATEGORY = 'site-statistics';
 
+    /** An output schema's list of rows. */
+    const OBJECT_LIST = array(
+        'type'  => 'array',
+        'items' => array('type' => 'object'),
+    );
+
     /**
      * Register hooks.
      */
@@ -638,28 +644,7 @@ final class SEOProAnalytics_Abilities {
             'label'               => __('Google Business Profile', 'seoproanalytics'),
             'description'         => __('Each Google Business Profile location the SEO Pro Analytics Connect add-on reads: its Search and Maps views (by device), website clicks, calls and direction requests in the range (totals and series by day), its rating and review count, new reviews in the range, reviews without a reply in the last 90 days, the searches that showed it in its newest month, its newest reviews, and its findings (gbp_reviews, gbp_rating, gbp_incomplete, gbp_link; Plan items of kind audit). connected false: the add-on or its connection is missing; data already read stays readable. Google gives daily figures a few days late (through).', 'seoproanalytics'),
             'category'            => self::CATEGORY,
-            'input_schema'        => array(
-                'type'                 => 'object',
-                'default'              => array(),
-                'additionalProperties' => false,
-                'properties'           => array(
-                    'range' => array(
-                        'type'        => 'string',
-                        'enum'        => SEOProAnalytics_Query::RANGES,
-                        'default'     => '30d',
-                        'description' => __('Period, in the site time zone.', 'seoproanalytics'),
-                    ),
-                    'from'  => array(
-                        'type'        => 'string',
-                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoproanalytics'),
-                    ),
-                    'to'    => array(
-                        'type'        => 'string',
-                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoproanalytics'),
-                    ),
-                    'data'  => $data,
-                ),
-            ),
+            'input_schema'        => self::range_input($data),
             'output_schema'       => array(
                 'type'       => 'object',
                 'properties' => array(
@@ -667,26 +652,13 @@ final class SEOProAnalytics_Abilities {
                     'range'     => array('type' => 'object'),
                     'through'   => array('type' => array('string', 'null')),
                     'totals'    => array('type' => 'object'),
-                    'series'    => array(
-                        'type'  => 'array',
-                        'items' => array('type' => 'object'),
-                    ),
-                    'locations' => array(
-                        'type'  => 'array',
-                        'items' => array('type' => 'object'),
-                    ),
+                    'series'    => self::OBJECT_LIST,
+                    'locations' => self::OBJECT_LIST,
                 ),
             ),
             'execute_callback'    => array(__CLASS__, 'google_business'),
             'permission_callback' => array('SEOProAnalytics_API', 'can_read'),
-            'meta'                => array(
-                'show_in_rest' => true,
-                'annotations'  => array(
-                    'readonly'    => true,
-                    'destructive' => false,
-                    'idempotent'  => true,
-                ),
-            ),
+            'meta'                => self::read_only_meta(),
         ));
         wp_register_ability('seoproanalytics/indexation', array(
             'label'               => __('Indexation', 'seoproanalytics'),
@@ -2891,5 +2863,43 @@ final class SEOProAnalytics_Abilities {
      */
     private static function data(array $input) {
         return isset($input['data']) && $input['data'] === 'demo' ? 'demo' : 'live';
+    }
+
+    /**
+     * An input schema of a period only: range, or from and to, and the data set.
+     *
+     * @param array<string,mixed> $data The data property's schema.
+     * @return array<string,mixed>
+     */
+    private static function range_input(array $data) {
+        $day        = array('type' => 'string');
+        $properties = array(
+            'range' => array(
+                'type'        => 'string',
+                'enum'        => SEOProAnalytics_Query::RANGES,
+                'default'     => '30d',
+                'description' => __('Period, in the site time zone.', 'seoproanalytics'),
+            ),
+            'from'  => $day + array('description' => __('First day of a custom range (YYYY-MM-DD).', 'seoproanalytics')),
+            'to'    => $day + array('description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoproanalytics')),
+            'data'  => $data,
+        );
+        return array('type' => 'object', 'default' => array(), 'additionalProperties' => false, 'properties' => $properties);
+    }
+
+    /**
+     * A read-only ability's meta: shown in REST, never changes anything.
+     *
+     * @return array<string,mixed>
+     */
+    private static function read_only_meta() {
+        return array(
+            'show_in_rest' => true,
+            'annotations'  => array(
+                'readonly'    => true,
+                'destructive' => false,
+                'idempotent'  => true,
+            ),
+        );
     }
 }

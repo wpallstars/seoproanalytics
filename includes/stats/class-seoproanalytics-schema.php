@@ -1237,9 +1237,20 @@ final class SEOProAnalytics_Schema {
   KEY bot_ts (bot_id,ts),
   KEY path_ts (path_id,ts)
 ) $charset;",
+        ) + self::gbp_definitions($t, $charset);
+    }
 
-            // Google Business Profile (SEOProAnalytics_GBP; the Connect add-on
-            // fills these four): one row per location the owner linked.
+    /**
+     * Google Business Profile's four tables (SEOProAnalytics_GBP; the
+     * Connect add-on fills them), for definitions().
+     *
+     * @param array<string,string> $t       Table names by name.
+     * @param string               $charset The charset and collation clause.
+     * @return array<string,string> Name => statement.
+     */
+    private static function gbp_definitions(array $t, $charset) {
+        return array(
+            // One row per location the owner linked.
             // location and account: Google's IDs (digits); path_id: the
             // page it stands for (DICT_PATH); profile: JSON of its last
             // snapshot (SEOProAnalytics_GBP::FIELDS); rating (0-5) and
