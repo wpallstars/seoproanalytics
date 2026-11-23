@@ -45,11 +45,14 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
      * The add-on's connections: key => name and kind (source or provider).
      * While one is not registered, Settings → Connections and Search's
      * setup show its name with "(subscription needed)" (placeholders()).
+     * Their order is the order of Settings → Connections (in_order()):
+     * sources, Google's first, then the paid providers.
      */
     const ADDON = array(
         'search-console' => array('name' => 'Google Search Console', 'kind' => 'source'),
-        'crux'           => array('name' => 'Chrome UX Report', 'kind' => 'source'),
         'gbp'            => array('name' => 'Google Business Profile', 'kind' => 'source'),
+        'crux'           => array('name' => 'Chrome UX Report', 'kind' => 'source'),
+        'crawler'        => array('name' => 'LibreCrawl server', 'kind' => 'source'),
         'dataforseo'     => array('name' => 'DataForSEO', 'kind' => 'provider'),
         'ahrefs'         => array('name' => 'Ahrefs', 'kind' => 'provider'),
         'semrush'        => array('name' => 'Semrush', 'kind' => 'provider'),
@@ -60,7 +63,6 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
         'deepseek'       => array('name' => 'DeepSeek', 'kind' => 'provider'),
         'linkup'         => array('name' => 'Linkup', 'kind' => 'provider'),
         'cloro'          => array('name' => 'cloro', 'kind' => 'provider'),
-        'crawler'        => array('name' => 'LibreCrawl server', 'kind' => 'source'),
     );
 
     /**
@@ -224,6 +226,18 @@ final class SEOProAnalytics_Connections { // NOSONAR: one store for every source
             $out[$key] = $addon + array('what' => isset($what[$key]) ? $what[$key] : '');
         }
         return $out;
+    }
+
+    /**
+     * Entries keyed by source in Settings → Connections' order: Bing, then
+     * the add-on's in ADDON's order, registered or not, so a placeholder
+     * keeps its place; any other key after them, in its own order.
+     *
+     * @param array<string,mixed> $items Source key => entry.
+     * @return array<string,mixed>
+     */
+    public static function in_order(array $items) {
+        return array_replace(array_intersect_key(array_flip(array_keys(self::SOURCES + self::ADDON)), $items), $items);
     }
 
     /**

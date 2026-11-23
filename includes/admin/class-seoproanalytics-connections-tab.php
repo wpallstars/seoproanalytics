@@ -3,8 +3,9 @@
  * Settings → Connections: connect outside data sources (Bing Webmaster
  * Tools, and those the SEO Pro Analytics Connect add-on registers), see how far
  * each import is, import now, undo an import, and disconnect. The add-on's
- * connections not registered show as "(subscription needed)" cards linking
- * to its page. The screen is drawn here from each source's status (an
+ * connections not registered show in their place as "(subscription needed)"
+ * cards linking to its page, or "(update needed)" while an older add-on is
+ * active. The screen is drawn here from each source's status (an
  * add-on's adapter with render_card() draws its own card's body); its
  * buttons call the REST routes (SEOProAnalytics_API, /connections) through
  * admin/js/seoproanalytics-connections.js. Credentials are never printed.
@@ -93,7 +94,7 @@ final class SEOProAnalytics_Connections_Tab {
         $version = file_exists(SEOPROANALYTICS_DIR . self::JS_FILE) ? (string) filemtime(SEOPROANALYTICS_DIR . self::JS_FILE) : SEOPROANALYTICS_VERSION;
         wp_enqueue_script('seoproanalytics-connections', SEOPROANALYTICS_URL . self::JS_FILE, array('seoproanalytics-admin', 'wp-api-fetch', 'wp-i18n', 'wp-a11y'), $version, true);
         wp_set_script_translations('seoproanalytics-connections', 'seoproanalytics');
-        wp_add_inline_style('seoproanalytics-admin', '.seoproan-connection{padding:16px 20px;min-width:0}.seoproan-connection h3{margin:0 0 4px;font-size:14px}.seoproan-connection__steps{margin:8px 0 12px 1.5em}.seoproan-connection__steps li{margin-bottom:8px;max-width:72em}.seoproan-connection textarea{width:100%;font-family:monospace;font-size:12px}.seoproan-connection .form-table th{width:180px;padding-block:8px}.seoproan-connection .form-table td{padding-block:8px}.seoproan-connection__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.seoproan-connection__message:empty{display:none}.seoproan-connection code{overflow-wrap:anywhere}.seoproan-connection__scroll{margin-top:12px;overflow-x:auto}.seoproan-connection details{margin-top:12px}.seoproan-connection .seoproan-connection__addon .dashicons{width:16px;height:16px;margin:0 0 0 4px;font-size:16px;line-height:1;vertical-align:middle}');
+        wp_add_inline_style('seoproanalytics-admin', '.seoproan-connection{padding:16px 20px;min-width:0}.seoproan-connection h3{margin:0 0 4px;font-size:14px}.seoproan-connection__steps{margin:8px 0 12px 1.5em}.seoproan-connection__steps li{margin-bottom:8px;max-width:72em}.seoproan-connection textarea{width:100%;font-family:monospace;font-size:12px}.seoproan-connection .form-table th{width:180px;padding-block:8px}.seoproan-connection .form-table td{padding-block:8px}.seoproan-connection__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.seoproan-connection__message:empty{display:none}.seoproan-connection code{overflow-wrap:anywhere}.seoproan-connection__scroll{margin-top:12px;overflow-x:auto}.seoproan-connection details{margin-top:12px}.seoproan-connection .seoproan-connection__addon .dashicons{width:16px;height:16px;margin:0 0 0 4px;font-size:16px;line-height:1;vertical-align:middle}.seoproan-tab-connections .seoproan-section+.seoproan-section{margin-top:32px}');
     }
 
     /**
@@ -114,11 +115,21 @@ final class SEOProAnalytics_Connections_Tab {
                 <?php
                 // IndexNow first: free, no account, and on with one switch.
                 self::render_indexnow();
+                // Registered connections and placeholders in one order, so
+                // a connection keeps its place with or without the add-on.
+                $cards = array();
                 foreach (SEOProAnalytics_Connections::statuses() as $status) {
-                    self::render_source($status);
+                    $cards[(string) $status['source']] = array('status' => $status);
                 }
                 foreach (SEOProAnalytics_Connections::placeholders() as $source => $addon) {
-                    self::render_placeholder($source, $addon);
+                    $cards += array($source => array('addon' => $addon));
+                }
+                foreach (SEOProAnalytics_Connections::in_order($cards) as $source => $card) {
+                    if (isset($card['status'])) {
+                        self::render_source($card['status']);
+                    } else {
+                        self::render_placeholder((string) $source, $card['addon']);
+                    }
                 }
                 ?>
             </div>
@@ -128,32 +139,43 @@ final class SEOProAnalytics_Connections_Tab {
 
     /**
      * A connection the SEO Pro Analytics Connect add-on adds, while it is not
-     * registered: its name, what it adds, and where to get it. No form, and
-     * no request to any service.
+     * registered: its name, what it adds, and where to get it, or, when the
+     * add-on is active but older than the connection, that it needs an
+     * update. No form, and no request to any service.
      *
      * @param string                                     $source Source key.
      * @param array{name:string,kind:string,what:string} $addon  SEOProAnalytics_Connections::placeholders() entry.
      */
     private static function render_placeholder($source, array $addon) {
         $kept = SEOProAnalytics_Connections::kept($source);
+        // The add-on is here (its licence only gates use), so this one came after its version.
+        $installed = defined('SEOPROANALYTICS_CONNECT_VERSION') ? (string) SEOPROANALYTICS_CONNECT_VERSION : '';
         // A kept connection's card takes the Disconnect button (seoproanalytics-connections.js).
         $attrs = $kept ? ' data-seoproan-connection="' . esc_attr($source) . '"' : '';
         ?>
         <section class="seoproan-card seoproan-connection" id="<?php echo esc_attr('seoproan-connection-' . $source); ?>" data-seoproan-placeholder="<?php echo esc_attr($source); ?>"<?php echo $attrs; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped above. ?>>
             <h3>
                 <?php echo esc_html($addon['name']); ?>
-                <span class="seoproan-badge"><?php esc_html_e('(subscription needed)', 'seoproanalytics'); ?></span>
+                <span class="seoproan-badge"><?php echo esc_html($installed !== '' ? __('(update needed)', 'seoproanalytics') : __('(subscription needed)', 'seoproanalytics')); ?></span>
             </h3>
             <?php if ($addon['what'] !== '') : ?>
                 <p class="seoproan-setting__desc"><?php echo esc_html($addon['what']); ?></p>
             <?php endif; ?>
-            <p><?php esc_html_e('Comes with the SEO Pro Analytics Connect add-on. Your own statistics, Bing Webmaster Tools and IndexNow stay free.', 'seoproanalytics'); ?></p>
+            <?php if ($installed !== '') : ?>
+                <p><?php echo esc_html(sprintf(/* translators: %s: installed add-on version, such as 1.2.0. */ __('Comes with a newer SEO Pro Analytics Connect than the one active here (%s). Update the add-on to use it.', 'seoproanalytics'), $installed)); ?></p>
+            <?php else : ?>
+                <p><?php esc_html_e('Comes with the SEO Pro Analytics Connect add-on. Your own statistics, Bing Webmaster Tools and IndexNow stay free.', 'seoproanalytics'); ?></p>
+            <?php endif; ?>
             <?php if ($kept) : ?>
                 <div class="seoproan-connection__message" data-seoproan-message role="alert"></div>
-                <p><?php esc_html_e('Its connection is still saved here, encrypted, but nothing is read until the add-on is active. Disconnect to forget the saved key.', 'seoproanalytics'); ?></p>
+                <p><?php echo esc_html($installed !== '' ? __('Its connection is still saved here, encrypted, but nothing is read until the add-on is updated. Disconnect to forget the saved key.', 'seoproanalytics') : __('Its connection is still saved here, encrypted, but nothing is read until the add-on is active. Disconnect to forget the saved key.', 'seoproanalytics')); ?></p>
             <?php endif; ?>
             <div class="seoproan-connection__actions">
-                <a class="button seoproan-connection__addon" href="<?php echo esc_url(SEOProAnalytics_Connections::connect_url()); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e('This feature requires a paid subscription for the connection services. Click for more details…', 'seoproanalytics'); ?>"><?php esc_html_e('Get SEO Pro Analytics Connect', 'seoproanalytics'); ?><span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text"> <?php esc_html_e('(opens in a new tab)', 'seoproanalytics'); ?></span></a>
+                <?php if ($installed !== '' && current_user_can('update_plugins')) : ?>
+                    <a class="button" href="<?php echo esc_url(is_multisite() ? network_admin_url('plugins.php') : admin_url('plugins.php')); ?>"><?php esc_html_e('Update SEO Pro Analytics Connect', 'seoproanalytics'); ?></a>
+                <?php elseif ($installed === '') : ?>
+                    <a class="button seoproan-connection__addon" href="<?php echo esc_url(SEOProAnalytics_Connections::connect_url()); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e('This feature requires a paid subscription for the connection services. Click for more details…', 'seoproanalytics'); ?>"><?php esc_html_e('Get SEO Pro Analytics Connect', 'seoproanalytics'); ?><span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text"> <?php esc_html_e('(opens in a new tab)', 'seoproanalytics'); ?></span></a>
+                <?php endif; ?>
                 <?php if ($kept && $source === 'search-console') : ?>
                     <label><input type="checkbox" data-seoproan-field="delete_data"> <?php esc_html_e('Delete imported search data', 'seoproanalytics'); ?></label>
                 <?php endif; ?>
