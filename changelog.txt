@@ -2,7 +2,7 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
-= 1.23.1 =
+= Unreleased =
 * Changed: Settings → Connections keeps each connection in one place whether or not the SEO Pro Analytics Connect add-on registers it: IndexNow, Bing Webmaster Tools, Google Search Console, Google Business Profile, Chrome UX Report, the LibreCrawl server, then the paid providers. Before, a connection the add-on did not register was listed after all the others, and the add-on's own order put Chrome UX Report between Search Console and Business Profile (GH#133).
 * Fixed: with an older SEO Pro Analytics Connect active, a connection it does not have yet, such as Google Business Profile before Connect 1.3.0, said "(subscription needed)" and offered to buy the add-on. It now says "(update needed)", names the version active and, for users who can update plugins, links to Plugins (GH#133).
 * Fixed: on Settings → Connections, the add-on's Licence section touched the last connection card; it now has space above it (GH#133).
