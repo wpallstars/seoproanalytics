@@ -4,8 +4,8 @@
  * Tools, and those the SEO Pro Analytics Connect add-on registers), see how far
  * each import is, import now, undo an import, and disconnect. The add-on's
  * connections not registered show in their place as "(subscription needed)"
- * cards linking to its page, or "(update needed)" while an older add-on is
- * active. The screen is drawn here from each source's status (an
+ * cards linking to its page, or "(update needed)" while an older licensed
+ * add-on runs. The screen is drawn here from each source's status (an
  * add-on's adapter with render_card() draws its own card's body); its
  * buttons call the REST routes (SEOProAnalytics_API, /connections) through
  * admin/js/seoproanalytics-connections.js. Credentials are never printed.

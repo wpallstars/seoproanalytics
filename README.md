@@ -906,7 +906,7 @@ this feature; no tracking pixels or tracked links are added.
 ### Unreleased
 
 - Changed: Settings → Connections keeps each connection in one place whether or not the SEO Pro Analytics Connect add-on registers it: IndexNow, Bing Webmaster Tools, Google Search Console, Google Business Profile, Chrome UX Report, the LibreCrawl server, then the paid providers (GH#133).
-- Fixed: with an older SEO Pro Analytics Connect active, a connection it does not have yet said "(subscription needed)" and offered to buy the add-on. It now says "(update needed)", names the version active and links to Plugins (GH#133).
+- Fixed: with an older SEO Pro Analytics Connect active and licensed, a connection it does not have yet said "(subscription needed)" and offered to buy the add-on. It now says "(update needed)", names the version active and links to Plugins (GH#133).
 - Fixed: on Settings → Connections, the add-on's Licence section now has space above it (GH#133).
 
 ### 1.23.0

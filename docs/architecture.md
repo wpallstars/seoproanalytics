@@ -3089,7 +3089,8 @@ plugin's own. Two of those tables exist only for the add-on's writes:
 While one of the add-on's connections (`SEOProAnalytics_Connections::ADDON`) is
 not registered, Settings → Connections shows it as a "(subscription
 needed)" card, or "(update needed)" with a link to Plugins while an older
-add-on is active, in the same place as its real card (`in_order()`: Bing,
+licensed add-on runs (it registers others, not this one; without a valid
+licence it registers none), in the same place as its real card (`in_order()`: Bing,
 then `ADDON`'s order, sources before paid providers), the dashboard's
 Search setup and Page experience say so,
 and its REST routes and WP-CLI commands answer `seoproanalytics_needs_addon`
