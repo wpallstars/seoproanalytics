@@ -121,6 +121,9 @@ final class SEOProAnalytics_Connections_Tab {
                 foreach (SEOProAnalytics_Connections::statuses() as $status) {
                     $cards[(string) $status['source']] = array('status' => $status);
                 }
+                // The add-on registers its connections only with a valid
+                // licence; one it registers shows that it runs here.
+                $running = array_intersect_key($cards, SEOProAnalytics_Connections::ADDON) !== array();
                 foreach (SEOProAnalytics_Connections::placeholders() as $source => $addon) {
                     $cards += array($source => array('addon' => $addon));
                 }
@@ -128,7 +131,7 @@ final class SEOProAnalytics_Connections_Tab {
                     if (isset($card['status'])) {
                         self::render_source($card['status']);
                     } else {
-                        self::render_placeholder((string) $source, $card['addon']);
+                        self::render_placeholder((string) $source, $card['addon'], $running);
                     }
                 }
                 ?>
@@ -140,16 +143,17 @@ final class SEOProAnalytics_Connections_Tab {
     /**
      * A connection the SEO Pro Analytics Connect add-on adds, while it is not
      * registered: its name, what it adds, and where to get it, or, when the
-     * add-on is active but older than the connection, that it needs an
+     * add-on runs here but is older than the connection, that it needs an
      * update. No form, and no request to any service.
      *
-     * @param string                                     $source Source key.
-     * @param array{name:string,kind:string,what:string} $addon  SEOProAnalytics_Connections::placeholders() entry.
+     * @param string                                     $source  Source key.
+     * @param array{name:string,kind:string,what:string} $addon   SEOProAnalytics_Connections::placeholders() entry.
+     * @param bool                                       $running Whether the add-on registers any of its connections (licensed and active).
      */
-    private static function render_placeholder($source, array $addon) {
+    private static function render_placeholder($source, array $addon, $running = false) {
         $kept = SEOProAnalytics_Connections::kept($source);
-        // The add-on is here (its licence only gates use), so this one came after its version.
-        $installed = defined('SEOPROANALYTICS_CONNECT_VERSION') ? (string) SEOPROANALYTICS_CONNECT_VERSION : '';
+        // The add-on runs here but lacks this one: it came after the add-on's version.
+        $installed = $running && defined('SEOPROANALYTICS_CONNECT_VERSION') ? (string) SEOPROANALYTICS_CONNECT_VERSION : '';
         // A kept connection's card takes the Disconnect button (seoproanalytics-connections.js).
         $attrs = $kept ? ' data-seoproan-connection="' . esc_attr($source) . '"' : '';
         ?>
