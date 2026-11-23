@@ -2181,8 +2181,12 @@ summaries are up to date, cron deletes old rows in batches of 5,000 with a
 time budget, from site-local midnight back, and never from a day that is
 not summarised. Search data by page, query and pair has its own setting
 (25 months); the import job deletes older days once a day, by the
-primary key's `(engine, day)` prefix, and keeps `gsc_totals`. `wp
-seoproanalytics prune --dry-run` counts them.
+primary key's `(engine, day)` prefix, and keeps `gsc_totals`. The same
+setting and run delete Google Business Profile's older daily figures
+(`gbp_metrics`, by key `day`) and keyword months (`gbp_keywords`, by key
+`month`); `gbp_locations` and `gbp_reviews` mirror each linked profile as
+Google shows it now and stay until it is unlinked or disconnected with its
+data. `wp seoproanalytics prune --dry-run` counts them.
 
 | Data | Default | Why |
 |---|---|---|
@@ -2193,6 +2197,7 @@ seoproanalytics prune --dry-run` counts them.
 | Errors | 3 months | Groups kept 13 months |
 | Crawler requests (`bots`) | 13 months | Already one row per day, crawler, page and status; year-on-year crawl patterns |
 | Search pages, queries and pairs (Google and Bing) | 25 months | Each engine itself keeps 16 |
+| Google Business Profile daily figures and keyword months | as search data (25 months) | Google's own performance history is shorter; locations and reviews mirror the profile now and stay while it is linked |
 | Crawl import history and per-import totals | 13 months | Daily batched pruning with the rollup time budget; always keep the newest import, running imports and any import still referenced by either latest-state crawl table |
 | Daily summaries, search totals, changes | forever | Small; the long-term record |
 | Page snapshots | last 10 per page | Enough for before and after |
@@ -3063,7 +3068,7 @@ The add-on also adds its own REST routes in the `seoproanalytics/v1`
 namespace (the Lighthouse lab test) and its own WP-CLI commands under
 `wp seoproanalytics`. The data it reads lives in the free plugin's tables
 (`gsc_*`, `vitals`, `inspections`, `serp`, `spend`, `link_metrics`,
-`links`), so reports, exports, retention and uninstall treat it as the
+`links`, `gbp_*`), so reports, exports, retention and uninstall treat it as the
 plugin's own. Two of those tables exist only for the add-on's writes:
 
 - `serp` (`SEOProAnalytics_Serp` reads it): one row per engine, search

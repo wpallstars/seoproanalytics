@@ -1303,7 +1303,7 @@ final class SEOProAnalytics_Schema {
             // when it was written and last changed, and the reply's time
             // (0: none). The review's and reply's text are kept (the
             // owner's own customers' words about them); reviewers' names
-            // never are.
+            // never are. created reads a range across locations.
             'gbp_reviews' => "CREATE TABLE {$t['gbp_reviews']} (
   location_id int unsigned NOT NULL,
   review varchar(190) NOT NULL,
@@ -1315,7 +1315,8 @@ final class SEOProAnalytics_Schema {
   reply text NOT NULL,
   PRIMARY KEY  (location_id,review),
   KEY location_created (location_id,created),
-  KEY location_replied (location_id,replied,created)
+  KEY location_replied (location_id,replied,created),
+  KEY created (created)
 ) $charset;",
         );
     }

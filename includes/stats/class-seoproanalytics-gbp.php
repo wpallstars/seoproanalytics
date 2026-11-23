@@ -92,6 +92,12 @@ final class SEOProAnalytics_GBP {
     /** Rows written in one statement. */
     const CHUNK = 500;
 
+    /** The kept data's version, moved by every write (the report cache's key; live and demo, SEOProAnalytics_Schema::option()). */
+    const VERSION_OPTION = 'seoproanalytics_gbp_version';
+
+    /** Rows one prune statement deletes. */
+    const PRUNE_BATCH = 5000;
+
     // ------------------------------------------------------------------
     // Writes (the add-on's read).
 
@@ -146,6 +152,7 @@ final class SEOProAnalytics_GBP {
             $old = json_decode((string) $before['profile'], true);
             self::profile_changed($id, $path, $profile, is_array($old) ? self::profile($old) : array());
         }
+        self::touch();
         return $id;
     }
 
@@ -174,16 +181,21 @@ final class SEOProAnalytics_GBP {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- own table, by primary key; $holders holds only fixed placeholders, one group per row.
             $done = $wpdb->query($wpdb->prepare("REPLACE INTO %i (location_id, day, metric, value) VALUES $holders", array_merge(array(SEOProAnalytics_Schema::table('gbp_metrics')), array_merge(...$chunk))));
             if ($done === false) {
+                self::touch();
                 return false;
             }
             $count += count($chunk);
+        }
+        if ($count > 0) {
+            self::touch();
         }
         return $count;
     }
 
     /**
      * Keep the searches that showed a location in a month, in place of
-     * that month's kept ones.
+     * that month's kept ones, in one transaction: on a database error the
+     * month's earlier keywords stay. An empty list empties the month.
      *
      * @param int                            $id    Location row id.
      * @param string                         $month Any day of the month (Y-m-d).
@@ -206,27 +218,38 @@ final class SEOProAnalytics_GBP {
         uasort($kept, static function ($a, $b) { return $b[0] <=> $a[0]; });
         $kept  = array_slice($kept, 0, self::MAX_KEYWORDS, true);
         $ids   = $kept ? SEOProAnalytics_Dict::ids(SEOProAnalytics_Schema::DICT_QUERY, array_map('strval', array_keys($kept))) : array();
-        $table = SEOProAnalytics_Schema::table('gbp_keywords');
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- own table, by its primary key's prefix.
-        if ($wpdb->query($wpdb->prepare('DELETE FROM %i WHERE location_id = %d AND month = %s', $table, (int) $id, $month)) === false) {
-            return false;
-        }
+        $table  = SEOProAnalytics_Schema::table('gbp_keywords');
         $values = array();
         foreach ($kept as $keyword => $figures) {
             if (!empty($ids[(string) $keyword])) {
                 $values[(int) $ids[(string) $keyword]] = array((int) $id, $month, (int) $ids[(string) $keyword], $figures[0], $figures[1]);
             }
         }
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery -- own table, by its primary key's prefix; the month's rows replaced in one transaction.
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return false;
+        }
+        if ($wpdb->query($wpdb->prepare('DELETE FROM %i WHERE location_id = %d AND month = %s', $table, (int) $id, $month)) === false) {
+            $wpdb->query('ROLLBACK');
+            return false;
+        }
         $count = 0;
         foreach (array_chunk(array_values($values), self::CHUNK) as $chunk) {
             $holders = implode(', ', array_fill(0, count($chunk), '(%d, %s, %d, %d, %d)'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- own table; $holders holds only fixed placeholders, one group per row.
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $holders holds only fixed placeholders, one group per row.
             $done = $wpdb->query($wpdb->prepare("REPLACE INTO %i (location_id, month, keyword_id, impressions, below) VALUES $holders", array_merge(array($table), array_merge(...$chunk))));
             if ($done === false) {
+                $wpdb->query('ROLLBACK');
                 return false;
             }
             $count += count($chunk);
         }
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return false;
+        }
+        // phpcs:enable
+        self::touch();
         return $count;
     }
 
@@ -277,6 +300,7 @@ final class SEOProAnalytics_GBP {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- own table, by primary key; $holders holds only fixed placeholders, one group per row.
             $done = $wpdb->query($wpdb->prepare("REPLACE INTO %i (location_id, review, rating, created, updated, replied, comment, reply) VALUES $holders", array_merge(array($table), array_merge(...$chunk))));
             if ($done === false) {
+                self::touch();
                 return false;
             }
             $count += count($chunk);
@@ -285,14 +309,16 @@ final class SEOProAnalytics_GBP {
             self::reviews_changed($loc, $new);
         }
         self::check_rating($loc);
+        self::touch();
         return $count;
     }
 
     /**
-     * Forget one location and everything kept for it (unlinked).
+     * Forget one location and everything kept for it (unlinked). The
+     * location's row goes last, so a failed delete can be run again.
      *
      * @param string $location Google's location ID.
-     * @return int Rows deleted.
+     * @return int|WP_Error Rows deleted.
      */
     public static function remove_location($location) {
         global $wpdb;
@@ -303,30 +329,96 @@ final class SEOProAnalytics_GBP {
             return 0;
         }
         $deleted = 0;
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery -- own tables, by primary key or its prefix.
-        foreach (array('gbp_metrics', 'gbp_keywords', 'gbp_reviews') as $name) {
-            $deleted += (int) $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE location_id = %d', SEOProAnalytics_Schema::table($name), $id));
+        foreach (array('gbp_metrics', 'gbp_keywords', 'gbp_reviews', 'gbp_locations') as $name) {
+            $where = $name === 'gbp_locations' ? 'id' : 'location_id';
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- own tables, by primary key or its prefix.
+            $rows = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE %i = %d', SEOProAnalytics_Schema::table($name), $where, $id));
+            if ($rows === false) {
+                self::touch();
+                return self::delete_failed();
+            }
+            $deleted += (int) $rows;
         }
-        $deleted += (int) $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE id = %d', SEOProAnalytics_Schema::table('gbp_locations'), $id));
-        // phpcs:enable
+        self::touch();
         return $deleted;
     }
 
     /**
      * Delete everything kept from Google Business Profile (a disconnect
-     * with its data). Changes already on the timeline stay, as other
-     * sources' do.
+     * with its data). The locations go last, so a failed delete stops
+     * there and can be run again. Changes already on the timeline stay, as
+     * other sources' do.
      *
-     * @return int Rows deleted.
+     * @return int|WP_Error Rows deleted.
      */
     public static function delete_data() {
         global $wpdb;
         $deleted = 0;
         foreach (array('gbp_metrics', 'gbp_keywords', 'gbp_reviews', 'gbp_locations') as $name) {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- explicitly confirmed connection data deletion, own tables.
-            $deleted += (int) $wpdb->query($wpdb->prepare('DELETE FROM %i', SEOProAnalytics_Schema::table($name)));
+            $rows = $wpdb->query($wpdb->prepare('DELETE FROM %i', SEOProAnalytics_Schema::table($name)));
+            if ($rows === false) {
+                self::touch();
+                return self::delete_failed();
+            }
+            $deleted += (int) $rows;
         }
+        self::touch();
         return $deleted;
+    }
+
+    /**
+     * Delete Business Profile data older than the search data's retention
+     * (Settings → Data): daily figures by day, monthly keywords by month,
+     * in batches within the run's time. Locations and reviews mirror the
+     * profile as Google shows it now, so they stay while the location is
+     * linked.
+     *
+     * @param int   $months Months kept (0: forever).
+     * @param float $start  microtime(true) when the run began.
+     * @param int   $budget Seconds the run may take.
+     * @return array{deleted:int,done:bool}
+     */
+    public static function prune($months, $start, $budget) {
+        global $wpdb;
+        $deleted = 0;
+        if ($months <= 0) {
+            return array('deleted' => 0, 'done' => true);
+        }
+        foreach (self::prune_before($months) as $name => $target) {
+            do {
+                if (!SEOProAnalytics_Feature::more_time($start, $budget)) {
+                    self::touch();
+                    return array('deleted' => $deleted, 'done' => false);
+                }
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- own table, by its time key, in batches.
+                $rows = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE %i < %s LIMIT %d', SEOProAnalytics_Schema::table($name), $target[0], $target[1], self::PRUNE_BATCH));
+                $deleted += (int) $rows;
+            } while ($rows === self::PRUNE_BATCH);
+        }
+        if ($deleted > 0) {
+            self::touch();
+        }
+        return array('deleted' => $deleted, 'done' => true);
+    }
+
+    /**
+     * Rows a prune would delete now, by table (WP-CLI).
+     *
+     * @param int $months Months kept (0: forever).
+     * @return array<string,int>
+     */
+    public static function prune_counts($months) {
+        global $wpdb;
+        $out = array();
+        if ($months <= 0) {
+            return $out;
+        }
+        foreach (self::prune_before($months) as $name => $target) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- own table, by its time key; WP-CLI only.
+            $out[$name] = (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i WHERE %i < %s', SEOProAnalytics_Schema::table($name), $target[0], $target[1]));
+        }
+        return $out;
     }
 
     // ------------------------------------------------------------------
@@ -470,7 +562,7 @@ final class SEOProAnalytics_GBP {
                     'rating' => isset($open[$id]['recent_average']) ? round((float) $open[$id]['recent_average'], 2) : null,
                 ),
                 'unanswered'   => (int) ($open[$id]['unanswered'] ?? 0),
-                'falling'      => $row['falling'],
+                'falling'      => self::is_falling($row['rating'], $open[$id] ?? array()),
                 'keywords'     => self::keywords($id),
                 'latest'       => self::latest_reviews($id),
                 'findings'     => array_keys(self::location_findings($row, $open[$id] ?? array(), $path ?? '/')),
@@ -523,7 +615,8 @@ final class SEOProAnalytics_GBP {
         if ($unanswered > 0) {
             $out['gbp_reviews'] = array('unanswered' => $unanswered, 'oldest' => gmdate('c', (int) $reviews['oldest']));
         }
-        if ($row['falling']) {
+        // From the reviews kept now, not the stored mark (which only finds when a fall starts, for the timeline).
+        if (self::is_falling($row['rating'], $reviews)) {
             $out['gbp_rating'] = array(
                 'rating'        => $row['rating'],
                 'recent_rating' => isset($reviews['recent_average']) ? round((float) $reviews['recent_average'], 2) : null,
@@ -739,7 +832,7 @@ final class SEOProAnalytics_GBP {
         $count   = (int) ($figures['recent_count'] ?? 0);
         $recent  = isset($figures['recent_average']) ? (float) $figures['recent_average'] : null;
         $rating  = (float) $loc['rating'];
-        $falling = $count >= self::RATING_MIN && $recent !== null && $rating > 0 && $recent <= $rating - self::RATING_DROP ? 1 : 0;
+        $falling = self::is_falling($rating, $figures) ? 1 : 0;
         if ($falling === (int) $loc['falling']) {
             return;
         }
@@ -757,6 +850,20 @@ final class SEOProAnalytics_GBP {
                 'user_id'     => 0,
             ));
         }
+    }
+
+    /**
+     * Whether a location's rating is falling: at least RATING_MIN reviews
+     * in the last RATING_DAYS, averaging RATING_DROP stars or more below
+     * its overall rating.
+     *
+     * @param float               $rating  Its overall rating (0: none).
+     * @param array<string,mixed> $figures From review_figures(): recent_count and recent_average.
+     * @return bool
+     */
+    private static function is_falling($rating, array $figures) {
+        $rating = (float) $rating;
+        return (int) ($figures['recent_count'] ?? 0) >= self::RATING_MIN && isset($figures['recent_average']) && $rating > 0 && (float) $figures['recent_average'] <= $rating - self::RATING_DROP;
     }
 
     /**
@@ -817,14 +924,51 @@ final class SEOProAnalytics_GBP {
     }
 
     /**
-     * Newest read of any location (the report cache's version).
+     * The report cache's version: the newest read of any location, and
+     * the kept data's version (touch()), so a report never outlives a
+     * write.
      *
-     * @return int
+     * @return string
      */
     private static function stamp() {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- own table, at most MAX_LOCATIONS rows.
-        return (int) $wpdb->get_var($wpdb->prepare('SELECT MAX(checked) FROM %i', SEOProAnalytics_Schema::table('gbp_locations')));
+        $checked = (int) $wpdb->get_var($wpdb->prepare('SELECT MAX(checked) FROM %i', SEOProAnalytics_Schema::table('gbp_locations')));
+        return $checked . ':' . (int) get_option(SEOProAnalytics_Schema::option(self::VERSION_OPTION), 0);
+    }
+
+    /**
+     * Move the kept data's version after a write, a failed one too (part
+     * of it may have been written). Only the add-on's read, a disconnect
+     * and the daily prune write, never a visitor's request.
+     */
+    private static function touch() {
+        $name = SEOProAnalytics_Schema::option(self::VERSION_OPTION);
+        update_option($name, (int) get_option($name, 0) + 1, false);
+    }
+
+    /**
+     * The cut-off per table for a retention: daily figures before the
+     * day, keyword months before the cut-off's month.
+     *
+     * @param int $months Months kept.
+     * @return array<string,array{0:string,1:string}> Table => [time column, first value kept].
+     */
+    private static function prune_before($months) {
+        $before = (new DateTimeImmutable('today', wp_timezone()))->modify('-' . (int) $months . ' months');
+        return array(
+            'gbp_metrics'  => array('day', $before->format('Y-m-d')),
+            'gbp_keywords' => array('month', $before->format('Y-m-01')),
+        );
+    }
+
+    /**
+     * A delete that did not complete.
+     *
+     * @return WP_Error
+     */
+    private static function delete_failed() {
+        return new WP_Error('seoproanalytics_gbp_delete', __('Some Google Business Profile data could not be deleted. Please try again.', 'seoproanalytics'), array('status' => 500));
     }
 
     /**

@@ -2372,12 +2372,17 @@ final class SEOProAnalytics_Queue {
      * The pages whose running experiment holds a new item back: those it
      * is about, except for a refresh item, which is about its losing page
      * only (a merge's other page running an experiment does not hide the
-     * loss, as its decay item would not have been hidden).
+     * loss, as its decay item would not have been hidden), and a Business
+     * Profile item, which none holds back: it is mended on Google, not on
+     * its page.
      *
      * @param array<string,mixed> $item Item.
      * @return int[]
      */
     private static function held_by(array $item) {
+        if ($item['kind'] === 'audit' && strpos((string) $item['finding'], 'gbp_') === 0) {
+            return array();
+        }
         return $item['kind'] === 'refresh' ? array((int) $item['path_id']) : self::page_ids($item);
     }
 

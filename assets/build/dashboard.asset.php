@@ -15,5 +15,5 @@ return array(
 		'wp-i18n',
 		'wp-url'
 	),
-	'version' => 'b55ecb39977a4eb12814'
+	'version' => '7a8589c0e4a8ca7f307c'
 );

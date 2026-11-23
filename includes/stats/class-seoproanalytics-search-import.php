@@ -1599,7 +1599,8 @@ final class SEOProAnalytics_Search_Import {
     /**
      * Once a day: delete page, query and pair rows older than their
      * retention (Settings → Data), per engine through the primary key, in
-     * batches. Totals are kept.
+     * batches, then Google Business Profile's daily figures and keyword
+     * months (SEOProAnalytics_GBP::prune()). Totals are kept.
      *
      * @param float $start microtime(true) when the run began.
      * @return int Rows deleted.
@@ -1624,6 +1625,12 @@ final class SEOProAnalytics_Search_Import {
                     $deleted += (int) $rows;
                 } while ($rows === self::BATCH);
             }
+        }
+        require_once __DIR__ . '/class-seoproanalytics-gbp.php';
+        $gbp      = SEOProAnalytics_GBP::prune($months, $start, self::BUDGET);
+        $deleted += $gbp['deleted'];
+        if (!$gbp['done']) {
+            return $deleted;
         }
         update_option(self::PRUNED_OPTION, wp_date('Y-m-d'), false);
         return $deleted;
@@ -1651,7 +1658,8 @@ final class SEOProAnalytics_Search_Import {
                 $out[$name] += (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i WHERE engine = %d AND day < %s', SEOProAnalytics_Schema::table($name), $engine, $before));
             }
         }
-        return $out;
+        require_once __DIR__ . '/class-seoproanalytics-gbp.php';
+        return $out + SEOProAnalytics_GBP::prune_counts($months);
     }
 
     /**

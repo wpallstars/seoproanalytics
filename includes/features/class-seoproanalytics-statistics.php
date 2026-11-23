@@ -359,7 +359,7 @@ final class SEOProAnalytics_Statistics extends SEOProAnalytics_Feature {
                 'unit'        => __('months', 'seoproanalytics'),
                 'parent'      => 'retention',
                 'label'       => __('Search data by page and query', 'seoproanalytics'),
-                'description' => __('Clicks, impressions and positions imported from a connected search engine (Settings → Connections). Search Console itself keeps 16 months; 25 allows a comparison with two years before. Daily search totals are kept.', 'seoproanalytics'),
+                'description' => __('Clicks, impressions and positions imported from a connected search engine (Settings → Connections), and Google Business Profile\'s daily figures and search keywords. Search Console itself keeps 16 months; 25 allows a comparison with two years before. Daily search totals are kept.', 'seoproanalytics'),
             ),
             'retention_crawl'         => array(
                 'type'        => 'int',
