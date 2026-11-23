@@ -154,32 +154,25 @@ final class SEOProAnalytics_Connections_Tab {
         $kept = SEOProAnalytics_Connections::kept($source);
         // The add-on runs here but lacks this one: it came after the add-on's version.
         $installed = $running && defined('SEOPROANALYTICS_CONNECT_VERSION') ? (string) SEOPROANALYTICS_CONNECT_VERSION : '';
+        $text = self::placeholder_text($installed);
         // A kept connection's card takes the Disconnect button (seoproanalytics-connections.js).
         $attrs = $kept ? ' data-seoproan-connection="' . esc_attr($source) . '"' : '';
         ?>
         <section class="seoproan-card seoproan-connection" id="<?php echo esc_attr('seoproan-connection-' . $source); ?>" data-seoproan-placeholder="<?php echo esc_attr($source); ?>"<?php echo $attrs; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped above. ?>>
             <h3>
                 <?php echo esc_html($addon['name']); ?>
-                <span class="seoproan-badge"><?php echo esc_html($installed !== '' ? __('(update needed)', 'seoproanalytics') : __('(subscription needed)', 'seoproanalytics')); ?></span>
+                <span class="seoproan-badge"><?php echo esc_html($text['badge']); ?></span>
             </h3>
             <?php if ($addon['what'] !== '') : ?>
                 <p class="seoproan-setting__desc"><?php echo esc_html($addon['what']); ?></p>
             <?php endif; ?>
-            <?php if ($installed !== '') : ?>
-                <p><?php echo esc_html(sprintf(/* translators: %s: installed add-on version, such as 1.2.0. */ __('Comes with a newer SEO Pro Analytics Connect than the one active here (%s). Update the add-on to use it.', 'seoproanalytics'), $installed)); ?></p>
-            <?php else : ?>
-                <p><?php esc_html_e('Comes with the SEO Pro Analytics Connect add-on. Your own statistics, Bing Webmaster Tools and IndexNow stay free.', 'seoproanalytics'); ?></p>
-            <?php endif; ?>
+            <p><?php echo esc_html($text['about']); ?></p>
             <?php if ($kept) : ?>
                 <div class="seoproan-connection__message" data-seoproan-message role="alert"></div>
-                <p><?php echo esc_html($installed !== '' ? __('Its connection is still saved here, encrypted, but nothing is read until the add-on is updated. Disconnect to forget the saved key.', 'seoproanalytics') : __('Its connection is still saved here, encrypted, but nothing is read until the add-on is active. Disconnect to forget the saved key.', 'seoproanalytics')); ?></p>
+                <p><?php echo esc_html($text['kept']); ?></p>
             <?php endif; ?>
             <div class="seoproan-connection__actions">
-                <?php if ($installed !== '' && current_user_can('update_plugins')) : ?>
-                    <a class="button" href="<?php echo esc_url(is_multisite() ? network_admin_url('plugins.php') : admin_url('plugins.php')); ?>"><?php esc_html_e('Update SEO Pro Analytics Connect', 'seoproanalytics'); ?></a>
-                <?php elseif ($installed === '') : ?>
-                    <a class="button seoproan-connection__addon" href="<?php echo esc_url(SEOProAnalytics_Connections::connect_url()); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e('This feature requires a paid subscription for the connection services. Click for more details…', 'seoproanalytics'); ?>"><?php esc_html_e('Get SEO Pro Analytics Connect', 'seoproanalytics'); ?><span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text"> <?php esc_html_e('(opens in a new tab)', 'seoproanalytics'); ?></span></a>
-                <?php endif; ?>
+                <?php self::render_placeholder_button($installed); ?>
                 <?php if ($kept && $source === 'search-console') : ?>
                     <label><input type="checkbox" data-seoproan-field="delete_data"> <?php esc_html_e('Delete imported search data', 'seoproanalytics'); ?></label>
                 <?php endif; ?>
@@ -189,6 +182,49 @@ final class SEOProAnalytics_Connections_Tab {
             </div>
         </section>
         <?php
+    }
+
+    /**
+     * A placeholder's badge and lines: an update when an older add-on runs
+     * here, otherwise the add-on to get.
+     *
+     * @param string $installed The running add-on's version, or '' when it is not running.
+     * @return array{badge:string,about:string,kept:string}
+     */
+    private static function placeholder_text($installed) {
+        if ($installed !== '') {
+            return array(
+                'badge' => __('(update needed)', 'seoproanalytics'),
+                /* translators: %s: installed add-on version, such as 1.2.0. */
+                'about' => sprintf(__('Comes with a newer SEO Pro Analytics Connect than the one active here (%s). Update the add-on to use it.', 'seoproanalytics'), $installed),
+                'kept'  => __('Its connection is still saved here, encrypted, but nothing is read until the add-on is updated. Disconnect to forget the saved key.', 'seoproanalytics'),
+            );
+        }
+        return array(
+            'badge' => __('(subscription needed)', 'seoproanalytics'),
+            'about' => __('Comes with the SEO Pro Analytics Connect add-on. Your own statistics, Bing Webmaster Tools and IndexNow stay free.', 'seoproanalytics'),
+            'kept'  => __('Its connection is still saved here, encrypted, but nothing is read until the add-on is active. Disconnect to forget the saved key.', 'seoproanalytics'),
+        );
+    }
+
+    /**
+     * A placeholder's main button: Update (to Plugins, for users who can
+     * update plugins) when an older add-on runs here, otherwise Get.
+     *
+     * @param string $installed The running add-on's version, or '' when it is not running.
+     */
+    private static function render_placeholder_button($installed) {
+        if ($installed === '') {
+            ?>
+            <a class="button seoproan-connection__addon" href="<?php echo esc_url(SEOProAnalytics_Connections::connect_url()); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e('This feature requires a paid subscription for the connection services. Click for more details…', 'seoproanalytics'); ?>"><?php esc_html_e('Get SEO Pro Analytics Connect', 'seoproanalytics'); ?><span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text"> <?php esc_html_e('(opens in a new tab)', 'seoproanalytics'); ?></span></a>
+            <?php
+            return;
+        }
+        if (current_user_can('update_plugins')) {
+            ?>
+            <a class="button" href="<?php echo esc_url(is_multisite() ? network_admin_url('plugins.php') : admin_url('plugins.php')); ?>"><?php esc_html_e('Update SEO Pro Analytics Connect', 'seoproanalytics'); ?></a>
+            <?php
+        }
     }
 
     /** Draw the stored notification status; no service request. */
