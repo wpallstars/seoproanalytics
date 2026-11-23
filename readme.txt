@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.23.0
+Stable tag: 1.23.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -118,8 +118,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.23.0 =
-* New: Google Business Profile figures, searches, reviews and findings from the SEO Pro Analytics Connect add-on: an Overview card, Plan items (reviews without a reply, a falling rating, missing basics, an untagged website link) and profile changes on the timeline.
+= 1.23.1 =
+* Changed: Settings → Connections keeps each connection in one place, with or without the SEO Pro Analytics Connect add-on.
+* Fixed: an older, licensed add-on's missing connections say "(update needed)" and link to Plugins, not "(subscription needed)"; the add-on's Licence section has space above it.
 
 Every change: changelog.txt.
 
