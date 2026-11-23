@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.22.1
+Stable tag: 1.23.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -118,8 +118,8 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.22.1 =
-* Developers: core files synced with WP Plugin Starter, including the shared library for licensed updates from the wpallstars.com shop (GitHub build only). Settings → Licences appears only when a licensed wpallstars plugin or theme is installed.
+= 1.23.0 =
+* New: Google Business Profile figures, searches, reviews and findings from the SEO Pro Analytics Connect add-on: an Overview card, Plan items (reviews without a reply, a falling rating, missing basics, an untagged website link) and profile changes on the timeline.
 
 Every change: changelog.txt.
 

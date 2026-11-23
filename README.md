@@ -10,7 +10,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics/badge)](https://www.codefactor.io/repository/github/wpallstars/seoproanalytics)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoproanalytics/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoproanalytics)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/badge/release-v1.22.1-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
+[![Latest release](https://img.shields.io/badge/release-v1.23.0-blue.svg)](https://github.com/wpallstars/seoproanalytics/releases)
 
 [![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
 [![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.22.1
+Version: 1.23.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -903,7 +903,7 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
-### Unreleased
+### 1.23.0
 
 - New: **Google Business Profile** data from the SEO Pro Analytics Connect add-on, which reads it through Google's API. The Overview's **Google Business Profile** card lists each location's Search and Maps views, website clicks, calls, direction requests, rating and reviews without a reply. The **Plan** lists reviews without a reply, a falling rating, a profile missing its basics and an untagged or off-site website link, on the page each location stands for; Done opens no experiment. The timeline gains a profile edited, new reviews and a falling rating. Daily figures and search keywords follow the search data's retention (GH#127).
 - Developers: schema 36 adds the `gbp_*` tables; timeline kinds 54 to 56; `GET /google-business`, `wp seoproanalytics google-business` and the `seoproanalytics/google-business` ability; Plan rules `gbp_share` and `gbp_confidence` (GH#127).
