@@ -153,6 +153,36 @@ function chartFigure(value: number | undefined, rank: boolean): number | null {
 }
 
 /**
+ * Daily averages read at each shown point's last day (a week ends the day
+ * before the next point). The unfinished point, and a point the history
+ * does not reach, are left out. Null when no point lines up.
+ */
+function alignedValues(source: ChartData, shown: ChartData, averages: Array<number | null>): Array<number | null> | null {
+	const times = source.points.map((p) => Date.parse(p.t));
+	const open = partialIndex(shown);
+	let found = false;
+	const values = shown.points.map((point, i) => {
+		const next = i + 1 < shown.points.length ? Date.parse(shown.points[i + 1]?.t ?? '') : Date.parse(shown.range.to);
+		const start = Date.parse(point.t);
+		if (i === open || !Number.isFinite(start) || !Number.isFinite(next)) {
+			return null;
+		}
+		let end = -1;
+		for (let n = 0; n < times.length; n++) {
+			if ((times[n] ?? NaN) < next) {
+				end = n;
+			}
+		}
+		if (end < 0 || (times[end] ?? NaN) < start) {
+			return null;
+		}
+		found = true;
+		return averages[end] ?? null;
+	});
+	return found ? values : null;
+}
+
+/**
  * The trend line over the points shown: averages over the source (the
  * history, or the series itself), lined up on the last point shown.
  * Unfinished points are left out. Null when the two do not line up.
@@ -171,6 +201,9 @@ function trendValues(source: ChartData, shown: ChartData, metric: string, per: s
 	);
 	if (partial !== undefined) {
 		averages[partial] = null;
+	}
+	if (source.grain !== shown.grain) {
+		return alignedValues(source, shown, averages);
 	}
 	const last = shown.points[shown.points.length - 1]?.t;
 	const end = source.points.length - 1 - [...source.points].reverse().findIndex((p) => p.t === last);
@@ -329,7 +362,9 @@ function useTrendLines(series: ChartData, metric: string, per: string | undefine
 	const source = history ? lead.data : series;
 	const shortDays = pair?.short ?? 0;
 	const lines = useMemo(() => {
-		if (days <= 0 || !source || source.grain !== series.grain) {
+		// Weekly points take a daily history, read at each week's last day.
+		const aligned = source?.grain === series.grain || (series.grain === 'week' && source?.grain === 'day');
+		if (days <= 0 || !source || !aligned) {
 			return null;
 		}
 		const shown = (values: Array<number | null> | null) => (values?.some((v) => v !== null) ? values : null);

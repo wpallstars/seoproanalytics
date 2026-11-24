@@ -114,6 +114,7 @@ function BuilderModal({ state, close }: Readonly<{ state: ViewState; close: () =
 	const [tags, setTags] = useState<Tags>(EMPTY);
 	const [recent, setRecent] = useState(readStore);
 	const [copied, setCopied] = useState('');
+	const [failed, setFailed] = useState(false);
 	const campaigns = useBreakdown(state, 'utm_campaign', 50);
 	const sources = useBreakdown(state, 'utm_source', 50);
 	const campaignList = useId();
@@ -124,15 +125,20 @@ function BuilderModal({ state, close }: Readonly<{ state: ViewState; close: () =
 
 	const copy = (text: string) => {
 		const done = () => {
+			setFailed(false);
 			setCopied(text);
 			const next = [text, ...recent.filter((saved) => saved !== text)].slice(0, KEEP);
 			setRecent(next);
 			writeStore(next);
 		};
+		const fail = () => {
+			setCopied('');
+			setFailed(true);
+		};
 		if (navigator.clipboard?.writeText) {
-			navigator.clipboard.writeText(text).then(done, () => setCopied(''));
+			navigator.clipboard.writeText(text).then(done, fail);
 		} else {
-			done();
+			fail();
 		}
 	};
 
@@ -172,7 +178,7 @@ function BuilderModal({ state, close }: Readonly<{ state: ViewState; close: () =
 
 				<div>
 					<strong>{__('Link', 'seoproanalytics')}</strong>
-					<code className="seoproan-campaign__url">{ready ? url : __('Fill in the page address, a source and a campaign.', 'seoproanalytics')}</code>
+					<code className="seoproan-campaign__url" style={{ userSelect: 'all' }}>{ready ? url : __('Fill in the page address, a source and a campaign.', 'seoproanalytics')}</code>
 				</div>
 				<div>
 					<Button variant="primary" disabled={!ready} accessibleWhenDisabled onClick={() => copy(url)}>
@@ -182,6 +188,11 @@ function BuilderModal({ state, close }: Readonly<{ state: ViewState; close: () =
 						{__('Clear', 'seoproanalytics')}
 					</Button>
 				</div>
+				{failed && (
+					<Notice status="error" isDismissible={false}>
+						<span role="alert">{__('The link could not be copied. Select it above and copy it by hand.', 'seoproanalytics')}</span>
+					</Notice>
+				)}
 				{copied && (
 					<Notice status="success" isDismissible={false}>
 						<span aria-live="polite">{__('Copied.', 'seoproanalytics')}</span>

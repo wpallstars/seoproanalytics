@@ -152,7 +152,7 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 	const scope = scopeKey(apiArgs({ ...state, filters: [] }), engine, status, owner);
 	const owners = useOwnerPeople(state);
 	const [at, setAt] = useState({ scope, offset: 0 });
-	const offset = at.scope === scope ? at.offset : 0;
+	const wanted = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
 	// Targets are bounded to 1,000; sort/filter the complete list before paging.
 	const query = useTargets(state, status, 1000, 0);
@@ -162,6 +162,8 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 	const [sortKgr, setSortKgr] = useState(false);
 	const list = (answer?.rows ?? []).filter((row) => kgrFilter === 'all' || row.kgr_band === kgrFilter);
 	if (sortKgr) list.sort((a, b) => (a.kgr ?? Infinity) - (b.kgr ?? Infinity) || a.query.localeCompare(b.query));
+	// The list can shrink (filter, delete, import): never page past its end.
+	const offset = Math.min(wanted, Math.max(0, Math.ceil(list.length / PER_PAGE) - 1) * PER_PAGE);
 	const rows = list.slice(offset, offset + PER_PAGE);
 	const [error, setError] = useState('');
 	const [importing, setImporting] = useState(false);
@@ -542,12 +544,18 @@ function MeasurementForm({ row, onError }: { row: TargetRow; onError: (message: 
 	const [countDate, setCountDate] = useState('');
 	const [volumeDate, setVolumeDate] = useState('');
 	const [busy, setBusy] = useState(false);
+	// The fields the person changed; the row can refresh while they edit, so it is not the baseline.
+	const [touched, setTouched] = useState({ count: false, countDate: false, volume: false, volumeDate: false });
+	const change = (field: keyof typeof touched, set: (value: string) => void) => (value: string) => {
+		setTouched((now) => ({ ...now, [field]: true }));
+		set(value);
+	};
 	const save = async () => {
 		setBusy(true);
 		try {
 			const fields: Record<string, unknown> = { query: row.query, page: row.page?.path ?? '', priority: row.priority, status: row.status };
-			if (count !== String(row.allintitle ?? '') || countDate) { fields.allintitle = count === '' ? null : count; if (countDate) fields.allintitle_measured = countDate; }
-			if (volume !== String(row.volume ?? '') || volumeDate) { fields.volume = volume === '' ? null : volume; if (volumeDate) fields.volume_measured = volumeDate; }
+			if (touched.count || touched.countDate) { if (touched.count || countDate) fields.allintitle = count === '' ? null : count; if (countDate) fields.allintitle_measured = countDate; }
+			if (touched.volume || touched.volumeDate) { if (touched.volume || volumeDate) fields.volume = volume === '' ? null : volume; if (volumeDate) fields.volume_measured = volumeDate; }
 			const done = await importTargets(data, JSON.stringify([fields]), false);
 			const [skipped] = done.skipped;
 			if (skipped) throw new Error(skipped.message);
@@ -555,12 +563,12 @@ function MeasurementForm({ row, onError }: { row: TargetRow; onError: (message: 
 		} catch (error) { onError(errorMessage(error, __('Measurements could not be saved.', 'seoproanalytics'))); }
 		setBusy(false);
 	};
-	if (!editing) return <Button variant="tertiary" size="small" onClick={() => { setCount(String(row.allintitle ?? '')); setVolume(String(row.volume ?? '')); setCountDate(''); setVolumeDate(''); setEditing(true); }}>{__('Edit research', 'seoproanalytics')}</Button>;
+	if (!editing) return <Button variant="tertiary" size="small" onClick={() => { setCount(String(row.allintitle ?? '')); setVolume(String(row.volume ?? '')); setCountDate(''); setVolumeDate(''); setTouched({ count: false, countDate: false, volume: false, volumeDate: false }); setEditing(true); }}>{__('Edit research', 'seoproanalytics')}</Button>;
 	return <div>
-		<TextControl __nextHasNoMarginBottom label={__('Allintitle results', 'seoproanalytics')} type="number" min={0} step={1} value={count} onChange={setCount} />
-		<TextControl __nextHasNoMarginBottom label={__('Count measured on', 'seoproanalytics')} type="date" value={countDate} onChange={setCountDate} help={__('Today when changed without a date', 'seoproanalytics')} />
-		<TextControl __nextHasNoMarginBottom label={__('Monthly volume', 'seoproanalytics')} type="number" min={0} step={1} value={volume} onChange={setVolume} />
-		<TextControl __nextHasNoMarginBottom label={__('Volume measured on', 'seoproanalytics')} type="date" value={volumeDate} onChange={setVolumeDate} />
+		<TextControl __nextHasNoMarginBottom label={__('Allintitle results', 'seoproanalytics')} type="number" min={0} step={1} value={count} onChange={change('count', setCount)} />
+		<TextControl __nextHasNoMarginBottom label={__('Count measured on', 'seoproanalytics')} type="date" value={countDate} onChange={change('countDate', setCountDate)} help={__('Today when changed without a date', 'seoproanalytics')} />
+		<TextControl __nextHasNoMarginBottom label={__('Monthly volume', 'seoproanalytics')} type="number" min={0} step={1} value={volume} onChange={change('volume', setVolume)} />
+		<TextControl __nextHasNoMarginBottom label={__('Volume measured on', 'seoproanalytics')} type="date" value={volumeDate} onChange={change('volumeDate', setVolumeDate)} />
 		<Button variant="secondary" disabled={busy} isBusy={busy} onClick={() => void save()}>{__('Save research', 'seoproanalytics')}</Button>
 		<Button variant="tertiary" disabled={busy} onClick={() => setEditing(false)}>{__('Cancel', 'seoproanalytics')}</Button>
 	</div>;
@@ -578,8 +586,10 @@ function ImportForm({ onClose }: Readonly<{ onClose: () => void }>) {
 		setBusy(true);
 		setError('');
 		try {
-			setDone(await importTargets(data, text, replace));
-			setText('');
+			const result = await importTargets(data, text, replace);
+			setDone(result);
+			// Keep the paste when rows were skipped, so they can be fixed and resent.
+			if (!result.skipped.length) setText('');
 		} catch (e) {
 			setError(errorMessage(e, __('The list could not be imported. Try again.', 'seoproanalytics')));
 		}
@@ -593,6 +603,9 @@ function ImportForm({ onClose }: Readonly<{ onClose: () => void }>) {
 				</Notice>
 			)}
 			{done && <ImportDone done={done} />}
+			{done && done.skipped.length > 0 && (
+				<p className="seoproan-note">{__('The rows that were accepted are already applied. Fix the skipped rows and import again; the list is kept below.', 'seoproanalytics')}</p>
+			)}
 			<p className="seoproan-note">
 				{__('Paste searches from keyword research: a spreadsheet, a keyword tool\'s export, or the aidevops search targets table. For focus keywords already set on your pages, use Suggest from SEO plugin instead.', 'seoproanalytics')}
 			</p>
