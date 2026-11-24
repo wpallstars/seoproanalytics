@@ -313,7 +313,8 @@ final class SEOProAnalytics_Site_Crawler {
 
     /** @param string $text robots.txt. @return array<int,array<string,mixed>> Selected rules. */
     private static function robots($text) {
-        $groups = array();
+        $group_agents = array();
+        $group_rules = array();
         $index = -1;
         $last = '';
         foreach (preg_split('/\r?\n/', $text) ?: array() as $line) {
@@ -330,19 +331,20 @@ final class SEOProAnalytics_Site_Crawler {
             if ($name === 'user-agent') {
                 if ($last !== 'user-agent') {
                     ++$index;
-                    $groups[$index] = array('agents' => array(), 'rules' => array());
+                    $group_agents[$index] = array();
+                    $group_rules[$index] = array();
                 }
-                $groups[$index]['agents'][] = strtolower($value);
+                $group_agents[$index][] = strtolower($value);
             } elseif ($index >= 0 && in_array($name, array('allow', 'disallow'), true) && $value !== '') {
-                $groups[$index]['rules'][] = array('allow' => $name === 'allow', 'path' => substr($value, 0, 2048));
+                $group_rules[$index][] = array('allow' => $name === 'allow', 'path' => substr($value, 0, 2048));
             }
             $last = $name;
         }
         $selected = array();
         $specific = false;
-        foreach ($groups as $group) {
+        foreach ($group_agents as $group_index => $agents) {
             $match = false;
-            foreach ($group['agents'] as $agent) {
+            foreach ($agents as $agent) {
                 if ($agent !== '*' && $agent !== '' && (strpos('seo pro analytics', $agent) !== false || strpos('seoproanalytics', $agent) !== false)) {
                     $match = true;
                 }
@@ -351,8 +353,8 @@ final class SEOProAnalytics_Site_Crawler {
                 $selected = array();
                 $specific = true;
             }
-            if ($match || (!$specific && in_array('*', $group['agents'], true))) {
-                $selected = array_merge($selected, $group['rules']);
+            if ($match || (!$specific && in_array('*', $agents, true))) {
+                $selected = array_merge($selected, $group_rules[$group_index] ?? array());
             }
         }
         return $selected;

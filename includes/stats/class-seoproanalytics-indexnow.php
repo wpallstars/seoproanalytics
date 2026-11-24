@@ -109,10 +109,12 @@ final class SEOProAnalytics_IndexNow { // NOSONAR: one notifier for its hooks, s
 
     /** @return string The public verification key, generated on first use. */
     private static function key() {
-        $key = (string) get_option(self::KEY, '');
+        $key = get_option(self::KEY, '');
+        $key = is_string($key) ? $key : '';
         if ($key === '') {
             add_option(self::KEY, bin2hex(random_bytes(16)), '', false);
-            $key = (string) get_option(self::KEY, '');
+            $key = get_option(self::KEY, '');
+            $key = is_string($key) ? $key : '';
         }
         return $key;
     }
