@@ -2,13 +2,15 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
-= 1.23.1 =
+= Unreleased =
 * Fixed: the Campaign link dialog said "Copied" and saved the link to the recent list even when the browser could not copy. It now shows a failure notice and leaves the link selectable, and saves the link only after a successful copy (GH#131).
 * Fixed: importing targets with "Delete the targets that are not in this list" deleted a stored target whose row was skipped as invalid (a bad page or research count). A row's search now keeps its target; only searches absent from the list are deleted (GH#131).
 * Fixed: after an import that skipped rows, the pasted list was cleared. It is kept, with a note that the accepted rows were already applied (GH#131).
 * Fixed: Edit research sent fields that were not changed, which could overwrite a figure refreshed meanwhile. Only the fields you change are saved; emptying one still clears it (GH#131).
 * Fixed: the Targets list could show an empty page after the list shrank (a filter, a delete or an import); it now shows the last page (GH#131).
 * Fixed: weekly charts never drew the long-term trend line, because the daily history it needs was discarded. Weekly points now read the daily average at each week's last day; daily and monthly charts are unchanged (GH#131).
+
+= 1.23.1 =
 * Changed: Settings → Connections keeps each connection in one place whether or not the SEO Pro Analytics Connect add-on registers it: IndexNow, Bing Webmaster Tools, Google Search Console, Google Business Profile, Chrome UX Report, the LibreCrawl server, then the paid providers. Before, a connection the add-on did not register was listed after all the others, and the add-on's own order put Chrome UX Report between Search Console and Business Profile (GH#133).
 * Fixed: with an older SEO Pro Analytics Connect active and licensed, a connection it does not have yet, such as Google Business Profile before Connect 1.3.0, said "(subscription needed)" and offered to buy the add-on. It now says "(update needed)", names the version active and, for users who can update plugins, links to Plugins. Without a valid licence the add-on registers no connection, and its cards still say "(subscription needed)" (GH#133).
 * Fixed: on Settings → Connections, the add-on's Licence section touched the last connection card; it now has space above it (GH#133).
