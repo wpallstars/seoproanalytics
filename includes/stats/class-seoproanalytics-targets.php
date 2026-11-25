@@ -949,7 +949,7 @@ final class SEOProAnalytics_Targets {
         $existing = self::stored();
         $removed  = 0;
         if ($replace && !$only_new && $existing) {
-            list($removed, $existing) = self::remove_others($existing, $valid);
+            list($removed, $existing) = self::remove_others($existing, $rows);
         }
         $saved = self::save_valid($valid, $existing, array('code' => $code, 'now' => $now, 'only_new' => (bool) $only_new), $skipped);
         if (is_wp_error($saved)) {
@@ -995,14 +995,22 @@ final class SEOProAnalytics_Targets {
     }
 
     /**
-     * Delete the targets not in an import.
+     * Delete the targets not in an import. A row whose other fields were
+     * rejected still names its search, so its stored target stays.
      *
-     * @param array<int,array<string,mixed>>    $existing Stored targets by query id.
-     * @param array<string,array<string,mixed>> $valid    check_rows()'s valid rows.
+     * @param array<int,array<string,mixed>> $existing Stored targets by query id.
+     * @param array<int,mixed>               $rows     Every submitted row, valid or not.
      * @return array{0:int,1:array<int,array<string,mixed>>} Targets deleted, and the targets kept.
      */
-    private static function remove_others(array $existing, array $valid) {
-        $keep = $valid ? SEOProAnalytics_Dict::find(SEOProAnalytics_Schema::DICT_QUERY, array_keys($valid)) : array();
+    private static function remove_others(array $existing, array $rows) {
+        $named = array();
+        foreach ($rows as $row) {
+            $query = self::query_text(is_array($row) ? self::field($row, 'query') : '');
+            if ($query !== '') {
+                $named[$query] = true;
+            }
+        }
+        $keep = $named ? SEOProAnalytics_Dict::find(SEOProAnalytics_Schema::DICT_QUERY, array_keys($named)) : array();
         $gone = array_values(array_diff(array_keys($existing), array_map('intval', $keep)));
         return array(self::delete_ids($gone), array_diff_key($existing, array_flip($gone)));
     }
