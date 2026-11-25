@@ -86,6 +86,18 @@ jobs:
           # no label (repositories that do not use aidevops).
           DISPATCH_LABEL: ${{ vars.STARTER_SYNC_DISPATCH_LABEL || 'auto-dispatch' }}
         run: |
+          # GitHub's API sometimes answers a write with a transient 5xx
+          # ("Something went wrong while executing your query"); retry
+          # those so one blip does not fail the daily check.
+          gh_retry() {
+            local n
+            for n in 1 2 3; do
+              "$@" && return 0
+              echo "::warning::gh $2 $3 failed (attempt $n of 3)" >&2
+              sleep $((n * 5))
+            done
+            return 1
+          }
           set +e
           report="$(../starter/scripts/sync-core.sh --check --from ../starter 2>&1)"
           status=$?
@@ -103,7 +115,7 @@ jobs:
 
           if [[ "$status" -eq 0 ]]; then
             if [[ -n "$number" ]]; then
-              gh issue close "$number" --comment "All core files match the starter at $STARTER_REPO@$short."
+              gh_retry gh issue close "$number" --comment "All core files match the starter at $STARTER_REPO@$short."
             fi
             exit 0
           fi
@@ -198,29 +210,29 @@ jobs:
           fi
 
           if [[ -n "$number" ]]; then
-            gh issue edit "$number" --body-file "$body"
+            gh_retry gh issue edit "$number" --body-file "$body"
             # Dispatch the open issue again, unless a person put a hold on it.
             # If the labels cannot be read, leave them alone.
             if [[ -n "$dispatch" ]]; then
               if ! labels="$(gh issue view "$number" --json labels --jq '.labels[].name')"; then
                 echo "::warning::Could not read #$number's labels; $dispatch not added."
               elif ! grep -qxF "no-auto-dispatch" <<<"$labels"; then
-                gh issue edit "$number" --add-label "$dispatch"
+                gh_retry gh issue edit "$number" --add-label "$dispatch"
               fi
             fi
           elif [[ "$hold" == "true" ]]; then
             # Never --force: an existing label keeps its own colour and description.
             gh label create "no-auto-dispatch" --color B60205 --description "A person's hold: starter sync does not dispatch this issue" 2>/dev/null || true
-            url="$(gh issue create --title "Core files differ from the starter" --label "$label" --label "no-auto-dispatch" --body-file "$body")"
+            url="$(gh_retry gh issue create --title "Core files differ from the starter" --label "$label" --label "no-auto-dispatch" --body-file "$body")"
           elif [[ -n "$dispatch" ]]; then
-            url="$(gh issue create --title "Core files differ from the starter" --label "$label" --label "$dispatch" --body-file "$body")"
+            url="$(gh_retry gh issue create --title "Core files differ from the starter" --label "$label" --label "$dispatch" --body-file "$body")"
           else
-            url="$(gh issue create --title "Core files differ from the starter" --label "$label" --body-file "$body")"
+            url="$(gh_retry gh issue create --title "Core files differ from the starter" --label "$label" --body-file "$body")"
           fi
           if [[ -n "$old" ]]; then
             note=""
             if [[ "$hold" == "true" ]]; then
               note=" The no-auto-dispatch hold is kept on the new issue."
             fi
-            gh issue close "$old" --reason "not planned" --comment "Replaced by $url, written with STARTER_SYNC_TOKEN.$note An open pull request for this issue: link it to the new one instead."
+            gh_retry gh issue close "$old" --reason "not planned" --comment "Replaced by $url, written with STARTER_SYNC_TOKEN.$note An open pull request for this issue: link it to the new one instead."
           fi
