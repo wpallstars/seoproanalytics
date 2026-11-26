@@ -8,7 +8,7 @@
  * Provenance: wpas-c8662019b99fb07b. Copies, even of part, keep these lines.
  */
 
-import type { Answer, Range, Marker, Revenue, GoalKind, VitalSample, GbpFinding, GbpField } from './types-traffic';
+import type { Answer, Range, Marker, Revenue, GoalKind, VitalSample, GbpFinding, GbpField, GbpDetail } from './types-traffic';
 import type { SearchEngine, SearchEngineAnswer, OpportunityPage, OpportunityKind, DecayCause, CoverageMatch, AuditFinding, AuditFacts, LinksKind, LinksMissingQuery, SitemapSource, DecayRival, IndexationKind, Owner } from './types-search';
 import type { BacklinkNeedRow } from './types-backlinks';
 
@@ -565,6 +565,9 @@ export interface QueueFigures {
 	problem?: 'untagged' | 'other_site';
 	website?: string;
 	link?: string;
+	/** gbp_details: the details that differ, each with the profile's value and the site's. */
+	fields?: GbpDetail[];
+	values?: Partial<Record<GbpDetail, { profile: string; site: string }>>;
 	samples?: VitalSample[];
 	/** audit, clicked_broken: the destination, its crawl status (0: no answer), what kind of link, the pages it was clicked on and those linking to it. */
 	target?: string;

@@ -642,7 +642,7 @@ final class SEOProAnalytics_Abilities {
         ));
         wp_register_ability('seoproanalytics/google-business', array(
             'label'               => __('Google Business Profile', 'seoproanalytics'),
-            'description'         => __('Each Google Business Profile location the SEO Pro Analytics Connect add-on reads: its Search and Maps views (by device), website clicks, calls and direction requests in the range (totals and series by day), its rating and review count, new reviews in the range, reviews without a reply in the last 90 days, the searches that showed it in its newest month, its newest reviews, and its findings (gbp_reviews, gbp_rating, gbp_incomplete, gbp_link; Plan items of kind audit). connected false: the add-on or its connection is missing; data already read stays readable. Google gives daily figures a few days late (through).', 'seoproanalytics'),
+            'description'         => __('Each Google Business Profile location the SEO Pro Analytics Connect add-on reads: its Search and Maps views (by device), website clicks, calls and direction requests in the range (totals and series by day), its rating and review count, new reviews in the range, reviews without a reply in the last 90 days, the searches that showed it in its newest month, its newest reviews, and its findings (gbp_reviews, gbp_rating, gbp_incomplete, gbp_link, gbp_details; Plan items of kind audit). connected false: the add-on or its connection is missing; data already read stays readable. Google gives daily figures a few days late (through).', 'seoproanalytics'),
             'category'            => self::CATEGORY,
             'input_schema'        => self::range_input($data),
             'output_schema'       => array(

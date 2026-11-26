@@ -94,6 +94,7 @@ export function findingName(finding: AuditFinding | 'page_experience' | 'clicked
 		gbp_rating: __('Business Profile rating falling', 'seoproanalytics'),
 		gbp_incomplete: __('Business Profile missing basics', 'seoproanalytics'),
 		gbp_link: __('Business Profile website link', 'seoproanalytics'),
+		gbp_details: __('Business Profile differs from the site’s business details', 'seoproanalytics'),
 	};
 	return names[finding];
 }

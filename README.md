@@ -903,6 +903,11 @@ this feature; no tracking pixels or tracked links are added.
 
 ## Changelog
 
+### Unreleased
+
+- New: the **Plan** lists a Google Business Profile location whose name, phone number or postcode differs from the site's business details, read from the active SEO plugin's settings (Yoast SEO, Rank Math, SEOPress or The SEO Framework), with both values; a detail no plugin holds is not compared. Done opens no experiment (GH#128).
+- Developers: `gbp_details` finding; `save_location()` takes a profile `postcode`; `SEOProAnalytics_Site_Details` (GH#128).
+
 ### 1.23.1
 
 - Changed: Settings → Connections keeps each connection in one place whether or not the SEO Pro Analytics Connect add-on registers it: IndexNow, Bing Webmaster Tools, Google Search Console, Google Business Profile, Chrome UX Report, the LibreCrawl server, then the paid providers (GH#133).
