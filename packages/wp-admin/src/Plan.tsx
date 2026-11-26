@@ -34,6 +34,7 @@ import {
 	QUEUE_FILTERS,
 	REFRESH_PROPOSALS,
 	type AuditFinding,
+	type GbpDetail,
 	type GbpField,
 	type GbpFinding,
 	type IndexationKind,
@@ -935,6 +936,16 @@ function gbpFieldName(field: GbpField): string {
 	return names[field];
 }
 
+/** A profile detail's name (gbp_details). */
+function gbpDetailName(field: GbpDetail): string {
+	const names: Record<GbpDetail, string> = {
+		name: __('name', 'seoproanalytics'),
+		phone: __('phone number', 'seoproanalytics'),
+		postcode: __('postcode', 'seoproanalytics'),
+	};
+	return names[field];
+}
+
 /** A Business Profile finding's facts: the location, and what the finding found. */
 function GbpFacts({ finding, figures }: Readonly<{ finding: GbpFinding; figures: QueueFigures }>) {
 	const stars = (value: number | null | undefined) => (value === null || value === undefined ? '–' : formatDecimal(value, locale));
@@ -972,6 +983,18 @@ function GbpFacts({ finding, figures }: Readonly<{ finding: GbpFinding; figures:
 			{finding === 'gbp_incomplete' && (figures.absent ?? []).length > 0 && (
 				<li>{sprintf(/* translators: %s: profile fields, comma-separated. */ __('Missing: %s', 'seoproanalytics'), (figures.absent ?? []).map(gbpFieldName).join(', '))}</li>
 			)}
+			{finding === 'gbp_details' &&
+				(figures.fields ?? []).map((field) => (
+					<li key={field}>
+						{sprintf(
+							/* translators: 1: a detail (name, phone number or postcode), 2: the profile's value, 3: the site's value. */
+							__('%1$s: profile “%2$s”, site “%3$s”', 'seoproanalytics'),
+							gbpDetailName(field),
+							figures.values?.[field]?.profile ?? '',
+							figures.values?.[field]?.site ?? ''
+						)}
+					</li>
+				))}
 			{finding === 'gbp_link' && (
 				<>
 					<li>{sprintf(/* translators: %s: a link. */ __('Website link now: %s', 'seoproanalytics'), figures.website ?? '')}</li>

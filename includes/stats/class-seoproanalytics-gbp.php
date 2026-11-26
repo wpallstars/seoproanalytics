@@ -39,10 +39,11 @@ final class SEOProAnalytics_GBP {
     /**
      * A location's profile as kept and compared between reads: title,
      * categories (the primary first), hours (one "DAY HH:MM-HH:MM" line per
-     * opening), description, website (the link as set), phone and address
-     * (one line).
+     * opening), description, website (the link as set), phone, address
+     * (one line) and postcode (its own field, for checking against the
+     * site's details).
      */
-    const FIELDS = array('title', 'categories', 'hours', 'description', 'website', 'phone', 'address');
+    const FIELDS = array('title', 'categories', 'hours', 'description', 'website', 'phone', 'address', 'postcode');
 
     /** Fields a complete profile has (finding gbp_incomplete). */
     const BASICS = array('categories', 'hours', 'description', 'phone', 'website');
@@ -70,7 +71,7 @@ final class SEOProAnalytics_GBP {
     );
 
     /** Plan findings (SEOProAnalytics_Queue, kind audit). */
-    const FINDINGS = array('gbp_reviews', 'gbp_rating', 'gbp_incomplete', 'gbp_link');
+    const FINDINGS = array('gbp_reviews', 'gbp_rating', 'gbp_incomplete', 'gbp_link', 'gbp_details');
 
     /** Most locations kept. */
     const MAX_LOCATIONS = 50;
@@ -639,6 +640,31 @@ final class SEOProAnalytics_GBP {
                 $out['gbp_link'] = array('problem' => $problem, 'website' => $website, 'link' => self::suggested_link($row, $path));
             }
         }
+        $differs = self::details_differ($row['profile']);
+        if ($differs) {
+            $out['gbp_details'] = array('fields' => array_keys($differs), 'values' => $differs);
+        }
+        return $out;
+    }
+
+    /**
+     * The profile's name, phone number and postcode that differ from the
+     * site's own business details (SEOProAnalytics_Site_Details). A detail
+     * the SEO plugins do not hold, or the profile lacks, is not compared.
+     *
+     * @param array<string,mixed> $profile A location's profile.
+     * @return array<string,array{profile:string,site:string}> Field (name, phone, postcode) => both values.
+     */
+    private static function details_differ(array $profile) {
+        require_once __DIR__ . '/class-seoproanalytics-site-details.php';
+        $site = SEOProAnalytics_Site_Details::get();
+        $out  = array();
+        foreach (array('name' => 'title', 'phone' => 'phone', 'postcode' => 'postcode') as $field => $key) {
+            $mine = (string) ($profile[$key] ?? '');
+            if (isset($site[$field]) && $mine !== '' && !SEOProAnalytics_Site_Details::same($field, $site[$field], $mine)) {
+                $out[$field] = array('profile' => $mine, 'site' => $site[$field]);
+            }
+        }
         return $out;
     }
 
@@ -999,6 +1025,7 @@ final class SEOProAnalytics_GBP {
             'website'     => self::cut($website, 2000),
             'phone'       => self::cut(sanitize_text_field((string) ($input['phone'] ?? '')), 40),
             'address'     => self::cut(sanitize_text_field((string) ($input['address'] ?? '')), 300),
+            'postcode'    => self::cut(sanitize_text_field((string) ($input['postcode'] ?? '')), 20),
         );
     }
 

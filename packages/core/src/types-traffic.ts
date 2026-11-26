@@ -318,11 +318,14 @@ export interface BusinessProfilesAnswer extends Answer {
 }
 
 /** Google Business Profile findings (also Plan items of kind audit). */
-export const GBP_FINDINGS = ['gbp_reviews', 'gbp_rating', 'gbp_incomplete', 'gbp_link'] as const;
+export const GBP_FINDINGS = ['gbp_reviews', 'gbp_rating', 'gbp_incomplete', 'gbp_link', 'gbp_details'] as const;
 export type GbpFinding = (typeof GBP_FINDINGS)[number];
 
 /** The basics a complete Business Profile has (gbp_incomplete). */
 export type GbpField = 'categories' | 'hours' | 'description' | 'phone' | 'website';
+
+/** The profile details checked against the site's business details (gbp_details). */
+export type GbpDetail = 'name' | 'phone' | 'postcode';
 
 /** Sums of Google's daily Business Profile figures; search and maps add up both devices. */
 export interface GbpFigures {

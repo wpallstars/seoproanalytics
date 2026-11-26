@@ -2,6 +2,10 @@
 
 Every change to SEO Pro Analytics. readme.txt lists the latest version in short.
 
+= Unreleased =
+* New: the Plan lists a Google Business Profile location whose name, phone number or postcode differs from the site's own business details (finding gbp_details), with both values for each differing detail. The site's details are read from the active SEO plugin's settings (Yoast SEO, with Yoast Local SEO's phone and postcode; Rank Math; SEOPress; The SEO Framework), first with a value winning per detail; a detail no plugin holds is not compared. Names match ignoring case, spaces and punctuation when either contains the other, phones by their last 9 digits and postcodes ignoring case and spaces. Done opens no experiment. The options are read only when findings are built, never on a visitor page (GH#128).
+* Developers: `SEOProAnalytics_GBP::save_location()` takes a `postcode` in the profile, kept in the snapshot and shown on the timeline when edited; `gbp_details` joins the findings with figures `fields` and `values`; `SEOProAnalytics_Site_Details` reads the SEO plugins' business details; Plan rules `gbp_share` gains `gbp_details` (GH#128).
+
 = 1.23.1 =
 * Changed: Settings → Connections keeps each connection in one place whether or not the SEO Pro Analytics Connect add-on registers it: IndexNow, Bing Webmaster Tools, Google Search Console, Google Business Profile, Chrome UX Report, the LibreCrawl server, then the paid providers. Before, a connection the add-on did not register was listed after all the others, and the add-on's own order put Chrome UX Report between Search Console and Business Profile (GH#133).
 * Fixed: with an older SEO Pro Analytics Connect active and licensed, a connection it does not have yet, such as Google Business Profile before Connect 1.3.0, said "(subscription needed)" and offered to buy the add-on. It now says "(update needed)", names the version active and, for users who can update plugins, links to Plugins. Without a valid licence the add-on registers no connection, and its cards still say "(subscription needed)" (GH#133).

@@ -1127,7 +1127,7 @@ paths:
           another.
 
         Google Business Profile items (`audit`, Google, findings
-        `gbp_reviews`, `gbp_rating`, `gbp_incomplete`, `gbp_link`) come
+        `gbp_reviews`, `gbp_rating`, `gbp_incomplete`, `gbp_link`, `gbp_details`) come
         from the profiles the Connect add-on reads (`/google-business`):
         one per location and finding, on the location's linked page (the
         home page when none). Their potential clicks are the finding's
@@ -1641,7 +1641,11 @@ paths:
         reply), `gbp_rating` (the last 30 days' reviews average half a
         star or more below the overall rating), `gbp_incomplete` (no
         categories, hours, description, phone or website) and `gbp_link`
-        (the website link has no campaign tags or goes to another site).
+        (the website link has no campaign tags or goes to another site)
+        and `gbp_details` (the profile's name, phone number or postcode
+        differs from the site's business details, read from the active
+        SEO plugin's settings: Yoast SEO, Rank Math, SEOPress or The SEO
+        Framework; a detail no plugin holds is not compared).
         Google gives daily figures a few days late: `through` is the
         newest day kept. `connected` is false while the add-on or its
         connection is missing; data already read stays readable.
@@ -6058,7 +6062,7 @@ components:
                 - type: string
                   enum: [page_experience, clicked_broken]
                 - type: string
-                  enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link]
+                  enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link, gbp_details]
                   description: A Google Business Profile location's finding (/google-business), engine google; one item per location and finding, on its linked page. Done opens no experiment.
                 - $ref: '#/components/schemas/LinksKind'
                 - $ref: '#/components/schemas/IndexationKind'
@@ -6196,7 +6200,7 @@ components:
                   anyOf:
                     - $ref: '#/components/schemas/AuditFinding'
                     - {type: string, enum: [page_experience, clicked_broken]}
-                    - {type: string, enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link]}
+                    - {type: string, enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link, gbp_details]}
                 location:
                   type: string
                   description: Google Business Profile findings; the location's name. Their score uses a share of its website clicks over the newest 28 days kept (reviews 10%, rating 20%, incomplete 10%, link 5%), at least one.
@@ -6233,6 +6237,18 @@ components:
                 link:
                   type: string
                   description: gbp_link; the tagged link to set instead (a listed Google profile's for the page, under Settings → Data → Business profiles, else one tagged the same way).
+                fields:
+                  type: array
+                  description: gbp_details; the details that differ.
+                  items: {type: string, enum: [name, phone, postcode]}
+                values:
+                  type: object
+                  description: gbp_details; for each differing detail, the profile's value and the site's.
+                  additionalProperties:
+                    type: object
+                    properties:
+                      profile: {type: string}
+                      site: {type: string}
                 samples:
                   type: array
                   description: Page-experience field evidence; the item's score uses 10% of observed clicks scaled to 28 days, not the expected-CTR audit formula.
@@ -7492,7 +7508,7 @@ components:
           type: array
           items:
             type: string
-            enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link]
+            enum: [gbp_reviews, gbp_rating, gbp_incomplete, gbp_link, gbp_details]
 
     GoogleBusinessAnswer:
       allOf:

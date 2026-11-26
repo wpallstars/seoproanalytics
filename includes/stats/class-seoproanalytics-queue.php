@@ -115,7 +115,7 @@ final class SEOProAnalytics_Queue {
     const MAX_EFFORT = 5;
 
     /** Effort of audit findings, links and indexation lists and sitemap problems other than their kind's. */
-    const AUDIT_EFFORT   = array('slow' => 3, 'thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'bing_crawl' => 2, 'crawl_error' => 2, 'served_noindex' => 2, 'served_canonical' => 2, 'broken_links' => 2, 'rich_errors' => 2, 'page_experience' => 2, 'clicked_broken' => 1, 'gbp_reviews' => 1, 'gbp_rating' => 3, 'gbp_incomplete' => 1, 'gbp_link' => 1);
+    const AUDIT_EFFORT   = array('slow' => 3, 'thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'bing_crawl' => 2, 'crawl_error' => 2, 'served_noindex' => 2, 'served_canonical' => 2, 'broken_links' => 2, 'rich_errors' => 2, 'page_experience' => 2, 'clicked_broken' => 1, 'gbp_reviews' => 1, 'gbp_rating' => 3, 'gbp_incomplete' => 1, 'gbp_link' => 1, 'gbp_details' => 1);
 
     /**
      * Google Business Profile findings (SEOProAnalytics_GBP): the share of
@@ -123,7 +123,7 @@ final class SEOProAnalytics_Queue {
      * the confidence. Rough stakes to rank work by: Google does not say
      * what a reply or a complete profile is worth.
      */
-    const GBP_SHARE      = array('gbp_reviews' => 0.1, 'gbp_rating' => 0.2, 'gbp_incomplete' => 0.1, 'gbp_link' => 0.05);
+    const GBP_SHARE      = array('gbp_reviews' => 0.1, 'gbp_rating' => 0.2, 'gbp_incomplete' => 0.1, 'gbp_link' => 0.05, 'gbp_details' => 0.1);
     const GBP_CONFIDENCE = 0.4;
 
     /** Confidence of imported speed evidence: crawl only, or agreeing field data. */
@@ -709,6 +709,26 @@ final class SEOProAnalytics_Queue {
                     /* translators: 1: location name, 2: profile fields, as a list (e.g. "description and phone number") */
                     sprintf(__('The Business Profile of %1$s is missing its %2$s.', 'seoproanalytics'), $title, wp_sprintf('%l', $absent)),
                     __('Add them in Google Business Profile, so people who find it in Search and Maps see them before they visit or call.', 'seoproanalytics'),
+                );
+            case 'gbp_details':
+                $labels = array(
+                    'name'     => __('name', 'seoproanalytics'),
+                    'phone'    => __('phone number', 'seoproanalytics'),
+                    'postcode' => __('postcode', 'seoproanalytics'),
+                );
+                $named  = array();
+                $shown  = array();
+                foreach ((array) $f['fields'] as $field) {
+                    $label   = $labels[$field] ?? (string) $field;
+                    $pair    = (array) ($f['values'][$field] ?? array());
+                    $named[] = $label;
+                    /* translators: 1: detail (name, phone number or postcode), 2: the profile's value, 3: the site's value */
+                    $shown[] = sprintf(__('%1$s: profile "%2$s", site "%3$s"', 'seoproanalytics'), $label, (string) ($pair['profile'] ?? ''), (string) ($pair['site'] ?? ''));
+                }
+                return array(
+                    /* translators: 1: location name, 2: details as a list (e.g. "name and phone number"), 3: each detail with both values */
+                    sprintf(__('The Business Profile of %1$s differs from the site\'s business details in its %2$s (%3$s).', 'seoproanalytics'), $title, wp_sprintf('%l', $named), implode('; ', $shown)),
+                    __('Make them the same on the profile and in your SEO plugin\'s business settings, whichever is wrong, so people and search engines see one name, phone number and address everywhere.', 'seoproanalytics'),
                 );
             default:
                 if ($f['problem'] === 'other_site') {
