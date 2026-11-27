@@ -578,8 +578,10 @@ function ImportForm({ onClose }: Readonly<{ onClose: () => void }>) {
 		setBusy(true);
 		setError('');
 		try {
-			setDone(await importTargets(data, text, replace));
-			setText('');
+			const result = await importTargets(data, text, replace);
+			setDone(result);
+			// A partial import keeps the text, so skipped rows can be fixed and sent again.
+			if (!result.skipped.length) setText('');
 		} catch (e) {
 			setError(errorMessage(e, __('The list could not be imported. Try again.', 'seoproanalytics')));
 		}
