@@ -944,12 +944,12 @@ final class SEOProAnalytics_Targets {
             /* translators: %d: most rows */
             return self::error('seoproanalytics_targets_rows', sprintf(__('An import has at most %d rows.', 'seoproanalytics'), self::MAX_ROWS));
         }
-        list($valid, $skipped) = self::check_rows($rows);
+        list($valid, $skipped, $named) = self::check_rows($rows);
         $now      = time();
         $existing = self::stored();
         $removed  = 0;
         if ($replace && !$only_new && $existing) {
-            list($removed, $existing) = self::remove_others($existing, $valid, $skipped);
+            list($removed, $existing) = self::remove_others($existing, $valid, $named);
         }
         $saved = self::save_valid($valid, $existing, array('code' => $code, 'now' => $now, 'only_new' => (bool) $only_new), $skipped);
         if (is_wp_error($saved)) {
@@ -974,14 +974,19 @@ final class SEOProAnalytics_Targets {
      * the skipped ones (the first of a query's rows counts).
      *
      * @param array<int,mixed> $rows Rows.
-     * @return array{0:array<string,array<string,mixed>>,1:array<int,array<string,mixed>>} Valid, skipped.
+     * @return array{0:array<string,array<string,mixed>>,1:array<int,array<string,mixed>>,2:string[]} Valid, skipped, and the full query text of each row skipped for a fault (a skip's own query is cut for display).
      */
     private static function check_rows(array $rows) {
         $valid   = array();
         $skipped = array();
+        $named   = array();
         foreach (array_values($rows) as $n => $row) {
             $checked = self::check(is_array($row) ? $row : array());
             if (is_string($checked)) {
+                $text = is_array($row) ? self::query_text(self::field($row, 'query')) : '';
+                if ($text !== '') {
+                    $named[] = $text;
+                }
                 $skipped[] = self::skip($n + 1, is_array($row) ? self::field($row, 'query') : '', $checked);
                 continue;
             }
@@ -991,7 +996,7 @@ final class SEOProAnalytics_Targets {
             }
             $valid[$checked['query']] = $checked + array('row' => $n + 1);
         }
-        return array($valid, $skipped);
+        return array($valid, $skipped, $named);
     }
 
     /**
@@ -1000,17 +1005,11 @@ final class SEOProAnalytics_Targets {
      *
      * @param array<int,array<string,mixed>>    $existing Stored targets by query id.
      * @param array<string,array<string,mixed>> $valid    check_rows()'s valid rows.
-     * @param array<int,array<string,mixed>>    $skipped  check_rows()'s skipped rows.
+     * @param string[]                          $named    check_rows()'s full query text of rows skipped for a fault.
      * @return array{0:int,1:array<int,array<string,mixed>>} Targets deleted, and the targets kept.
      */
-    private static function remove_others(array $existing, array $valid, array $skipped = array()) {
-        $names = array_keys($valid);
-        foreach ($skipped as $skip) {
-            $name = self::query_text((string) ($skip['query'] ?? ''));
-            if ($name !== '') {
-                $names[] = $name;
-            }
-        }
+    private static function remove_others(array $existing, array $valid, array $named = array()) {
+        $names = array_merge(array_keys($valid), $named);
         $keep = $names ? SEOProAnalytics_Dict::find(SEOProAnalytics_Schema::DICT_QUERY, array_values(array_unique($names))) : array();
         $gone = array_values(array_diff(array_keys($existing), array_map('intval', $keep)));
         return array(self::delete_ids($gone), array_diff_key($existing, array_flip($gone)));
